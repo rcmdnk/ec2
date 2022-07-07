@@ -16,11 +16,11 @@ _get_instance_list () {
 _select () {
   input="$@"
   tool=""
-  #for t in $(echo ${selection_tool:-peco,fzy,fzf,sentaku}|tr , ' ');do
-  #  if type "$t" >& /dev/null ;then
-  #    tool=$t
-  #  fi
-  #done
+  for t in $(echo ${selection_tool:-peco,fzy,fzf,sentaku}|tr , ' ');do
+    if type "$t" >& /dev/null ;then
+      tool=$t
+    fi
+  done
   if [[ "$tool" = "sentaku" ]];then
     tool="sentaku -s line"
   fi
