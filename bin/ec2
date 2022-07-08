@@ -4,11 +4,11 @@ instance_list="aws ec2 describe-instances --query \"Reservations[*].Instances[*]
 
 _get_instance_list () {
   cmd="$instance_list --output text"
-  if [ -n "$ec2_name_filter" ];then
-    cmd="$cmd |grep $ec2_name_filter"
+  if [ -n "$name_filter" ];then
+    cmd="$cmd |grep $name_filter"
   fi
-  if [ -n "$ec2_status_filter" ];then
-    cmd="$cmd |grep $ec2_status_filter"
+  if [ -n "$status_filter" ];then
+    cmd="$cmd |grep $status_filter"
   fi
   eval $cmd
 }
@@ -57,7 +57,7 @@ help() {
 }
 
 start () {
-  ec2_status_filter="stopped"
+  status_filter="stopped"
   instances="$(_select_instances "$@"|awk '{print $1}')"
   if [ -z "$instances" ];then
     exit
@@ -66,7 +66,7 @@ start () {
 }
 
 stop () {
-  ec2_status_filter="running"
+  status_filter="running"
   instances="$(_select_instances "$@"|awk '{print $1}')"
   if [ -z "$instances" ];then
     exit
@@ -95,7 +95,7 @@ list () {
 }
 
 ssh () {
-  ec2_status_filter="running"
+  status_filter="running"
   instances="$(_select_instances "$@"|awk '{print $2}')"
   if [ -z "$instances" ];then
     exit
@@ -146,7 +146,7 @@ shift
 while getopts f:k:u:h OPT;do
   ((OPTNUM++))
   case $OPT in
-    "f" ) ec2_name_filter=$OPTARG ;;
+    "f" ) name_filter=$OPTARG ;;
     "k" ) ssh_key=$OPTARG ;;
     "u" ) ssh_user=$OPTARG ;;
     "h" ) echo "$HELP"; exit ;;

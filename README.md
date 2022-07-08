@@ -1,17 +1,17 @@
-# aw
-AWS CLI Wrapper
+# ec2
+AWS CLI Wrapper for EC2 management.
 
 ## Installation
 
 Use homebrew:
 
-    $ brew install rcmdnk/rcmdnkpac/aw
+    $ brew install rcmdnk/rcmdnkpac/ec2
 
-or put `bin/aw` in anywhere in the PATH.
+or put `bin/ec2` in anywhere in the PATH.
 
 ## Configuration
 
-Use **~/.config/aw/config**.
+Use **~/.config/ec2/config**.
 
 Parameters can be set like:
 
@@ -21,7 +21,7 @@ Parameters can be set like:
 
 Available parameters are:
 
-* ec2_name_filter: Only instances which includes this value is listed.
+* name_filter: Only instances which includes this value is listed.
 * ssh_key: Key for ssh.
 * ssh_user: User for ssh.
 
