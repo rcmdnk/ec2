@@ -1,17 +1,7 @@
 #!/usr/bin/env bash
 
-instance_list="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{Id:InstanceId,Ip:PrivateIpAddress,Name:Tags[?Key=='Name']|[0].Value,Status:State.Name,Type:InstanceType}\""
-
-_get_instance_list () {
-  cmd="$instance_list --output text"
-  if [ -n "$name_filter" ];then
-    cmd="$cmd |grep $name_filter"
-  fi
-  if [ -n "$status_filter" ];then
-    cmd="$cmd |grep $status_filter"
-  fi
-  eval $cmd
-}
+instance_list="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:InstanceId,b:PrivateIpAddress,c:Tags[?Key=='Name']|[0].Value,d:State.Name,e:InstanceType}\" --output text"
+type_list="aws ec2 describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:GpuInfo.Gpus[0].Name}\" --output text"
 
 _select () {
   input="$@"
@@ -40,6 +30,34 @@ _select () {
   echo "$selected"
 }
 
+_get_type_list () {
+  cmd="$type_list"
+  if [ -n "$type_filter" ];then
+    cmd="$cmd |grep $type_filter"
+  fi
+  if [ -n "$gpu_filter" ];then
+    if [ "$gpu_filter" == 0 ];then
+      cmd="$cmd |grep None"
+    elif [ "$gpu_filter" == 1 ];then
+      cmd="$cmd |grep -v None"
+    else
+      cmd="$cmd |grep $gpu_filter"
+    fi
+  fi
+  eval $cmd|sort -V
+}
+
+_get_instance_list () {
+  cmd="$instance_list"
+  if [ -n "$name_filter" ];then
+    cmd="$cmd |grep $name_filter"
+  fi
+  if [ -n "$status_filter" ];then
+    cmd="$cmd |grep $status_filter"
+  fi
+  eval $cmd|sort -V
+}
+
 _select_instances () {
   if [ $# -gt 0 ];then
     grep_var=""
@@ -50,10 +68,6 @@ _select_instances () {
   else
     _select "$(_get_instance_list)"|grep -v "^$"
   fi
-}
-
-help() {
-  echo "$HELP"
 }
 
 start () {
@@ -94,6 +108,19 @@ list () {
   ls
 }
 
+types () {
+  printf "%15s%5s%12s%20s\n" Type vCPU "Mem(GiB)" GPU
+  echo ----------------------------------------------------
+  while IFS= read -r line;do
+    type=$(echo $line|awk '{print $1}')
+    vcpu=$(echo $line|awk '{print $2}')
+    mem=$(echo $line|awk '{print $3}')
+    mem=$(echo "$mem" / 1024 | command bc)
+    gpu=$(echo $line|awk '{x="";for(i=4;i<=NF;i++) x=x $i" "; print x}')
+    printf "%15s%5s%12s%20s\n" "$type" "$vcpu" "$mem" "$gpu"
+  done < <(_get_type_list)
+}
+
 ssh () {
   status_filter="running"
   instances="$(_select_instances "$@"|awk '{print $2}')"
@@ -115,8 +142,33 @@ ssh () {
   command ssh $ssh_option $instances
 }
 
+mosh () {
+  status_filter="running"
+  instances="$(_select_instances "$@"|awk '{print $2}')"
+  if [ -z "$instances" ];then
+    exit
+  fi
+  if [ $(echo "$instances"|wc -l|awk '{print $1}') != 1 ];then
+    echo "More than 1 instances were selected"
+    echo "$instances"
+    exit 1
+  fi
+  mosh_option=""
+  if [ -n "$ssh_key" ];then
+    mosh_option="$mosh_option --ssh=\"ssh -i $mosh_key\""
+  fi
+  if [ -n "$ssh_user" ];then
+    instances="$ssh_user@$instances"
+  fi
+  command mosh $mosh_option $instances
+}
+
+help () {
+  echo "$HELP"
+}
+
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 <subcommand> [-f <ec_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-h] [arg0 [arg1...]]
+HELP="Usage: $0 <subcommand> [-f <name_filter>] [-t <instance_type>] [-g <gpu_filter>] [-k <ssh_key>] [-u <ssh_user>] [-h] [arg0 [arg1...]]
 
 Subcommands:
 $subcommands
@@ -128,7 +180,7 @@ if [ $# -eq 0 ];then
   exit
 fi
 
-config=~/.config/aw/config
+config=~/.config/ec2/config
 if [ -f "$config" ];then
   while read -r line;do
     line=$(echo $line|cut -d "#" -f1)
@@ -143,10 +195,12 @@ fi
 subcommand=$1
 shift
 
-while getopts f:k:u:h OPT;do
+while getopts f:t:g:k:u:h OPT;do
   ((OPTNUM++))
   case $OPT in
     "f" ) name_filter=$OPTARG ;;
+    "t" ) type_filter=$OPTARG ;;
+    "g" ) gpu_filter=$OPTARG ;;
     "k" ) ssh_key=$OPTARG ;;
     "u" ) ssh_user=$OPTARG ;;
     "h" ) echo "$HELP"; exit ;;
