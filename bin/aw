@@ -37,7 +37,7 @@ _select () {
       break
     done
   fi
-  echo $selected
+  echo "$selected"
 }
 
 _select_instances () {
@@ -48,7 +48,7 @@ _select_instances () {
     done
     _get_instance_list |grep $grep_var
   else
-    _select "$(_get_instance_list)"
+    _select "$(_get_instance_list)"|grep -v "^$"
   fi
 }
 
@@ -72,6 +72,14 @@ stop () {
     exit
   fi
   aws ec2 stop-instances --instance-ids $instances
+}
+
+terminate () {
+  instances="$(_select_instances "$@"|awk '{print $1}')"
+  if [ -z "$instances" ];then
+    exit
+  fi
+  aws ec2 terminate-instances --instance-ids $instances
 }
 
 ls () {
@@ -104,7 +112,7 @@ ssh () {
   if [ -n "$ssh_user" ];then
     instances="$ssh_user@$instances"
   fi
-  ssh $ssh_option $instances
+  command ssh $ssh_option $instances
 }
 
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
