@@ -106,10 +106,10 @@ terminate () {
 }
 
 ls () {
-  printf "%20s%15s%30s%10s%15s\n" Id Ip Name Status Type
-  echo ------------------------------------------------------------------------------------------
+  printf "%20s %15s %30s %20s %15s\n" Id Ip Name Status Type
+  echo --------------------------------------------------------------------------------------------------------
   while read -r id ip name status type;do
-    printf "%20s%15s%30s%10s%15s\n" $id $ip $name $status $type
+    printf "%20s %15s %30s %20s %15s\n" $id $ip $name $status $type
   done < <(_get_instance_list)
 }
 
@@ -118,7 +118,7 @@ list () {
 }
 
 types () {
-  printf "%15s%5s%12s%20s\n" Type vCPU "Mem(GiB)" GPU
+  printf "%15s %5s %12s %20s\n" Type vCPU "Mem(GiB)" GPU
   echo ----------------------------------------------------
   while IFS= read -r line;do
     type=$(echo $line|awk '{print $1}')
@@ -126,7 +126,7 @@ types () {
     mem=$(echo $line|awk '{print $3}')
     mem=$(echo "$mem" / 1024 | command bc)
     gpu=$(echo $line|awk '{x="";for(i=4;i<=NF;i++) x=x $i" "; print x}')
-    printf "%15s%5s%12s%20s\n" "$type" "$vcpu" "$mem" "$gpu"
+    printf "%15s %5s %12s %20s\n" "$type" "$vcpu" "$mem" "$gpu"
   done < <(_get_type_list)
 }
 
