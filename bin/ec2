@@ -4,8 +4,8 @@ instance_list="aws ec2 describe-instances --query \"Reservations[*].Instances[*]
 type_list="aws ec2 describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:GpuInfo.Gpus[0].Name}\" --output text"
 
 _select () {
-  input="$@"
-  tool=""
+  local input="$@"
+  local tool=""
   for t in $(echo ${selection_tool:-peco,fzy,fzf,sentaku}|tr , ' ');do
     if type "$t" >& /dev/null ;then
       tool=$t
@@ -15,15 +15,14 @@ _select () {
     tool="sentaku -s line"
   fi
   if [ -n "$tool" ];then
-    selected=$(echo "${input}"|$tool)
+    local selected=$(echo "${input}"|$tool)
   else
     orig_ifs=$IFS
     IFS=$'\n'
     input=($(echo "$input"))
     IFS=$orig_ifs
     select value in "${input[@]}";do
-      selected=$value
-      echo
+      local selected=$value
       break
     done
   fi
@@ -31,7 +30,7 @@ _select () {
 }
 
 _get_type_list () {
-  cmd="$type_list"
+  local cmd="$type_list"
   if [ -n "$type_filter" ];then
     cmd="$cmd |grep $type_filter"
   fi
@@ -48,19 +47,23 @@ _get_type_list () {
 }
 
 _get_instance_list () {
-  cmd="$instance_list"
-  if [ -n "$name_filter" ];then
-    cmd="$cmd |grep $name_filter"
-  fi
-  if [ -n "$status_filter" ];then
-    cmd="$cmd |grep $status_filter"
+  local cmd="$instance_list"
+  if [ -n "$instance_id" ];then
+    local cmd="$cmd --instance-ids $instance_id"
+  else
+    if [ -n "$name_filter" ];then
+      cmd="$cmd |grep $name_filter"
+    fi
+    if [ -n "$status_filter" ];then
+      cmd="$cmd |grep $status_filter"
+    fi
   fi
   eval $cmd|sort -V
 }
 
 _select_instances () {
   if [ $# -gt 0 ];then
-    grep_var=""
+    local grep_var=""
     for v in "$@";do
       grep_var="$grep_var -e $v"
     done
@@ -71,29 +74,35 @@ _select_instances () {
 }
 
 start () {
-  status_filter="stopped"
-  instances="$(_select_instances "$@"|awk '{print $1}')"
-  if [ -z "$instances" ];then
-    exit
+  if [ -z "$instance_id" ];then
+    status_filter="stopped"
+    instance_id="$(_select_instances "$@"|awk '{print $1}')"
+    if [ -z "$instance_id" ];then
+      exit
+    fi
   fi
-  aws ec2 start-instances --instance-ids $instances
+  aws ec2 start-instances --instance-ids $instance_id
 }
 
 stop () {
-  status_filter="running"
-  instances="$(_select_instances "$@"|awk '{print $1}')"
-  if [ -z "$instances" ];then
-    exit
+  if [ -z "$instance_id" ];then
+    status_filter="running"
+    instance_id="$(_select_instances "$@"|awk '{print $1}')"
+    if [ -z "$instance_id" ];then
+      exit
+    fi
   fi
-  aws ec2 stop-instances --instance-ids $instances
+  aws ec2 stop-instances --instance-ids $instance_id
 }
 
 terminate () {
-  instances="$(_select_instances "$@"|awk '{print $1}')"
-  if [ -z "$instances" ];then
-    exit
+  if [ -z "$instance_id" ];then
+    instance_id="$(_select_instances "$@"|awk '{print $1}')"
+    if [ -z "$instance_id" ];then
+      exit
+    fi
   fi
-  aws ec2 terminate-instances --instance-ids $instances
+  aws ec2 terminate-instances --instance-ids $instance_id
 }
 
 ls () {
@@ -121,9 +130,11 @@ types () {
   done < <(_get_type_list)
 }
 
-ssh () {
-  status_filter="running"
-  instances="$(_select_instances "$@"|awk '{print $2}')"
+_instance_check () {
+  if [ "$running_only" = 1 ];then
+    status_filter="running"
+  fi
+  local instances="$(_select_instances "$@")"
   if [ -z "$instances" ];then
     exit
   fi
@@ -132,35 +143,44 @@ ssh () {
     echo "$instances"
     exit 1
   fi
-  ssh_option=""
+  instance_id=$(echo $instances|awk '{print $1}')
+  local ip=$(echo $instances|awk '{print $2}')
+  local status=$(echo $instances|awk '{print $4}')
+  if [ "$status" == "stopped" ];then
+    start
+  fi
+  while :;do
+    status=$(_get_instance_list|awk '{print $4}')
+    if [ "$status" == "running" ];then
+      break
+    fi
+    sleep 1
+  done
+  echo $ip
+}
+
+ssh () {
+  local ip=$(_instance_check "$@")
+  local ssh_option=""
   if [ -n "$ssh_key" ];then
     ssh_option="$ssh_option -i $ssh_key"
   fi
   if [ -n "$ssh_user" ];then
-    instances="$ssh_user@$instances"
+    ip="$ssh_user@$ip"
   fi
-  command ssh $ssh_option $instances
+  command ssh $ssh_option $ip
 }
 
 mosh () {
-  status_filter="running"
-  instances="$(_select_instances "$@"|awk '{print $2}')"
-  if [ -z "$instances" ];then
-    exit
-  fi
-  if [ $(echo "$instances"|wc -l|awk '{print $1}') != 1 ];then
-    echo "More than 1 instances were selected"
-    echo "$instances"
-    exit 1
-  fi
-  mosh_option=""
+  local ip=$(_instance_check "$@")
+  local mosh_option=""
   if [ -n "$ssh_key" ];then
-    mosh_option="$mosh_option --ssh=\"ssh -i $mosh_key\""
+    mosh_option="--ssh=ssh -i $ssh_key"
   fi
   if [ -n "$ssh_user" ];then
-    instances="$ssh_user@$instances"
+    ip="$ssh_user@$ip"
   fi
-  command mosh $mosh_option $instances
+  command mosh "$mosh_option" $ip
 }
 
 help () {
@@ -168,7 +188,7 @@ help () {
 }
 
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 <subcommand> [-f <name_filter>] [-t <instance_type>] [-g <gpu_filter>] [-k <ssh_key>] [-u <ssh_user>] [-h] [arg0 [arg1...]]
+HELP="Usage: $0 <subcommand> [-i <instance_id>] [-f <name_filter>] [-t <instance_type>] [-g <gpu_filter>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-h] [arg0 [arg1...]]
 
 Subcommands:
 $subcommands
@@ -195,14 +215,16 @@ fi
 subcommand=$1
 shift
 
-while getopts f:t:g:k:u:h OPT;do
+while getopts i:f:t:g:k:u:r:h OPT;do
   ((OPTNUM++))
   case $OPT in
+    "i" ) instance_id=$OPTARG ;;
     "f" ) name_filter=$OPTARG ;;
     "t" ) type_filter=$OPTARG ;;
     "g" ) gpu_filter=$OPTARG ;;
     "k" ) ssh_key=$OPTARG ;;
     "u" ) ssh_user=$OPTARG ;;
+    "r" ) running_only=$OPTARG ;;
     "h" ) echo "$HELP"; exit ;;
     * ) echo "unknown option: $OPT" 1>&2;echo "$HELP" 1>&2; exit 1;;
   esac
