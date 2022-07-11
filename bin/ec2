@@ -46,6 +46,18 @@ _select () {
 
 _get_type_list () {
   local cmd="$__aws_cli_type_list"
+  filters=""
+  if [ -n "$__cpu_filter" ];then
+    if [ -n "$filters" ];then
+      filters="${filters},"
+    fi
+    filters="${filters}Name=processor-info.supported-architecture,Values=${__cpu_filter}"
+  fi
+  if [ -n "$filters" ];then
+    cmd="$cmd $filters"
+  fi
+  _execute $cmd
+
   if [ -n "$__type_filter" ];then
     cmd="$cmd |grep $__type_filter"
   fi
@@ -58,7 +70,6 @@ _get_type_list () {
       cmd="$cmd |grep $__gpu_filter"
     fi
   fi
-  _execute $cmd
   __type_list="$__execute_result"
 }
 
@@ -66,12 +77,11 @@ _get_instance_list () {
   local cmd="$__aws_cli_instance_list $__instance_filter"
   if [ -n "$__instance_id" ];then
     local cmd="$cmd --instance-ids $__instance_id"
-  else
-    if [ -n "$__name_filter" ];then
-      cmd="$cmd |grep $__name_filter"
-    fi
   fi
   _execute $cmd
+  if [ -n "$__name_filter" ];then
+    __execute_result="$(echo "$__execute_result"|grep "$__name_filter")"
+  fi
   __instance_list="$__execute_result"
 }
 
@@ -200,6 +210,7 @@ mosh () {
   if [ -n "$__ssh_user" ];then
     ip="$__ssh_user@$ip"
   fi
+  echo mosh "$mosh_option" $__instance_ip
   command mosh "$mosh_option" $__instance_ip
 }
 
@@ -233,13 +244,14 @@ if [ -f "$config" ];then
   done < "$config"
 fi
 
-while getopts i:f:t:g:k:u:r:s:h OPT;do
+while getopts i:f:t:g:p:k:u:r:s:h OPT;do
   ((OPTNUM++))
   case $OPT in
     "i" ) __instance_id=$OPTARG ;;
     "f" ) __name_filter=$OPTARG ;;
     "t" ) __type_filter=$OPTARG ;;
     "g" ) __gpu_filter=$OPTARG ;;
+    "p" ) __cpu_filter=$OPTARG ;;
     "k" ) __ssh_key=$OPTARG ;;
     "u" ) __ssh_user=$OPTARG ;;
     "r" ) __running_only=$OPTARG ;;
@@ -262,9 +274,6 @@ if ! echo " $(echo $subcommands) "|grep -q " $subcommand ";then
   echo "$HELP"
   exit 1
 fi
-
-subcommand=$1
-shift
 
 $subcommand
 

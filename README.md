@@ -46,7 +46,8 @@ Available parameters are:
 * instance_id: Assign instance id to be managed.
 * name_filter: Only instances which includes this value is listed.
 * type_filter: Filter to pick up instance type.
-* gpu_filter: Filter to pick up instance type with gpu. 0: CPU only, 1: with GPU, other strings: instances which have GPUs named <gpu_filter>.
+* gpu_filter: Filter to pick up instance type by gpu.
+* cpu_filter: Filter to pick up instance type by cpu.
 * ssh_key: Key for ssh.
 * ssh_user: User for ssh.
 * running_only: Show only running instances at ssh/mosh
@@ -55,4 +56,4 @@ Available parameters are:
 
 These parameters can be set by arguments, too.
 
-    [-i <instance_id>] [-f <name_filter>] [-t <instance_type>] [-g <gpu_filter>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] [arg0 [arg1...]]
+    [-i <instance_id>] [-f <name_filter>] [-t <instance_type>] [-g <gpu_filter>] [-p <cpu_filter>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] [arg0 [arg1...]]
