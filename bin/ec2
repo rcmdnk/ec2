@@ -163,8 +163,7 @@ _make_template () {
 launch () {
   _make_template
   tmpjson=$(mktemp)
-  echo $tmpjson
-  #trap "rm -rf $tmpjson" HUP INT QUIT ABRT SEGV TERM EXIT
+  trap "rm -rf $tmpjson" HUP INT QUIT ABRT SEGV TERM EXIT
   echo "$__template_json" > "$tmpjson"
   _execute aws ec2 run-instances --cli-input-json "file://$tmpjson"
 }
