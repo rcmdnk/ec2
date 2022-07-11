@@ -6,7 +6,7 @@ type_list="aws ec2 describe-instance-types --query \"InstanceTypes[*].{a:Instanc
 _select () {
   local input="$@"
   local tool=""
-  for t in $(echo ${selection_tool:-peco,fzy,fzf,sentaku}|tr , ' ');do
+  for t in $(echo ${selection_tool:-sentaku,peco,fzy,fzf}|tr , ' ');do
     if type "$t" >& /dev/null ;then
       tool=$t
     fi
@@ -188,7 +188,7 @@ help () {
 }
 
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 <subcommand> [-i <instance_id>] [-f <name_filter>] [-t <instance_type>] [-g <gpu_filter>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-h] [arg0 [arg1...]]
+HELP="Usage: $0 <subcommand> [-i <instance_id>] [-f <name_filter>] [-t <type_filter>] [-g <gpu_filter>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] [arg0 [arg1...]]
 
 Subcommands:
 $subcommands
@@ -215,7 +215,7 @@ fi
 subcommand=$1
 shift
 
-while getopts i:f:t:g:k:u:r:h OPT;do
+while getopts i:f:t:g:k:u:r:s:h OPT;do
   ((OPTNUM++))
   case $OPT in
     "i" ) instance_id=$OPTARG ;;
@@ -225,6 +225,7 @@ while getopts i:f:t:g:k:u:r:h OPT;do
     "k" ) ssh_key=$OPTARG ;;
     "u" ) ssh_user=$OPTARG ;;
     "r" ) running_only=$OPTARG ;;
+    "s" ) selection_tool=$OPTARG ;;
     "h" ) echo "$HELP"; exit ;;
     * ) echo "unknown option: $OPT" 1>&2;echo "$HELP" 1>&2; exit 1;;
   esac
