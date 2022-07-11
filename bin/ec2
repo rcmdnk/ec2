@@ -1,21 +1,38 @@
 #!/usr/bin/env bash
 
+__config_dir="$HOME/.config/ec2"
+__config="$__config_dir/config"
 __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
-__aws_cli_instance_list="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:InstanceId,b:PrivateIpAddress,c:Tags[?Key=='Name']|[0].Value,d:State.Name,e:InstanceType}\" --output text"
-__aws_cli_type_list="aws ec2 describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:GpuInfo.Gpus[0].Name}\" --output text"
 
 _execute () {
   local result
-  result=$(eval "$@" 2>&1)
+  __execute_result="$(eval "$@" 2>&1)"
   local ret=$?
   if [ $ret != 0 ];then
-    echo "$result" 1>&2
-    if echo "$result" |grep -q "Error loading SSO Token";then
+    echo "$__execute_result" 1>&2
+    if echo "$__execute_result" |grep -q "Error loading SSO Token";then
       echo Try \'aws sso login\' 1>&2
     fi
     exit $ret
   fi
-  __execute_result="$(echo "$result"|sort -V)"
+}
+
+_execute_sort () {
+  _execute "$@"
+  __execute_result="$(echo "$__execute_result"|sort -V)"
+}
+
+_read () {
+  if [ -f "$1" ];then
+    while read -r line;do
+      line=$(echo $line|cut -d "#" -f1)
+      line=$(echo "$line")
+      if [ -z "$line" ];then
+        continue
+      fi
+      echo "$line"|tr '=' ' '|awk '{print $1" "$2}'
+    done < "$1"
+  fi
 }
 
 _select () {
@@ -45,7 +62,7 @@ _select () {
 }
 
 _get_type_list () {
-  local cmd="$__aws_cli_type_list"
+  local cmd="aws ec2 describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:GpuInfo.Gpus[0].Name}\" --output text"
   filters=""
   if [ -n "$__cpu_filter" ];then
     if [ -n "$filters" ];then
@@ -56,11 +73,8 @@ _get_type_list () {
   if [ -n "$filters" ];then
     cmd="$cmd $filters"
   fi
-  _execute $cmd
+  _execute_sort $cmd
 
-  if [ -n "$__type_filter" ];then
-    cmd="$cmd |grep $__type_filter"
-  fi
   if [ -n "$__gpu_filter" ];then
     if [ "$__gpu_filter" == 0 ];then
       cmd="$cmd |grep None"
@@ -74,11 +88,11 @@ _get_type_list () {
 }
 
 _get_instance_list () {
-  local cmd="$__aws_cli_instance_list $__instance_filter"
+  local cmd="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:InstanceId,b:PrivateIpAddress,c:Tags[?Key=='Name']|[0].Value,d:State.Name,e:InstanceType}\" --output text $__instance_filter"
   if [ -n "$__instance_id" ];then
     local cmd="$cmd --instance-ids $__instance_id"
   fi
-  _execute $cmd
+  _execute_sort $cmd
   if [ -n "$__name_filter" ];then
     __execute_result="$(echo "$__execute_result"|grep "$__name_filter")"
   fi
@@ -91,6 +105,66 @@ _select_instances () {
   __instance_list="$__selected"
 }
 
+_make_template () {
+  if [ -z "$__template" ];then
+    local templates
+    templates=$(command ls "$__config_dir"|grep ".json$")
+    if [ -z "$templates" ];then
+      echo "No templates are available in $__config_dir"
+      exit 1
+    fi
+    _select "$templates"
+    __template="$__selected"
+  fi
+  if [ ! -f "$__config_dir/$__template" ];then
+    echo "Template $__config_dir/$__template is not available."
+    exit 1
+  fi
+  __template_json="$(cat "$__config_dir/$__template")"
+  local name="$(echo "$__template_json"|jq ".TagSpecifications[].Tags[]|select(.Key == \"Name\")|.Value")"
+  name=$(echo $name|tr -d "'"|tr -d '"')
+  if [ -z "$name" ];then
+    name="my-insatnce-01"
+  else
+    unset __instance_id
+    unset __name_filter
+    __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
+    _get_instance_list
+    local names=$(echo "$__instance_list"|awk '{print $3}')
+    while :;do
+      if ! echo "$names"|grep -q "^${name}$";then
+        break
+      fi
+      local suffix=$(basename "${name//-//}")
+      if [[ "$suffix" =~ ^[0-9]+$ ]];then
+        local suffix_new=$(printf "%02d" $((suffix + 1)))
+        name=${name%${suffix}}$suffix_new
+      else
+        name=${name}-01
+      fi
+    done
+  fi
+  __template_json="$(echo "$__template_json"|jq "(.TagSpecifications[].Tags[]|select(.Key == \"Name\").Value) |= \"$name\"")"
+  if [ "$__instance_type" == select ];then
+    _get_type_list
+    _select "$__type_list"
+   __instance_type=$(echo $__selected|awk '{print $1}')
+  fi
+  if [ -n "$__instance_type" ];then
+    __template_json="$(echo "$__template_json"|jq ".InstanceType |= \"$__instance_type\"")"
+  fi
+  echo launching $name with template $__config_dir/$__template
+}
+
+launch () {
+  _make_template
+  tmpjson=$(mktemp)
+  echo $tmpjson
+  #trap "rm -rf $tmpjson" HUP INT QUIT ABRT SEGV TERM EXIT
+  echo "$__template_json" > "$tmpjson"
+  _execute aws ec2 run-instances --cli-input-json "file://$tmpjson"
+}
+
 start () {
   if [ -z "$__instance_id" ];then
     __instance_filter="--filters Name=instance-state-name,Values=stopped"
@@ -100,7 +174,7 @@ start () {
       exit
     fi
   fi
-  aws ec2 start-instances --instance-ids $__instance_id
+  _execute aws ec2 start-instances --instance-ids $__instance_id
 }
 
 stop () {
@@ -112,7 +186,7 @@ stop () {
       exit
     fi
   fi
-  aws ec2 stop-instances --instance-ids $__instance_id
+  _execute aws ec2 stop-instances --instance-ids $__instance_id
 }
 
 terminate () {
@@ -124,7 +198,7 @@ terminate () {
       exit
     fi
   fi
-  aws ec2 terminate-instances --instance-ids $__instance_id
+  _execute aws ec2 terminate-instances --instance-ids $__instance_id
 }
 
 ls () {
@@ -143,7 +217,7 @@ list () {
 types () {
   _get_type_list
   printf "%15s %5s %12s %20s\n" Type vCPU "Mem(GiB)" GPU
-  echo ----------------------------------------------------
+  echo -------------------------------------------------------
   while IFS= read -r line;do
     type=$(echo "$line"|awk '{print $1}')
     vcpu=$(echo "$line"|awk '{print $2}')
@@ -214,12 +288,24 @@ mosh () {
   command mosh "$mosh_option" $__instance_ip
 }
 
+template () {
+  if [ -z "$__instance_id" ];then
+    _select_instances
+    __instance_id="$(echo "$__instance_list"|awk '{print $1}')"
+  fi
+  if [ -z "$__instance_id" ];then
+    exit
+  fi
+  _execute "aws ec2 get-launch-template-data --instance-id $__instance_id | jq \".LaunchTemplateData|del (.CpuOptions, .NetworkInterfaces[].PrivateIpAddresses)\""
+  echo "$__execute_result"
+}
+
 help () {
   echo "$HELP"
 }
 
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 <subcommand> [-i <instance_id>] [-f <name_filter>] [-t <type_filter>] [-g <gpu_filter>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] [arg0 [arg1...]]
+HELP="Usage: $0 <subcommand> [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-T <template>] [-t <instance_type>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] [arg0 [arg1...]]
 
 Subcommands:
 $subcommands
@@ -231,27 +317,20 @@ if [ $# -eq 0 ];then
   exit
 fi
 
-config=~/.config/ec2/config
-if [ -f "$config" ];then
-  while read -r line;do
-    line=$(echo $line|cut -d "#" -f1)
-    line=$(echo "$line")
-    if [ -z "$line" ];then
-      continue
-    fi
-    key_var=($(echo "$line"|tr = ' '|awk '{print $1" "$2}'))
-    eval "__${key_var[0]}=${key_var[1]}"
-  done < "$config"
-fi
+while read -r line;do
+  key=$(echo "$line"|cut -d' ' -f1)
+  var=$(echo "$line"|cut -d' ' -f2-)
+  eval "__${key}=${var}"
+done < <(_read "$__config")
 
-while getopts i:f:t:g:p:k:u:r:s:h OPT;do
-  ((OPTNUM++))
+while getopts i:f:g:p:T:t:k:u:r:s:h OPT;do
   case $OPT in
     "i" ) __instance_id=$OPTARG ;;
     "f" ) __name_filter=$OPTARG ;;
-    "t" ) __type_filter=$OPTARG ;;
     "g" ) __gpu_filter=$OPTARG ;;
     "p" ) __cpu_filter=$OPTARG ;;
+    "T" ) __template=$OPTARG ;;
+    "t" ) __instance_type=$OPTARG ;;
     "k" ) __ssh_key=$OPTARG ;;
     "u" ) __ssh_user=$OPTARG ;;
     "r" ) __running_only=$OPTARG ;;
