@@ -135,11 +135,11 @@ types () {
   printf "%15s %5s %12s %20s\n" Type vCPU "Mem(GiB)" GPU
   echo ----------------------------------------------------
   while IFS= read -r line;do
-    type=$(echo $line|awk '{print $1}')
-    vcpu=$(echo $line|awk '{print $2}')
-    mem=$(echo $line|awk '{print $3}')
+    type=$(echo "$line"|awk '{print $1}')
+    vcpu=$(echo "$line"|awk '{print $2}')
+    mem=$(echo "$line"|awk '{print $3}')
     mem=$(echo "$mem" / 1024 | command bc)
-    gpu=$(echo $line|awk '{x="";for(i=4;i<=NF;i++) x=x $i" "; print x}')
+    gpu=$(echo "$line"|awk '{x="";for(i=4;i<=NF;i++) x=x $i" "; print x}')
     printf "%15s %5s %12s %20s\n" "$type" "$vcpu" "$mem" "$gpu"
   done < <(echo "$__type_list")
 }
@@ -154,7 +154,7 @@ _instance_check () {
   fi
   if [ $(echo "$__instance_list"|wc -l|awk '{print $1}') != 1 ];then
     echo "More than 1 instances were selected"
-    echo "$instances"
+    echo "$__instance_list"
     exit 1
   fi
   __instance_id=$(echo "$__instance_list"|awk '{print $1}')
@@ -232,8 +232,6 @@ if [ -f "$config" ];then
     eval "__${key_var[0]}=${key_var[1]}"
   done < "$config"
 fi
-subcommand=$1
-shift
 
 while getopts i:f:t:g:k:u:r:s:h OPT;do
   ((OPTNUM++))
@@ -251,6 +249,22 @@ while getopts i:f:t:g:k:u:r:s:h OPT;do
   esac
 done
 shift $((OPTIND - 1))
+
+subcommand=$1
+shift
+if [ -z "$subcommand" ];then
+  echo "$HELP"
+  exit 1
+fi
+if ! echo " $(echo $subcommands) "|grep -q " $subcommand ";then
+  echo "$subcommand is unknown subcommand."
+  echo ""
+  echo "$HELP"
+  exit 1
+fi
+
+subcommand=$1
+shift
 
 $subcommand
 
