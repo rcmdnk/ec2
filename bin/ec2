@@ -256,6 +256,11 @@ _instance_check () {
   fi
   echo "Waiting for ready..."
   __instance_filter="--filters Name=instance-state-name,Values=running"
+  _get_instance_list
+  status=$(echo "$__instance_list"|awk '{print $4}')
+  if [ "$status" == "running" ];then
+    return
+  fi
   while :;do
     _get_instance_list
     status=$(echo "$__instance_list"|awk '{print $4}')
