@@ -118,6 +118,8 @@ _make_template () {
       exit 1
     fi
     _select "$templates"
+  fi
+  if [[ ! "$__template" ~= .json$ ]];then
     __template="${__selected}.json"
   fi
   if [ ! -f "$__config_dir/$__template" ];then
