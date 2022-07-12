@@ -149,8 +149,6 @@ _make_template () {
     done
   fi
   __template_json="$(echo "$__template_json"|jq "(.TagSpecifications[].Tags[]|select(.Key == \"Name\").Value) |= \"$name\"")"
-  echo instance_type = "$__instance_type"
-  exit
   if [ "$__instance_type" == select ];then
     _get_type_list
     _select "$__type_list"
