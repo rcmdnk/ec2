@@ -118,9 +118,10 @@ _make_template () {
       exit 1
     fi
     _select "$templates"
+    __template="${__selected}"
   fi
   if [[ ! "$__template" =~ .json$ ]];then
-    __template="${__selected}.json"
+    __template="${__template}.json"
   fi
   if [ ! -f "$__config_dir/$__template" ];then
     echo "Template $__config_dir/$__template is not available."
