@@ -275,10 +275,11 @@ ssh () {
   if [ -n "$__ssh_key" ];then
     ssh_option="$ssh_option -i $__ssh_key"
   fi
+  local ip=$__instance_ip
   if [ -n "$__ssh_user" ];then
     ip="$__ssh_user@$ip"
   fi
-  command ssh $ssh_option $__instance_ip
+  command ssh $ssh_option $ip
 }
 
 mosh () {
@@ -287,11 +288,11 @@ mosh () {
   if [ -n "$__ssh_key" ];then
     mosh_option="--ssh=ssh -i $__ssh_key"
   fi
+  local ip=$__instance_ip
   if [ -n "$__ssh_user" ];then
     ip="$__ssh_user@$ip"
   fi
-  echo mosh "$mosh_option" $__instance_ip
-  command mosh "$mosh_option" $__instance_ip
+  command mosh "$mosh_option" $ip
 }
 
 template () {
