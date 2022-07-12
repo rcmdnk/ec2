@@ -42,13 +42,14 @@ Use **~/.config/ec2/config**.
 
 Parameters can be set like:
 
-    ec2_name_filter=my-instance
+    name_filter=my-instance
 
-`#` can be used to comment out.
+`#` can be used to comment out the line.
 
 Available parameters are:
 
     $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-T <template>] [-t <instance_type>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] <subcommand>
+
 * instance_id: Assign instance id to be managed.
 * name_filter: Only instances which includes this value is listed.
 * gpu_filter: Filter to pick up instance type by gpu.
@@ -68,8 +69,6 @@ Available parameters are:
         * [fzf](https://github.com/junegunn/fzf)
 
 These parameters can be set by arguments, too.
-
-    [-i <instance_id>] [-f <name_filter>] [-t <instance_type>] [-g <gpu_filter>] [-p <cpu_filter>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] [arg0 [arg1...]]
 
 ## Examples
 
@@ -95,6 +94,13 @@ Then, do:
     $ ec2 template > ~/.config/ec2/my_template.json
 
 Select your instance for the template.
+
+It is better to make templates for each `AvailabilityZone` (`SubnetId`).
+
+If necessary, edit generated json files (`VolumeSize`, `ImageId`, `KeyName`, etc...).
+
+`InstanceType` is set as the default, and it can be changed as described below.
+
 
 To launch a new instance, do:
 
