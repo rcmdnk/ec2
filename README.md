@@ -16,14 +16,14 @@ or put `bin/ec2` in anywhere in the PATH.
 Subcommands:
 
 * help: Show help.
-* launch: Launch new instance.
+* launch: Launch a new instance.
 * list: List up instances.
 * ls: Alias of list
 * mosh: Connect to an instance with mosh.
 * ssh: Connect to an instance with mosh.
 * start: Start instances.
 * stop: Stop instances.
-* template: Get launch template from an instance.
+* template: Get the launch template from an instance.
 * terminate: Terminate instances.
 * types: Show instance types.
 
@@ -83,9 +83,9 @@ Make ~/.config/ec2/config file as follows:
 
 This will show only instances which include `my-instances` in the Name.
 
-It use the key **~/.ssh/my_ssh.pem** at `ec2 ssh` or `ec2 mosh`, with user name `ec2-user`.
+It uses the key **~/.ssh/my_ssh.pem** at `ec2 ssh` or `ec2 mosh`, with the user name `ec2-user`.
 
-### Make template and launch with it
+### Make a template and launch with it
 
 Launch an EC2 instance as you like at AWS.
 
@@ -96,22 +96,14 @@ Then, do:
 
 Select your instance for the template.
 
-To launch new instance, do:
+To launch a new instance, do:
 
     $ ec2 -T ~/.config/ec2/my_template.json launch
 
-This will launch new instance with same environments of the selected instance.
+This will launch a new instance with the same environments as the selected instance.
 
 If you want to change the instance type, give `-t <instance_type>` option:
 
     $ ec2 -t r3.large -T ~/.config/ec2/my_template.json launch
 
 If you give `-t select`, you can choose the instance type from the list.
-
-
-
-
-
-
-
-
