@@ -263,6 +263,7 @@ _instance_check () {
     _get_instance_list
     status=$(echo "$__instance_list"|awk '{print $4}')
     if [ "$status" == "running" ];then
+      sleep 5
       break
     fi
     sleep 1
@@ -280,6 +281,11 @@ ssh () {
     ip="$__ssh_user@$ip"
   fi
   command ssh $ssh_option $ip
+  while test $? -ne 0;do
+    echo "Waiting for ready..."
+    sleep 5
+    command ssh $ssh_option $ip
+  done
 }
 
 mosh () {
@@ -293,6 +299,11 @@ mosh () {
     ip="$__ssh_user@$ip"
   fi
   command mosh "$mosh_option" $ip
+  while test $? -ne 0;do
+    echo "Waiting for ready..."
+    sleep 5
+    command mosh "$mosh_option" $ip
+  done
 }
 
 template () {
