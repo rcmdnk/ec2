@@ -27,6 +27,15 @@ Subcommands:
 * terminate: Terminate instances.
 * types: Show instance types.
 
+## AWS CLI Profile
+
+If you want to use a profile other than default,
+set:
+
+    export AWS_PROFILE=xxx
+
+before using ec2.
+
 ## Configuration
 
 Use **~/.config/ec2/config**.
