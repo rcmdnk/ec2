@@ -17,19 +17,6 @@ _execute () {
   fi
 }
 
-_read () {
-  if [ -f "$1" ];then
-    while read -r line;do
-      line=$(echo $line|cut -d "#" -f1)
-      line=$(echo "$line")
-      if [ -z "$line" ];then
-        continue
-      fi
-      echo "$line"|tr '=' ' '|awk '{print $1" "$2}'
-    done < "$1"
-  fi
-}
-
 _select () {
   local input=("$@")
   local tool
@@ -84,7 +71,7 @@ _get_type_list () {
 }
 
 _get_instance_list () {
-  local cmd="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:InstanceId,b:PrivateIpAddress,c:Tags[?Key=='Name']|[0].Value,d:State.Name,e:InstanceType}\" --output text $__instance_filter"
+  local cmd="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:PrivateIpAddress,d:State.Name,e:InstanceType}\" --output text $__instance_filter"
   if [ -n "$__instance_id" ];then
     local cmd="$cmd --instance-ids $__instance_id"
   fi
@@ -106,110 +93,79 @@ _select_instances () {
   __instance_list="$__selected"
 }
 
-_make_template () {
-  if [ -z "$__template" ];then
-    local templates
-    templates=$(command ls "$__config_dir"|grep ".json$"|sed 's/.json$//')
-    if [ -z "$templates" ];then
-      echo "No templates are available in $__config_dir"
-      exit 1
-    fi
-    _select "$templates"
-    __template="${__selected}"
+_get_instance_id () {
+  if [ -z "$__instance_id" ];then
+    _select_instances
+    __instance_id="$(echo "$__instance_list"|awk '{print $2}')"
   fi
-  if [[ ! "$__template" =~ .json$ ]];then
-    __template="${__template}.json"
+  if [ -z "$__instance_id" ];then
+    exit
   fi
-  if [ ! -f "$__config_dir/$__template" ];then
-    echo "Template $__config_dir/$__template is not available."
-    exit 1
-  fi
-  __template_json="$(cat "$__config_dir/$__template")"
-  local name="$(echo "$__template_json"|jq ".TagSpecifications[].Tags[]|select(.Key == \"Name\")|.Value")"
-  name=$(echo $name|tr -d "'"|tr -d '"')
+}
+
+launch () {
+  _get_template_id
+  _execute "aws ec2 describe-launch-template-versions --launch-template-id $__template_id --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[*].LaunchTemplateData.TagSpecifications[*].Tags[?Key=='Name']|[0][0][0].Value\" --output text"
+  local name="$__execute_result"
   if [ -z "$name" ];then
-    name="my-insatnce-01"
-  else
-    unset __instance_id
-    unset __name_filter
-    __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
-    _get_instance_list
-    local names=$(echo "$__instance_list"|awk '{print $3}')
-    while :;do
-      if ! echo "$names"|grep -q "^${name}$";then
-        break
-      fi
-      local suffix=$(basename "${name//-//}")
-      if [[ "$suffix" =~ ^[0-9]+$ ]];then
-        local suffix_new=$(printf "%02d" $((suffix + 1)))
-        name=${name%${suffix}}$suffix_new
-      else
-        name=${name}-01
-      fi
-    done
+    name="my-instance-01"
   fi
-  __template_json="$(echo "$__template_json"|jq "(.TagSpecifications[].Tags[]|select(.Key == \"Name\").Value) |= \"$name\"")"
-  if [ "$__instance_type" == select ];then
+  __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
+  _get_instance_list
+  local names=$(echo "$__instance_list"|awk '{print $1}')
+  while :;do
+    if ! echo "$names"|grep -q "^${name}$";then
+      break
+    fi
+    local suffix=$(basename "${name//-//}")
+    if [[ "$suffix" =~ ^[0-9]+$ ]];then
+      local suffix_new=$(printf "%02d" $((suffix + 1)))
+      name=${name%${suffix}}$suffix_new
+    else
+      name=${name}-01
+    fi
+  done
+  if [ "$__instance_type" == "select" ];then
     _get_type_list
     _select "$__type_list"
    __instance_type=$(echo $__selected|awk '{print $1}')
   fi
+  local instance_type=""
   if [ -n "$__instance_type" ];then
-    __template_json="$(echo "$__template_json"|jq ".InstanceType |= \"$__instance_type\"")"
+    local instance_type="--instance-type $__instance_type"
   fi
-  echo launching $name with template $__config_dir/$__template
-}
-
-launch () {
-  _make_template
-  tmpjson=$(mktemp)
-  trap "rm -rf $tmpjson" HUP INT QUIT ABRT SEGV TERM EXIT
-  echo "$__template_json" > "$tmpjson"
-  _execute aws ec2 run-instances --cli-input-json "file://$tmpjson"
+  echo launching $name
+  _execute "aws ec2 run-instances --launch-template LaunchTemplateId=$__template_id $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]'"
 }
 
 start () {
-  if [ -z "$__instance_id" ];then
-    __instance_filter="--filters Name=instance-state-name,Values=stopped"
-    _select_instances
-    __instance_id=$(echo "$__instance_list"|awk '{print $1}')
-    if [ -z "$__instance_id" ];then
-      exit
-    fi
-  fi
+  __instance_filter="--filters Name=instance-state-name,Values=stopped"
+  _get_instance_id
   _execute aws ec2 start-instances --instance-ids $__instance_id
 }
 
 stop () {
-  if [ -z "$__instance_id" ];then
-    __instance_filter="--filters Name=instance-state-name,Values=running"
-    _select_instances
-    __instance_id="$(echo "$__instance_list"|awk '{print $1}')"
-    if [ -z "$__instance_id" ];then
-      exit
-    fi
-  fi
+  __instance_filter="--filters Name=instance-state-name,Values=running"
+  _get_instance_id
   _execute aws ec2 stop-instances --instance-ids $__instance_id
 }
 
 terminate () {
-  if [ -z "$__instance_id" ];then
-    __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
-    _select_instances
-    __instance_id="$(echo "$__instance_list"|awk '{print $1}')"
-    if [ -z "$__instance_id" ];then
-      exit
-    fi
-  fi
+  __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
+  _get_instance_id
   _execute aws ec2 terminate-instances --instance-ids $__instance_id
+}
+
+rm () {
+  terminate
 }
 
 ls () {
   _get_instance_list
-  printf "%20s %15s %30s %20s %15s\n" Id Ip Name Status Type
+  printf "%30s %20s %15s %20s %15s\n" Name Id Ip Status Type
   echo --------------------------------------------------------------------------------------------------------
   while read -r id ip name status type;do
-    printf "%20s %15s %30s %20s %15s\n" $id $ip $name $status $type
+    printf "%30s %20s %15s %20s %15s\n" $name $id $ip $status $type
   done < <(echo "$__instance_list")
 }
 
@@ -244,8 +200,8 @@ _instance_check () {
     echo "$__instance_list"
     exit 1
   fi
-  __instance_id=$(echo "$__instance_list"|awk '{print $1}')
-  __instance_ip=$(echo "$__instance_list"|awk '{print $2}')
+  __instance_id=$(echo "$__instance_list"|awk '{print $2}')
+  __instance_ip=$(echo "$__instance_list"|awk '{print $3}')
   local status=$(echo "$__instance_list"|awk '{print $4}')
   if [ "$status" == "stopped" ];then
     start
@@ -308,16 +264,127 @@ mosh () {
   done
 }
 
-template () {
-  if [ -z "$__instance_id" ];then
-    _select_instances
-    __instance_id="$(echo "$__instance_list"|awk '{print $1}')"
+_get_template_list () {
+  _execute "aws ec2 describe-launch-templates --query 'LaunchTemplates[*].{a:LaunchTemplateName,b:LaunchTemplateId}' --output text"
+  __template_list="$(echo "$__execute_result"|sort -k 1 -V)"
+}
+
+templates () {
+  _get_template_list
+  printf "%40s %21s\n" Name Id
+  echo --------------------------------------------------------------
+  while IFS= read -r line;do
+    name=$(echo "$line"|awk '{print $1}')
+    id=$(echo "$line"|awk '{print $2}')
+    printf "%40s %21s\n" "$name" "$id"
+  done < <(echo "$__template_list")
+}
+
+_select_templates () {
+  _get_template_list
+  if [ -z "$__template_list" ];then
+    echo "No template is available."
+    exit 1
   fi
-  if [ -z "$__instance_id" ];then
+  _select "$__template_list"
+  __template_list="$__selected"
+}
+
+_get_template_id () {
+  if [ -z "$__template_id" ];then
+    _select_templates
+    __template_id="$(echo "$__template_list"|awk '{print $2}')"
+  fi
+  if [ -z "$__template_id" ];then
     exit
   fi
-  _execute "aws ec2 get-launch-template-data --instance-id $__instance_id | jq \".LaunchTemplateData|del (.CpuOptions, .NetworkInterfaces[].PrivateIpAddresses)\""
-  echo "$__execute_result"
+}
+
+new_template () {
+  _get_template_id
+  _execute "aws ec2 describe-launch-templates --launch-template-id $__template_id --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
+  local default_version="$__execute_result"
+  _get_image_list
+  _select "$__image_list"
+  local ami=$(echo "$__selected"|awk '{print $2}')
+  local snapshot=$(echo "$__selected"|awk '{print $3}')
+  _execute "aws ec2 create-launch-template-version --launch-template-id $__template_id --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
+  local new_version="$__execute_result"
+  _execute "aws ec2 modify-launch-template --launch-template-id $__template_id --default-version $new_version"
+}
+
+_get_image_list () {
+  _execute aws sts get-caller-identity --query "Account" --output text
+  local account="$__execute_result"
+  _execute "aws ec2 describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
+  __image_list="$(echo "$__execute_result"|sort -k 1 -V)"
+}
+
+images () {
+  _get_image_list
+  printf "%40s %21s %22s\n" Name ImageId SnapshotId
+  echo -------------------------------------------------------------------------------------
+  while IFS= read -r line;do
+    name=$(echo "$line"|awk '{print $1}')
+    id=$(echo "$line"|awk '{print $2}')
+    snapshot=$(echo "$line"|awk '{print $3}')
+    printf "%40s %21s %22s\n" "$name" "$id" "$snapshot"
+  done < <(echo "$__image_list")
+}
+
+new_image () {
+  _get_instance_id
+  if [ -z "$__image_name" ];then
+    _get_instance_list
+    __image_name="$(echo "$__instance_list"|grep "$__instance_id"|awk '{print $1}')"
+    local suffix=$(basename "${__image_name//-//}")
+    if [[ "$suffix" =~ ^[0-9]+$ ]];then
+      local suffix_new=01
+      __image_name=${__image_name%${suffix}}$suffix_new
+    fi
+  fi
+  if [ -z "$__image_name" ];then
+    echo "Set image_name by: ec2 new_images -I <image_name>"
+    exit 1
+  fi
+  _get_image_list
+  local image_names="$(echo "$__image_list"|awk '{print $1}')"
+  while :;do
+    if ! echo "$image_names"|grep -q ^"$_image_name"$;then
+      break
+    fi
+    local suffix=$(basename "${__image_name//-//}")
+    if [[ "$suffix" =~ ^[0-9]+$ ]];then
+      local suffix_new=$(printf "%02d" $((suffix + 1)))
+      __image_name=${__image_name%${suffix}}$suffix_new
+    else
+      __image_name=${__image_name}-01
+    fi
+  done
+  _execute aws ec2 create-image  --instance-id "$__instance_id" --name "$__image_name"
+}
+
+rm_image () {
+  _get_image_list
+  if [ -z "$__image_name" ];then
+    _select "$__image_list"
+    if [ -z "$__selected" ];then
+      exit
+    fi
+    local ami=$(echo "$__selected"|awk '{print $2}')
+    local snapshot=$(echo "$__selected"|awk '{print $3}')
+  else
+    while IFS= read -r line;do
+      local name=$(echo "$line"|awk '{print $1}')
+      local id=$(echo "$line"|awk '{print $2}')
+      local snapshot=$(echo "$line"|awk '{print $3}')
+      if [ "$name" ==  "$__image_name" ];then
+        break
+      fi
+    done < <(echo "$__image_list")
+  fi
+  _execute aws ec2 deregister-image --image-id $ami
+  _execute aws ec2 delete-snapshot --snapshot-id $snapshot
 }
 
 help () {
@@ -325,7 +392,7 @@ help () {
 }
 
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 <subcommand> [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-T <template>] [-t <instance_type>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] [arg0 [arg1...]]
+HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-T <template_id>] [-t <instance_type>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] <subcommand>
 
 Subcommands:
 $subcommands
@@ -337,20 +404,28 @@ if [ $# -eq 0 ];then
   exit
 fi
 
-while read -r line;do
-  key=$(echo "$line"|cut -d' ' -f1)
-  var=$(echo "$line"|cut -d' ' -f2-)
-  eval "__${key}=${var}"
-done < <(_read "$__config")
+if [ -f "$__config" ];then
+  while read -r line;do
+    line=$(echo $line|cut -d "#" -f1)
+    line=$(echo "$line")
+    if [ -z "$line" ];then
+      continue
+    fi
+    key=$(echo "$line"|cut -d'=' -f1)
+    var=$(echo "$line"|cut -d'=' -f2)
+    eval "__${key}=${var}"
+  done < "$__config"
+fi
 
-while getopts i:f:g:p:T:t:k:u:r:s:h OPT;do
+while getopts i:f:g:p:T:t:I:k:u:r:s:h OPT;do
   case $OPT in
     "i" ) __instance_id=$OPTARG ;;
     "f" ) __name_filter=$OPTARG ;;
     "g" ) __gpu_filter=$OPTARG ;;
     "p" ) __cpu_filter=$OPTARG ;;
-    "T" ) __template=$OPTARG ;;
+    "T" ) __template_id=$OPTARG ;;
     "t" ) __instance_type=$OPTARG ;;
+    "I" ) __image_name=$OPTARG ;;
     "k" ) __ssh_key=$OPTARG ;;
     "u" ) __ssh_user=$OPTARG ;;
     "r" ) __running_only=$OPTARG ;;
