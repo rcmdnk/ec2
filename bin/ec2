@@ -319,6 +319,7 @@ new_template () {
   _execute "aws ec2 create-launch-template-version --launch-template-id $__template_id --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
   local new_version="$__execute_result"
   _execute "aws ec2 modify-launch-template --launch-template-id $__template_id --default-version $new_version"
+  echo "Created the new template version $new_version for $__template_id"
 }
 
 _get_image_list () {
@@ -352,7 +353,7 @@ new_image () {
     fi
   fi
   if [ -z "$__image_name" ];then
-    echo "Set image_name by: ec2 new_images -I <image_name>"
+    echo "Set image_name by: ec2 -I <image_name> new_images"
     exit 1
   fi
   _get_image_list
@@ -370,6 +371,7 @@ new_image () {
     fi
   done
   _execute aws ec2 create-image  --instance-id "$__instance_id" --name "$__image_name"
+  echo "Created the new AMI $__image_name from $__instance_id"
 }
 
 rm_image () {
