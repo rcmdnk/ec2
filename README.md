@@ -11,7 +11,7 @@ or put `bin/ec2` in anywhere in the PATH.
 
 ## Usage
 
-    $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-T <template_id>] [-t <instance_type>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] <subcommand>
+    $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] <subcommand>
 
 Subcommands:
 
@@ -62,6 +62,7 @@ Available parameters are:
 * name_filter: Only instances which includes this value is listed.
 * gpu_filter: Filter to pick up instance type by gpu.
 * cpu_filter: Filter to pick up instance type by cpu.
+* private_ip: Set 1 to use private IP addresses instead of public IP addresses.
 * template_id: Launch template id.
 * instance_type: Instance type for launch command.
     * If `select` is passed, you can choose the type from the list.

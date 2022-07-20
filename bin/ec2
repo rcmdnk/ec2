@@ -71,7 +71,7 @@ _get_type_list () {
 }
 
 _get_instance_list () {
-  local cmd="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:PrivateIpAddress,d:State.Name,e:InstanceType}\" --output text $__instance_filter"
+  local cmd="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:PrivateIpAddress,d:PublicIpAddress,e:State.Name,f:InstanceType}\" --output text $__instance_filter"
   if [ -n "$__instance_id" ];then
     local cmd="$cmd --instance-ids $__instance_id"
   fi
@@ -79,7 +79,7 @@ _get_instance_list () {
   if [ -n "$__name_filter" ];then
     __execute_result="$(echo "$__execute_result"|grep "$__name_filter")"
   fi
-  __execute_result="$(echo "$__execute_result"|sort -k 3 -V)"
+  __execute_result="$(echo "$__execute_result"|sort -k 1,3 -V)"
   __instance_list="$__execute_result"
 }
 
@@ -164,8 +164,12 @@ ls () {
   _get_instance_list
   printf "%30s %20s %15s %20s %15s\n" Name Id Ip Status Type
   echo --------------------------------------------------------------------------------------------------------
-  while read -r id ip name status type;do
-    printf "%30s %20s %15s %20s %15s\n" $name $id $ip $status $type
+  while read -r name id private_ip public_ip status type;do
+    local ip="$public_ip"
+    if [ "$__private_ip" = "1" ];then
+      ip="$private_ip"
+    fi
+    printf "%30s %20s %15s %20s %15s\n" "$name" "$id" "$ip" "$status" "$type"
   done < <(echo "$__instance_list")
 }
 
@@ -201,8 +205,12 @@ _instance_check () {
     exit 1
   fi
   __instance_id=$(echo "$__instance_list"|awk '{print $2}')
-  __instance_ip=$(echo "$__instance_list"|awk '{print $3}')
-  local status=$(echo "$__instance_list"|awk '{print $4}')
+  if [ "$__private_ip" = "1" ];then
+    __instance_ip=$(echo "$__instance_list"|awk '{print $3}')
+  else
+    __instance_ip=$(echo "$__instance_list"|awk '{print $4}')
+  fi
+  local status=$(echo "$__instance_list"|awk '{print $5}')
   if [ "$status" == "stopped" ];then
     start
   fi
@@ -213,13 +221,13 @@ _instance_check () {
   echo "Waiting for ready..."
   __instance_filter="--filters Name=instance-state-name,Values=running"
   _get_instance_list
-  status=$(echo "$__instance_list"|awk '{print $4}')
+  status=$(echo "$__instance_list"|awk '{print $5}')
   if [ "$status" == "running" ];then
     return
   fi
   while :;do
     _get_instance_list
-    status=$(echo "$__instance_list"|awk '{print $4}')
+    status=$(echo "$__instance_list"|awk '{print $5}')
     if [ "$status" == "running" ];then
       sleep 5
       break
@@ -392,7 +400,7 @@ help () {
 }
 
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-T <template_id>] [-t <instance_type>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] <subcommand>
+HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] <subcommand>
 
 Subcommands:
 $subcommands
@@ -417,12 +425,13 @@ if [ -f "$__config" ];then
   done < "$__config"
 fi
 
-while getopts i:f:g:p:T:t:I:k:u:r:s:h OPT;do
+while getopts i:f:g:p:P:T:t:I:k:u:r:s:h OPT;do
   case $OPT in
     "i" ) __instance_id=$OPTARG ;;
     "f" ) __name_filter=$OPTARG ;;
     "g" ) __gpu_filter=$OPTARG ;;
     "p" ) __cpu_filter=$OPTARG ;;
+    "P" ) __private_ip=$OPTARG ;;
     "T" ) __template_id=$OPTARG ;;
     "t" ) __instance_type=$OPTARG ;;
     "I" ) __image_name=$OPTARG ;;
