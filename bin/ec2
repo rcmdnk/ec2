@@ -5,7 +5,6 @@ __config="$__config_dir/config"
 __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
 
 _execute () {
-  local result
   __execute_result="$(eval "$@" 2>&1)"
   local ret=$?
   if [ $ret != 0 ];then
@@ -56,18 +55,17 @@ _get_type_list () {
     cmd="$cmd $filters"
   fi
   _execute $cmd
-  __execute_result="$(echo "$__execute_result"|sort -V)"
+  __type_list="$(echo "$__execute_result"|sort -V)"
 
   if [ -n "$__gpu_filter" ];then
     if [ "$__gpu_filter" == 0 ];then
-      cmd="$cmd |grep None"
+      __type_list="$(echo "${__type_list}"|grep None)"
     elif [ "$__gpu_filter" == 1 ];then
-      cmd="$cmd |grep -v None"
+      __type_list="$(echo "${__type_list}"|grep -v None)"
     else
-      cmd="$cmd |grep $__gpu_filter"
+      __type_list="$(echo "${__type_list}"|grep $__gpu_filter)"
     fi
   fi
-  __type_list="$__execute_result"
 }
 
 _get_instance_list () {
@@ -79,8 +77,7 @@ _get_instance_list () {
   if [ -n "$__name_filter" ];then
     __execute_result="$(echo "$__execute_result"|grep "$__name_filter")"
   fi
-  __execute_result="$(echo "$__execute_result"|sort -k 1,3 -V)"
-  __instance_list="$__execute_result"
+  __instance_list="$(echo "$__execute_result"|sort -k 1,3 -V)"
 }
 
 _select_instances () {
@@ -322,6 +319,26 @@ new_template () {
   echo "Created the new template version $new_version for $__template_id"
 }
 
+_select_images () {
+  _get_image_list
+  if [ -z "$__image_list" ];then
+    echo "No image is available."
+    exit 1
+  fi
+  _select "$__image_list"
+  __image_list="$__selected"
+}
+
+_get_image_id () {
+  if [ -z "$__image_id" ];then
+    _select_images
+    __image_id="$(echo "$__image_list"|awk '{print $2}')"
+  fi
+  if [ -z "$__image_id" ];then
+    exit
+  fi
+}
+
 _get_image_list () {
   _execute aws sts get-caller-identity --query "Account" --output text
   local account="$__execute_result"
@@ -381,7 +398,7 @@ rm_image () {
     if [ -z "$__selected" ];then
       exit
     fi
-    local ami=$(echo "$__selected"|awk '{print $2}')
+    local id=$(echo "$__selected"|awk '{print $2}')
     local snapshot=$(echo "$__selected"|awk '{print $3}')
   else
     while IFS= read -r line;do
@@ -392,9 +409,13 @@ rm_image () {
         break
       fi
     done < <(echo "$__image_list")
+    if [ -z "$id" ];then
+      echo "$__image_name is not found"
+      exit 1
+    fi
   fi
-  _execute aws ec2 deregister-image --image-id $ami
-  _execute aws ec2 delete-snapshot --snapshot-id $snapshot
+  _execute aws ec2 deregister-image --image-id "$id"
+  _execute aws ec2 delete-snapshot --snapshot-id "$snapshot"
 }
 
 help () {
