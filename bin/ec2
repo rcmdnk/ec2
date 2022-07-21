@@ -3,13 +3,15 @@
 __config_dir="$HOME/.config/ec2"
 __config="$__config_dir/config"
 __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
-__exit_at_fail=1
 
 _execute () {
   __execute_result="$(eval "$@" 2>&1)"
   local ret=$?
   if [ $ret != 0 ];then
-    if [ "$__exit_at_fail" -eq 1 ];then
+    if echo "$__execute_result"|grep -q DryRunOperation;then
+      echo Dry run: $*|sed 's/--dry-run //'
+      return
+    elif [ "$__exit_at_fail" != "0" ];then
       echo "$__execute_result" 1>&2
       exit $ret
     fi
@@ -18,11 +20,9 @@ _execute () {
 }
 
 _execute_aws () {
-  local cmd="aws ${__aws_profile:+--profile ${__aws_profile}} $*"
-  __exit_at_fail=0
-  _execute $cmd
+  local cmd="$* ${__aws_profile:+--profile ${__aws_profile}}"
+  __exit_at_fail=0 _execute $cmd
   local ret=$?
-  __exit_at_fail=1
   if [ "$ret" -ne 0 ];then
     if [ "$ret" -ne 255 ];then
       echo "$__execute_result" 1>&2
@@ -125,7 +125,7 @@ _get_type_list () {
 }
 
 _get_instance_list () {
-  local cmd="ec2 describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:PrivateIpAddress,d:PublicIpAddress,e:State.Name,f:InstanceType}\" --output text $__instance_filter"
+  local cmd="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:PrivateIpAddress,d:PublicIpAddress,e:State.Name,f:InstanceType}\" --output text $__instance_filter"
   if [ -n "$__instance_id" ];then
     local cmd="$cmd --instance-ids $__instance_id"
   fi
@@ -158,7 +158,7 @@ _get_instance_id () {
 
 launch () {
   _get_template_id
-  _execute_aws "ec2 describe-launch-template-versions --launch-template-id $__template_id --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[*].LaunchTemplateData.TagSpecifications[*].Tags[?Key=='Name']|[0][0][0].Value\" --output text"
+  _execute_aws "aws ec2 describe-launch-template-versions --launch-template-id $__template_id --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[*].LaunchTemplateData.TagSpecifications[*].Tags[?Key=='Name']|[0][0][0].Value\" --output text"
   local name="$__execute_result"
   if [ -z "$name" ];then
     name="my-instance-01"
@@ -187,26 +187,45 @@ launch () {
   if [ -n "$__instance_type" ];then
     local instance_type="--instance-type $__instance_type"
   fi
-  echo launching $name
-  _execute_aws "ec2 run-instances --launch-template LaunchTemplateId=$__template_id $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]'"
+  echo launching $name...
+  _execute_aws "aws ec2 run-instances ${__dry_run_mode} --launch-template LaunchTemplateId=$__template_id $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:PrivateIpAddress,d:PublicIpAddress,e:State.Name,f:InstanceType}\" --output text"
+  if [ "$__dry_run" = "1" ];then
+    return
+  fi
+  local result=(${__execute_result})
+  if [ "$__private_ip" = "1" ];then
+    local ip="PrivateIP=${result[2]}"
+  else
+    local ip="PublicIP=${result[3]}"
+  fi
+  echo "The new instance was launched: Name=${result[0]}, Id=${result[1]}, ${ip}, Type=${result[5]}"
 }
 
 start () {
   __instance_filter="--filters Name=instance-state-name,Values=stopped"
   _get_instance_id
-  _execute_aws ec2 start-instances --instance-ids $__instance_id
+  _execute_aws aws ec2 ${__dry_run_mode} start-instances --instance-ids $__instance_id
 }
 
 stop () {
   __instance_filter="--filters Name=instance-state-name,Values=running"
   _get_instance_id
-  _execute_aws ec2 stop-instances --instance-ids $__instance_id
+  _execute_aws aws ec2 ${__dry_run_mode} stop-instances --instance-ids $__instance_id
 }
 
 terminate () {
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
   _get_instance_id
-  _execute_aws ec2 terminate-instances --instance-ids $__instance_id
+  _execute_aws aws ec2 ${__dry_run_mode} terminate-instances --instance-ids $__instance_id
+  local output=""
+  if [ -n "$__instance_list" ];then
+    while read -r id || [ -n "${line}" ];do
+      output="${output:+${output}, }$(echo "$__instance_list"|grep "$id"|awk '{print $1}') ($id)"
+    done < <(echo "$__instance_id")
+  else
+      output="$__instance_id"
+  fi
+  echo "Terminated:" $output
 }
 
 rm () {
@@ -336,7 +355,7 @@ mosh () {
 }
 
 _get_template_list () {
-  _execute_aws "ec2 describe-launch-templates --query 'LaunchTemplates[*].{a:LaunchTemplateName,b:LaunchTemplateId}' --output text"
+  _execute_aws "aws ec2 describe-launch-templates --query 'LaunchTemplates[*].{a:LaunchTemplateName,b:LaunchTemplateId}' --output text"
   __template_list="$(echo "$__execute_result"|sort -k 1 -V)"
 }
 
@@ -376,13 +395,16 @@ _get_template_id () {
 
 new_template () {
   _get_template_id
-  _execute_aws "ec2 describe-launch-templates --launch-template-id $__template_id --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
+  _execute_aws "aws ec2 describe-launch-templates --launch-template-id $__template_id --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
   local default_version="$__execute_result"
   _get_image_list
   _select "$__image_list"
   local ami=$(echo "$__selected"|awk '{print $2}')
   local snapshot=$(echo "$__selected"|awk '{print $3}')
-  _execute _aws "ec2 create-launch-template-version --launch-template-id $__template_id --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
+  _execute_aws "aws ec2 create-launch-template-version ${__dry_run_mode} --launch-template-id $__template_id --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
+  if [ "${__dry_run}" = "1" ];then
+    return
+  fi
   local new_version="$__execute_result"
   _execute _aws "ec2 modify-launch-template --launch-template-id $__template_id --default-version $new_version"
   echo "Created the new template version $new_version for $__template_id"
@@ -409,9 +431,9 @@ _get_image_id () {
 }
 
 _get_image_list () {
-  _execute_aws sts get-caller-identity --query "Account" --output text
+  _execute_aws aws sts get-caller-identity --query "Account" --output text
   local account="$__execute_result"
-  _execute_aws "ec2 describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
+  _execute_aws "aws ec2 describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
   # Sometime Name includes space prefix (?)
   __image_list="$(echo "$__execute_result"|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
 }
@@ -458,7 +480,7 @@ new_image () {
       __image_name=${__image_name}-01
     fi
   done
-  _execute_aws ec2 create-image  --instance-id "$__instance_id" --name "$__image_name"
+  _execute_aws aws ec2 ${__dry_run_mode} create-image  --instance-id "$__instance_id" --name "$__image_name"
   echo "Created the new AMI $__image_name from $__instance_id"
 }
 
@@ -485,8 +507,8 @@ rm_image () {
       exit 1
     fi
   fi
-  _execute_aws ec2 deregister-image --image-id "$id"
-  _execute_aws ec2 delete-snapshot --snapshot-id "$snapshot"
+  _execute_aws aws ec2 deregister-image ${__dry_run_mode} --image-id "$id"
+  _execute_aws aws ec2 delete-snapshot ${__dry_run_mode} --snapshot-id "$snapshot"
 }
 
 help () {
@@ -494,7 +516,7 @@ help () {
 }
 
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-h] <subcommand>
+HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <dry_run>] [-h] <subcommand>
 
 Subcommands:
 $subcommands
@@ -519,7 +541,7 @@ if [ -f "$__config" ];then
   done < "$__config"
 fi
 
-while getopts i:f:g:p:P:T:t:I:k:u:r:s:h OPT;do
+while getopts i:f:g:p:P:T:t:I:k:u:r:s:a:d:h OPT;do
   case $OPT in
     "i" ) __instance_id=$OPTARG ;;
     "f" ) __name_filter=$OPTARG ;;
@@ -534,11 +556,16 @@ while getopts i:f:g:p:P:T:t:I:k:u:r:s:h OPT;do
     "r" ) __running_only=$OPTARG ;;
     "s" ) __selection_tool=$OPTARG ;;
     "a" ) __aws_profile=$OPTARG ;;
+    "d" ) __dry_run=$OPTARG ;;
     "h" ) echo "$HELP"; exit ;;
     * ) echo "unknown option: $OPT" 1>&2;echo "$HELP" 1>&2; exit 1;;
   esac
 done
 shift $((OPTIND - 1))
+
+if [ "$__dry_run" = "1" ];then
+  __dry_run_mode="--dry-run"
+fi
 
 subcommand=$1
 shift
