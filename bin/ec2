@@ -3,6 +3,13 @@
 __config_dir="$HOME/.config/ec2"
 __config="$__config_dir/config"
 __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
+__get_list_func=(_get_instance_list _get_image_list _get_template_list _get_type_list)
+__enum_instance=0
+__enum_image=1
+__enum_template=2
+__enum_type=3
+__list=()
+__ids=()
 
 _execute () {
   __execute_result="$(eval "$@" 2>&1)"
@@ -100,14 +107,14 @@ _print_list () {
 
 _get_instance_list () {
   local cmd="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:PrivateIpAddress,d:PublicIpAddress,e:State.Name,f:InstanceType}\" --output text $__instance_filter"
-  if [ -n "$__instance_id" ];then
-    local cmd="$cmd --instance-ids $__instance_id"
+  if [ -n "${__ids[$__enum_instance]}" ];then
+    local cmd="$cmd --instance-ids ${__ids[$__enum_instance]}"
   fi
   _execute_aws $cmd
   if [ -n "$__name_filter" ];then
     __execute_result="$(echo "$__execute_result"|grep "$__name_filter")"
   fi
-  __instance_list="$(echo "$__execute_result"|sort -k 1,3 -V)"
+  __list[$__enum_instance]="$(echo "$__execute_result"|sort -k 1,3 -V)"
 }
 
 _get_image_list () {
@@ -115,16 +122,16 @@ _get_image_list () {
   local account="$__execute_result"
   _execute_aws "aws ec2 describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
   # Sometime Name includes space prefix (?)
-  __image_list="$(echo "$__execute_result"|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
+  __list[$__enum_image]="$(echo "$__execute_result"|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
 }
 
 _get_template_list () {
   _execute_aws "aws ec2 describe-launch-templates --query 'LaunchTemplates[*].{a:LaunchTemplateName,b:LaunchTemplateId}' --output text"
-  __template_list="$(echo "$__execute_result"|sort -k 1 -V)"
+  __list[$__enum_template]="$(echo "$__execute_result"|sort -k 1 -V)"
 }
 
 _get_type_list () {
-  local cmd="ec2 describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:GpuInfo.Gpus[0].Name}\" --output text"
+  local cmd="aws ec2 describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:GpuInfo.Gpus[0].Name}\" --output text"
   filters=""
   if [ -n "$__cpu_filter" ];then
     if [ -n "$filters" ];then
@@ -136,75 +143,37 @@ _get_type_list () {
     cmd="$cmd $filters"
   fi
   _execute_aws $cmd
-  __type_list="$(echo "$__execute_result"|sort -V)"
+  __list[$enum_type]="$(echo "$__execute_result"|sort -V)"
 
   if [ -n "$__gpu_filter" ];then
     if [ "$__gpu_filter" == 0 ];then
-      __type_list="$(echo "${__type_list}"|grep None)"
+      __list[$enum_type]="$(echo "${__list[$enum_type]}"|grep None)"
     elif [ "$__gpu_filter" == 1 ];then
-      __type_list="$(echo "${__type_list}"|grep -v None)"
+      __list[$enum_type]="$(echo "${__list[$enum_type]}"|grep -v None)"
     else
-      __type_list="$(echo "${__type_list}"|grep $__gpu_filter)"
+      __list[$enum_type]="$(echo "${__list[$enum_type]}"|grep $__gpu_filter)"
     fi
   fi
 }
 
-_select_instances () {
-  _get_instance_list
-  if [ -z "$__instance_list" ];then
+_select_objs () {
+  local enum_obj=$1
+  ${__get_list_func[$enum_obj]}
+  if [ -z "${__list[$enum_obj]}" ];then
     echo "No instance is available."
     exit 1
   fi
-  _select "$__instance_list"
-  __instance_list="$__selected"
+  _select "${__list[$enum_obj]}"
+  __list[$enum_obj]="$__selected"
 }
 
-_select_templates () {
-  _get_template_list
-  if [ -z "$__template_list" ];then
-    echo "No template is available."
-    exit 1
+_get_ids () {
+  local enum_obj=$1
+  if [ -z "${__ids[$enum_obj]}" ];then
+    _select_objs $enum_obj
+    __ids[$enum_obj]="$(echo "${__list[$enum_obj]}"|awk '{print $2}')"
   fi
-  _select "$__template_list"
-  __template_list="$__selected"
-}
-
-_select_images () {
-  _get_image_list
-  if [ -z "$__image_list" ];then
-    echo "No image is available."
-    exit 1
-  fi
-  _select "$__image_list"
-  __image_list="$__selected"
-}
-
-_get_instance_id () {
-  if [ -z "$__instance_id" ];then
-    _select_instances
-    __instance_id="$(echo "$__instance_list"|awk '{print $2}')"
-  fi
-  if [ -z "$__instance_id" ];then
-    exit
-  fi
-}
-
-_get_template_id () {
-  if [ -z "$__template_id" ];then
-    _select_templates
-    __template_id="$(echo "$__template_list"|awk '{print $2}')"
-  fi
-  if [ -z "$__template_id" ];then
-    exit
-  fi
-}
-
-_get_image_id () {
-  if [ -z "$__image_id" ];then
-    _select_images
-    __image_id="$(echo "$__image_list"|awk '{print $2}')"
-  fi
-  if [ -z "$__image_id" ];then
+  if [ -z "${__ids[$enum_obj]}" ];then
     exit
   fi
 }
@@ -213,39 +182,40 @@ _instance_check () {
   if [ "$__running_only" = 1 ];then
     __instance_filter="--filters Name=instance-state-name,Values=running"
   fi
-  _select_instances
-  if [ -z "$__instance_list" ];then
+  _select_objs $__enum_instance
+  if [ -z "${__list[$__enum_instance]}" ];then
     exit
   fi
-  if [ $(echo "$__instance_list"|wc -l|awk '{print $1}') != 1 ];then
+  if [ $(echo "${__list[$__enum_instance]}"|wc -l|awk '{print $1}') != 1 ];then
     echo "More than 1 instances were selected"
-    echo "$__instance_list"
+    echo "${__list[$__enum_instance]}"
     exit 1
   fi
-  __instance_id=$(echo "$__instance_list"|awk '{print $2}')
+  local instance_info=(${__list[$__enum_instance]})
+  __ids[$__enum_instance]=${instance_info[1]}
   if [ "$__private_ip" = "1" ];then
-    __instance_ip=$(echo "$__instance_list"|awk '{print $3}')
+    __instance_ip=${instance_info[2]}
   else
-    __instance_ip=$(echo "$__instance_list"|awk '{print $4}')
+    __instance_ip=${instance_info[3]}
   fi
-  local status=$(echo "$__instance_list"|awk '{print $5}')
+  local status=${instance_info[4]}
   if [ "$status" == "stopped" ];then
     start
   fi
   if [ "$status" == "stopping" ];then
-    echo "$__instance_id is stopping."
+    echo "${__ids[$__enum_instance]} is stopping."
     exit 1
   fi
   echo "Waiting for ready..."
   __instance_filter="--filters Name=instance-state-name,Values=running"
   _get_instance_list
-  status=$(echo "$__instance_list"|awk '{print $5}')
+  status=$(echo "${__list[$__enum_instance]}"|awk '{print $5}')
   if [ "$status" == "running" ];then
     return
   fi
   while :;do
     _get_instance_list
-    status=$(echo "$__instance_list"|awk '{print $5}')
+    status=$(echo "${__list[$__enum_instance]}"|awk '{print $5}')
     if [ "$status" == "running" ];then
       sleep 5
       break
@@ -255,15 +225,15 @@ _instance_check () {
 }
 
 launch () {
-  _get_template_id
-  _execute_aws "aws ec2 describe-launch-template-versions --launch-template-id $__template_id --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[*].LaunchTemplateData.TagSpecifications[*].Tags[?Key=='Name']|[0][0][0].Value\" --output text"
+  _get_ids $__enum_template
+  _execute_aws "aws ec2 describe-launch-template-versions --launch-template-id ${__ids[$__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[*].LaunchTemplateData.TagSpecifications[*].Tags[?Key=='Name']|[0][0][0].Value\" --output text"
   local name="$__execute_result"
   if [ -z "$name" ];then
     name="my-instance-01"
   fi
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
   _get_instance_list
-  local names=$(echo "$__instance_list"|awk '{print $1}')
+  local names=$(echo "${__list[$__enum_instance]}"|awk '{print $1}')
   while :;do
     if ! echo "$names"|grep -q "^${name}$";then
       break
@@ -278,7 +248,7 @@ launch () {
   done
   if [ "$__instance_type" == "select" ];then
     _get_type_list
-    _select "$__type_list"
+    _select "${__list[$enum_type]}"
    __instance_type=$(echo $__selected|awk '{print $1}')
   fi
   local instance_type=""
@@ -286,7 +256,7 @@ launch () {
     local instance_type="--instance-type $__instance_type"
   fi
   echo launching $name...
-  _execute_aws "aws ec2 run-instances ${__dry_run_mode} --launch-template LaunchTemplateId=$__template_id $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:PrivateIpAddress,d:PublicIpAddress,e:State.Name,f:InstanceType}\" --output text"
+  _execute_aws "aws ec2 run-instances ${__dry_run_mode} --launch-template LaunchTemplateId=${__ids[$__enum_template]} $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:PrivateIpAddress,d:PublicIpAddress,e:State.Name,f:InstanceType}\" --output text"
   if [ "$__dry_run" = "1" ];then
     return
   fi
@@ -301,27 +271,27 @@ launch () {
 
 start () {
   __instance_filter="--filters Name=instance-state-name,Values=stopped"
-  _get_instance_id
-  _execute_aws aws ec2 ${__dry_run_mode} start-instances --instance-ids $__instance_id
+  _get_ids $__enum_instance
+  _execute_aws aws ec2 ${__dry_run_mode} start-instances --instance-ids ${__ids[$__enum_instance]}
 }
 
 stop () {
   __instance_filter="--filters Name=instance-state-name,Values=running"
-  _get_instance_id
-  _execute_aws aws ec2 ${__dry_run_mode} stop-instances --instance-ids $__instance_id
+  _get_ids $__enum_instance
+  _execute_aws aws ec2 ${__dry_run_mode} stop-instances --instance-ids ${__ids[$__enum_instance]}
 }
 
 terminate () {
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
-  _get_instance_id
-  _execute_aws aws ec2 ${__dry_run_mode} terminate-instances --instance-ids $__instance_id
+  _get_ids $__enum_instance
+  _execute_aws aws ec2 ${__dry_run_mode} terminate-instances --instance-ids ${__ids[$__enum_instance]}
   local output=""
-  if [ -n "$__instance_list" ];then
+  if [ -n "${__list[$__enum_instance]}" ];then
     while read -r id || [ -n "${line}" ];do
-      output="${output:+${output}, }$(echo "$__instance_list"|grep "$id"|awk '{print $1}') ($id)"
-    done < <(echo "$__instance_id")
+      output="${output:+${output}, }$(echo "${__list[$__enum_instance]}"|grep "$id"|awk '{print $1}') ($id)"
+    done < <(echo "${__ids[$__enum_instance]}")
   else
-      output="$__instance_id"
+      output="${__ids[$__enum_instance]}"
   fi
   echo "Terminated:" $output
 }
@@ -347,28 +317,12 @@ list () {
     st=${line[4]}
     ty=${line[5]}
     contents="${contents}$name $id $ip $st $ty\n"
-  done < <(echo "$__instance_list")
+  done < <(echo "${__list[$__enum_instance]}")
   _print_list "$header" "$contents"
 }
 
 ls () {
   list
-}
-
-types () {
-  _get_type_list
-  local header="Type vCPU Mem(GiB) GPU"
-  local contents=""
-  local line
-  while read -r line || [ -n "${line}" ];do
-    line=($line)
-    ty=${line[0]}
-    vcpu=${line[1]}
-    mem=$(echo "${line[2]}" / 1024 | command bc)
-    gpu=$(echo ${line[*]}|cut -d' ' -f 4-|tr ' ' _)
-    contents="${contents}$ty $vcpu $mem $gpu\n"
-  done < <(echo "$__type_list")
-  _print_list "$header" "$contents"
 }
 
 ssh () {
@@ -416,15 +370,15 @@ images () {
     id=$(echo "$line"|awk '{print $2}')
     snapshot=$(echo "$line"|awk '{print $3}')
     contents="${contents}$name $id $snapshot\n"
-  done < <(echo "$__image_list")
+  done < <(echo "${__list[$__enum_image]}")
   _print_list "$header" "$contents"
 }
 
 new_image () {
-  _get_instance_id
+  _get_ids $__enum_instance
   if [ -z "$__image_name" ];then
     _get_instance_list
-    __image_name="$(echo "$__instance_list"|grep "$__instance_id"|awk '{print $1}')"
+    __image_name="$(echo "${__list[$__enum_instance]}"|grep "${__ids[$__enum_instance]}"|awk '{print $1}')"
     local suffix=$(basename "${__image_name//-//}")
     if [[ "$suffix" =~ ^[0-9]+$ ]];then
       local suffix_new=01
@@ -436,7 +390,7 @@ new_image () {
     exit 1
   fi
   _get_image_list
-  local image_names="$(echo "$__image_list"|awk '{print $1}')"
+  local image_names="$(echo "${__list[$__enum_image]}"|awk '{print $1}')"
   while :;do
     if ! echo "$image_names"|grep -q ^"$_image_name"$;then
       break
@@ -449,14 +403,14 @@ new_image () {
       __image_name=${__image_name}-01
     fi
   done
-  _execute_aws aws ec2 ${__dry_run_mode} create-image  --instance-id "$__instance_id" --name "$__image_name"
-  echo "Created the new AMI $__image_name from $__instance_id"
+  _execute_aws aws ec2 ${__dry_run_mode} create-image  --instance-id "${__ids[$__enum_instance]}" --name "$__image_name"
+  echo "Created the new AMI $__image_name from ${__ids[$__enum_instance]}"
 }
 
 rm_image () {
   _get_image_list
   if [ -z "$__image_name" ];then
-    _select "$__image_list"
+    _select "${__list[$__enum_image]}"
     if [ -z "$__selected" ];then
       exit
     fi
@@ -470,7 +424,7 @@ rm_image () {
       if [ "$name" ==  "$__image_name" ];then
         break
       fi
-    done < <(echo "$__image_list")
+    done < <(echo "${__list[$__enum_image]}")
     if [ -z "$id" ];then
       echo "$__image_name is not found"
       exit 1
@@ -490,25 +444,41 @@ templates () {
     name=${line[0]}
     id=${line[1]}
     contents="${contents}$name $id\n"
-  done < <(echo "$__template_list")
+  done < <(echo "${__list[$__enum_template]}")
   _print_list "$header" "$contents"
 }
 
 new_template () {
-  _get_template_id
-  _execute_aws "aws ec2 describe-launch-templates --launch-template-id $__template_id --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
+  _get_ids $__enum_template
+  _execute_aws "aws ec2 describe-launch-templates --launch-template-id ${__ids[$__enum_template]} --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
   local default_version="$__execute_result"
   _get_image_list
-  _select "$__image_list"
+  _select "${__list[$__enum_image]}"
   local ami=$(echo "$__selected"|awk '{print $2}')
   local snapshot=$(echo "$__selected"|awk '{print $3}')
-  _execute_aws "aws ec2 create-launch-template-version ${__dry_run_mode} --launch-template-id $__template_id --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
+  _execute_aws "aws ec2 create-launch-template-version ${__dry_run_mode} --launch-template-id ${__ids[$__enum_template]} --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
   if [ "${__dry_run}" = "1" ];then
     return
   fi
   local new_version="$__execute_result"
-  _execute _aws "ec2 modify-launch-template --launch-template-id $__template_id --default-version $new_version"
-  echo "Created the new template version $new_version for $__template_id"
+  _execute _aws "ec2 modify-launch-template --launch-template-id ${__ids[$__enum_template]} --default-version $new_version"
+  echo "Created the new template version $new_version for ${__ids[$__enum_template]}"
+}
+
+types () {
+  _get_type_list
+  local header="Type vCPU Mem(GiB) GPU"
+  local contents=""
+  local line
+  while read -r line || [ -n "${line}" ];do
+    line=($line)
+    ty=${line[0]}
+    vcpu=${line[1]}
+    mem=$(echo "${line[2]}" / 1024 | command bc)
+    gpu=$(echo ${line[*]}|cut -d' ' -f 4-|tr ' ' _)
+    contents="${contents}$ty $vcpu $mem $gpu\n"
+  done < <(echo "${__list[$enum_type]}")
+  _print_list "$header" "$contents"
 }
 
 help () {
@@ -566,6 +536,8 @@ shift $((OPTIND - 1))
 if [ "$__dry_run" = "1" ];then
   __dry_run_mode="--dry-run"
 fi
+__ids[$__enum_instance]="$__instance_id"
+__ids[$__enum_template]="$__template_id"
 
 subcommand=$1
 shift
