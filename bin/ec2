@@ -3,17 +3,40 @@
 __config_dir="$HOME/.config/ec2"
 __config="$__config_dir/config"
 __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
+__exit_at_fail=1
 
 _execute () {
   __execute_result="$(eval "$@" 2>&1)"
   local ret=$?
   if [ $ret != 0 ];then
-    echo "$__execute_result" 1>&2
-    if echo "$__execute_result" |grep -q "Error loading SSO Token";then
-      echo Try \'aws sso login\' 1>&2
+    if [ "$__exit_at_fail" -eq 1 ];then
+      echo "$__execute_result" 1>&2
+      exit $ret
     fi
-    exit $ret
   fi
+  return $ret
+}
+
+_execute_aws () {
+  local cmd="aws ${__aws_profile:+--profile ${__aws_profile}} $*"
+  __exit_at_fail=0
+  _execute $cmd
+  local ret=$?
+  __exit_at_fail=1
+  if [ "$ret" -ne 0 ];then
+    if [ "$ret" -ne 255 ];then
+      echo "$__execute_result" 1>&2
+      exit $?
+    fi
+    aws sso login ${__aws_profile:+--profile ${__aws_profile}} 1>&2
+    ret=$?
+    if [ "$ret" -ne 0 ];then
+      exit $?
+    fi
+    _execute $cmd
+    ret=$?
+  fi
+  return $ret
 }
 
 _select () {
@@ -42,8 +65,41 @@ _select () {
   fi
 }
 
+_print_list () {
+  local header=($1)
+  local contents="$2"
+  local n_cols="$(echo ${header[@]}|wc -w)"
+  local width=()
+  local i
+  for ((i=0; i<$n_cols; i++));do
+    width[$i]=${#header[$i]}
+  done
+  local line
+  local columns
+  while IFS= read -r line;do
+    columns=($line)
+    for ((i=0; i<$n_cols; i++));do
+      if [ ${width[$i]} -lt ${#columns[$i]} ];then
+        width[$i]=${#columns[$i]}
+      fi
+    done
+  done < <(printf "$contents")
+  local format_header=""
+  local format=""
+  for ((i=0; i<$n_cols; i++));do
+    format_header="${format_header:+${format_header} }%${width[$i]}s"
+    format="${format:+${format} }%-${width[$i]}s"
+  done
+  printf "$format_header\n" "${header[@]}"
+  printf "%0$(echo $(printf "$format_header" "${header[@]}"|wc -c))s\n" ''|tr 0 -
+  while IFS= read -r line;do
+    columns=($line)
+    printf "$format\n" $line
+  done < <(printf "$contents")
+}
+
 _get_type_list () {
-  local cmd="aws ec2 describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:GpuInfo.Gpus[0].Name}\" --output text"
+  local cmd="ec2 describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:GpuInfo.Gpus[0].Name}\" --output text"
   filters=""
   if [ -n "$__cpu_filter" ];then
     if [ -n "$filters" ];then
@@ -54,7 +110,7 @@ _get_type_list () {
   if [ -n "$filters" ];then
     cmd="$cmd $filters"
   fi
-  _execute $cmd
+  _execute_aws $cmd
   __type_list="$(echo "$__execute_result"|sort -V)"
 
   if [ -n "$__gpu_filter" ];then
@@ -69,11 +125,11 @@ _get_type_list () {
 }
 
 _get_instance_list () {
-  local cmd="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:PrivateIpAddress,d:PublicIpAddress,e:State.Name,f:InstanceType}\" --output text $__instance_filter"
+  local cmd="ec2 describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:PrivateIpAddress,d:PublicIpAddress,e:State.Name,f:InstanceType}\" --output text $__instance_filter"
   if [ -n "$__instance_id" ];then
     local cmd="$cmd --instance-ids $__instance_id"
   fi
-  _execute $cmd
+  _execute_aws $cmd
   if [ -n "$__name_filter" ];then
     __execute_result="$(echo "$__execute_result"|grep "$__name_filter")"
   fi
@@ -102,7 +158,7 @@ _get_instance_id () {
 
 launch () {
   _get_template_id
-  _execute "aws ec2 describe-launch-template-versions --launch-template-id $__template_id --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[*].LaunchTemplateData.TagSpecifications[*].Tags[?Key=='Name']|[0][0][0].Value\" --output text"
+  _execute_aws "ec2 describe-launch-template-versions --launch-template-id $__template_id --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[*].LaunchTemplateData.TagSpecifications[*].Tags[?Key=='Name']|[0][0][0].Value\" --output text"
   local name="$__execute_result"
   if [ -z "$name" ];then
     name="my-instance-01"
@@ -132,25 +188,25 @@ launch () {
     local instance_type="--instance-type $__instance_type"
   fi
   echo launching $name
-  _execute "aws ec2 run-instances --launch-template LaunchTemplateId=$__template_id $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]'"
+  _execute_aws "ec2 run-instances --launch-template LaunchTemplateId=$__template_id $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]'"
 }
 
 start () {
   __instance_filter="--filters Name=instance-state-name,Values=stopped"
   _get_instance_id
-  _execute aws ec2 start-instances --instance-ids $__instance_id
+  _execute_aws ec2 start-instances --instance-ids $__instance_id
 }
 
 stop () {
   __instance_filter="--filters Name=instance-state-name,Values=running"
   _get_instance_id
-  _execute aws ec2 stop-instances --instance-ids $__instance_id
+  _execute_aws ec2 stop-instances --instance-ids $__instance_id
 }
 
 terminate () {
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
   _get_instance_id
-  _execute aws ec2 terminate-instances --instance-ids $__instance_id
+  _execute_aws ec2 terminate-instances --instance-ids $__instance_id
 }
 
 rm () {
@@ -159,15 +215,23 @@ rm () {
 
 ls () {
   _get_instance_list
-  printf "%30s %20s %15s %20s %15s\n" Name Id Ip Status Type
-  echo --------------------------------------------------------------------------------------------------------
-  while read -r name id private_ip public_ip status type;do
-    local ip="$public_ip"
+  local header="Name Id Ip Status Type"
+  local contents=""
+  local line
+  while IFS= read -r line;do
+    line=($line)
+    name=${line[0]}
+    id=${line[1]}
     if [ "$__private_ip" = "1" ];then
-      ip="$private_ip"
+      ip=${line[2]}
+    else
+      ip=${line[3]}
     fi
-    printf "%30s %20s %15s %20s %15s\n" "$name" "$id" "$ip" "$status" "$type"
+    st=${line[4]}
+    ty=${line[5]}
+    contents="${contents:+${contents}\n}$name $id $ip $st $ty"
   done < <(echo "$__instance_list")
+  _print_list "$header" "$contents"
 }
 
 list () {
@@ -176,16 +240,18 @@ list () {
 
 types () {
   _get_type_list
-  printf "%15s %5s %12s %20s\n" Type vCPU "Mem(GiB)" GPU
-  echo -------------------------------------------------------
+  local header="Type vCPU Mem(GiB) GPU"
+  local contents=""
+  local line
   while IFS= read -r line;do
-    type=$(echo "$line"|awk '{print $1}')
-    vcpu=$(echo "$line"|awk '{print $2}')
-    mem=$(echo "$line"|awk '{print $3}')
-    mem=$(echo "$mem" / 1024 | command bc)
-    gpu=$(echo "$line"|awk '{x="";for(i=4;i<=NF;i++) x=x $i" "; print x}')
-    printf "%15s %5s %12s %20s\n" "$type" "$vcpu" "$mem" "$gpu"
+    line=($line)
+    ty=${line[0]}
+    vcpu=${line[1]}
+    mem=$(echo "${line[2]}" / 1024 | command bc)
+    gpu=$(echo ${line[*]}|cut -d' ' -f 4-|tr ' ' _)
+    contents="${contents:+${contents}\n}$ty $vcpu $mem $gpu"
   done < <(echo "$__type_list")
+  _print_list "$header" "$contents"
 }
 
 _instance_check () {
@@ -270,19 +336,22 @@ mosh () {
 }
 
 _get_template_list () {
-  _execute "aws ec2 describe-launch-templates --query 'LaunchTemplates[*].{a:LaunchTemplateName,b:LaunchTemplateId}' --output text"
+  _execute_aws "ec2 describe-launch-templates --query 'LaunchTemplates[*].{a:LaunchTemplateName,b:LaunchTemplateId}' --output text"
   __template_list="$(echo "$__execute_result"|sort -k 1 -V)"
 }
 
 templates () {
   _get_template_list
-  printf "%40s %21s\n" Name Id
-  echo --------------------------------------------------------------
+  local header="Name Id"
+  local contents=""
+  local line
   while IFS= read -r line;do
-    name=$(echo "$line"|awk '{print $1}')
-    id=$(echo "$line"|awk '{print $2}')
-    printf "%40s %21s\n" "$name" "$id"
+    line=($line)
+    name=${line[0]}
+    id=${line[1]}
+    contents="${contents:+${contents}\n}$name $id"
   done < <(echo "$__template_list")
+  _print_list "$header" "$contents"
 }
 
 _select_templates () {
@@ -307,15 +376,15 @@ _get_template_id () {
 
 new_template () {
   _get_template_id
-  _execute "aws ec2 describe-launch-templates --launch-template-id $__template_id --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
+  _execute_aws "ec2 describe-launch-templates --launch-template-id $__template_id --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
   local default_version="$__execute_result"
   _get_image_list
   _select "$__image_list"
   local ami=$(echo "$__selected"|awk '{print $2}')
   local snapshot=$(echo "$__selected"|awk '{print $3}')
-  _execute "aws ec2 create-launch-template-version --launch-template-id $__template_id --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
+  _execute _aws "ec2 create-launch-template-version --launch-template-id $__template_id --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
   local new_version="$__execute_result"
-  _execute "aws ec2 modify-launch-template --launch-template-id $__template_id --default-version $new_version"
+  _execute _aws "ec2 modify-launch-template --launch-template-id $__template_id --default-version $new_version"
   echo "Created the new template version $new_version for $__template_id"
 }
 
@@ -340,22 +409,24 @@ _get_image_id () {
 }
 
 _get_image_list () {
-  _execute aws sts get-caller-identity --query "Account" --output text
+  _execute_aws sts get-caller-identity --query "Account" --output text
   local account="$__execute_result"
-  _execute "aws ec2 describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
-  __image_list="$(echo "$__execute_result"|sort -k 1 -V)"
+  _execute_aws "ec2 describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
+  # Sometime Name includes space prefix (?)
+  __image_list="$(echo "$__execute_result"|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
 }
 
 images () {
   _get_image_list
-  printf "%40s %21s %22s\n" Name ImageId SnapshotId
-  echo -------------------------------------------------------------------------------------
+  local header="Name ImageId SnapshotId"
+  local contents=""
   while IFS= read -r line;do
     name=$(echo "$line"|awk '{print $1}')
     id=$(echo "$line"|awk '{print $2}')
     snapshot=$(echo "$line"|awk '{print $3}')
-    printf "%40s %21s %22s\n" "$name" "$id" "$snapshot"
+    contents="${contents:+${contents}\n}$name $id $snapshot"
   done < <(echo "$__image_list")
+  _print_list "$header" "$contents"
 }
 
 new_image () {
@@ -387,7 +458,7 @@ new_image () {
       __image_name=${__image_name}-01
     fi
   done
-  _execute aws ec2 create-image  --instance-id "$__instance_id" --name "$__image_name"
+  _execute_aws ec2 create-image  --instance-id "$__instance_id" --name "$__image_name"
   echo "Created the new AMI $__image_name from $__instance_id"
 }
 
@@ -414,8 +485,8 @@ rm_image () {
       exit 1
     fi
   fi
-  _execute aws ec2 deregister-image --image-id "$id"
-  _execute aws ec2 delete-snapshot --snapshot-id "$snapshot"
+  _execute_aws ec2 deregister-image --image-id "$id"
+  _execute_aws ec2 delete-snapshot --snapshot-id "$snapshot"
 }
 
 help () {
@@ -423,7 +494,7 @@ help () {
 }
 
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] <subcommand>
+HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-h] <subcommand>
 
 Subcommands:
 $subcommands
@@ -462,6 +533,7 @@ while getopts i:f:g:p:P:T:t:I:k:u:r:s:h OPT;do
     "u" ) __ssh_user=$OPTARG ;;
     "r" ) __running_only=$OPTARG ;;
     "s" ) __selection_tool=$OPTARG ;;
+    "a" ) __aws_profile=$OPTARG ;;
     "h" ) echo "$HELP"; exit ;;
     * ) echo "unknown option: $OPT" 1>&2;echo "$HELP" 1>&2; exit 1;;
   esac

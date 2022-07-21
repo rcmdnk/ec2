@@ -11,7 +11,7 @@ or put `bin/ec2` in anywhere in the PATH.
 
 ## Usage
 
-    $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-h] <subcommand>
+    $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-h] <subcommand>
 
 Subcommands:
 
@@ -77,6 +77,7 @@ Available parameters are:
         * [peco](https://github.com/peco/peco)
         * [fzy](https://github.com/jhawthorn/fzy)
         * [fzf](https://github.com/junegunn/fzf)
+* aws_profile: Profile name for aws cli (if not specified, default profile is used.)
 
 These parameters can be set by arguments, too.
 
