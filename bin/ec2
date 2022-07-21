@@ -229,7 +229,7 @@ ls () {
     fi
     st=${line[4]}
     ty=${line[5]}
-    contents="${contents:+${contents}\n}$name $id $ip $st $ty"
+    contents="${contents}$name $id $ip $st $ty\n"
   done < <(echo "$__instance_list")
   _print_list "$header" "$contents"
 }
@@ -249,7 +249,7 @@ types () {
     vcpu=${line[1]}
     mem=$(echo "${line[2]}" / 1024 | command bc)
     gpu=$(echo ${line[*]}|cut -d' ' -f 4-|tr ' ' _)
-    contents="${contents:+${contents}\n}$ty $vcpu $mem $gpu"
+    contents="${contents}$ty $vcpu $mem $gpu\n"
   done < <(echo "$__type_list")
   _print_list "$header" "$contents"
 }
@@ -349,7 +349,7 @@ templates () {
     line=($line)
     name=${line[0]}
     id=${line[1]}
-    contents="${contents:+${contents}\n}$name $id"
+    contents="${contents}$name $id\n"
   done < <(echo "$__template_list")
   _print_list "$header" "$contents"
 }
@@ -424,7 +424,7 @@ images () {
     name=$(echo "$line"|awk '{print $1}')
     id=$(echo "$line"|awk '{print $2}')
     snapshot=$(echo "$line"|awk '{print $3}')
-    contents="${contents:+${contents}\n}$name $id $snapshot"
+    contents="${contents}$name $id $snapshot\n"
   done < <(echo "$__image_list")
   _print_list "$header" "$contents"
 }
