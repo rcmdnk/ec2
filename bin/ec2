@@ -98,6 +98,31 @@ _print_list () {
   done < <(printf "$contents")
 }
 
+_get_instance_list () {
+  local cmd="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:PrivateIpAddress,d:PublicIpAddress,e:State.Name,f:InstanceType}\" --output text $__instance_filter"
+  if [ -n "$__instance_id" ];then
+    local cmd="$cmd --instance-ids $__instance_id"
+  fi
+  _execute_aws $cmd
+  if [ -n "$__name_filter" ];then
+    __execute_result="$(echo "$__execute_result"|grep "$__name_filter")"
+  fi
+  __instance_list="$(echo "$__execute_result"|sort -k 1,3 -V)"
+}
+
+_get_image_list () {
+  _execute_aws aws sts get-caller-identity --query "Account" --output text
+  local account="$__execute_result"
+  _execute_aws "aws ec2 describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
+  # Sometime Name includes space prefix (?)
+  __image_list="$(echo "$__execute_result"|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
+}
+
+_get_template_list () {
+  _execute_aws "aws ec2 describe-launch-templates --query 'LaunchTemplates[*].{a:LaunchTemplateName,b:LaunchTemplateId}' --output text"
+  __template_list="$(echo "$__execute_result"|sort -k 1 -V)"
+}
+
 _get_type_list () {
   local cmd="ec2 describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:GpuInfo.Gpus[0].Name}\" --output text"
   filters=""
@@ -124,18 +149,6 @@ _get_type_list () {
   fi
 }
 
-_get_instance_list () {
-  local cmd="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:PrivateIpAddress,d:PublicIpAddress,e:State.Name,f:InstanceType}\" --output text $__instance_filter"
-  if [ -n "$__instance_id" ];then
-    local cmd="$cmd --instance-ids $__instance_id"
-  fi
-  _execute_aws $cmd
-  if [ -n "$__name_filter" ];then
-    __execute_result="$(echo "$__execute_result"|grep "$__name_filter")"
-  fi
-  __instance_list="$(echo "$__execute_result"|sort -k 1,3 -V)"
-}
-
 _select_instances () {
   _get_instance_list
   if [ -z "$__instance_list" ];then
@@ -146,6 +159,26 @@ _select_instances () {
   __instance_list="$__selected"
 }
 
+_select_templates () {
+  _get_template_list
+  if [ -z "$__template_list" ];then
+    echo "No template is available."
+    exit 1
+  fi
+  _select "$__template_list"
+  __template_list="$__selected"
+}
+
+_select_images () {
+  _get_image_list
+  if [ -z "$__image_list" ];then
+    echo "No image is available."
+    exit 1
+  fi
+  _select "$__image_list"
+  __image_list="$__selected"
+}
+
 _get_instance_id () {
   if [ -z "$__instance_id" ];then
     _select_instances
@@ -154,6 +187,71 @@ _get_instance_id () {
   if [ -z "$__instance_id" ];then
     exit
   fi
+}
+
+_get_template_id () {
+  if [ -z "$__template_id" ];then
+    _select_templates
+    __template_id="$(echo "$__template_list"|awk '{print $2}')"
+  fi
+  if [ -z "$__template_id" ];then
+    exit
+  fi
+}
+
+_get_image_id () {
+  if [ -z "$__image_id" ];then
+    _select_images
+    __image_id="$(echo "$__image_list"|awk '{print $2}')"
+  fi
+  if [ -z "$__image_id" ];then
+    exit
+  fi
+}
+
+_instance_check () {
+  if [ "$__running_only" = 1 ];then
+    __instance_filter="--filters Name=instance-state-name,Values=running"
+  fi
+  _select_instances
+  if [ -z "$__instance_list" ];then
+    exit
+  fi
+  if [ $(echo "$__instance_list"|wc -l|awk '{print $1}') != 1 ];then
+    echo "More than 1 instances were selected"
+    echo "$__instance_list"
+    exit 1
+  fi
+  __instance_id=$(echo "$__instance_list"|awk '{print $2}')
+  if [ "$__private_ip" = "1" ];then
+    __instance_ip=$(echo "$__instance_list"|awk '{print $3}')
+  else
+    __instance_ip=$(echo "$__instance_list"|awk '{print $4}')
+  fi
+  local status=$(echo "$__instance_list"|awk '{print $5}')
+  if [ "$status" == "stopped" ];then
+    start
+  fi
+  if [ "$status" == "stopping" ];then
+    echo "$__instance_id is stopping."
+    exit 1
+  fi
+  echo "Waiting for ready..."
+  __instance_filter="--filters Name=instance-state-name,Values=running"
+  _get_instance_list
+  status=$(echo "$__instance_list"|awk '{print $5}')
+  if [ "$status" == "running" ];then
+    return
+  fi
+  while :;do
+    _get_instance_list
+    status=$(echo "$__instance_list"|awk '{print $5}')
+    if [ "$status" == "running" ];then
+      sleep 5
+      break
+    fi
+    sleep 1
+  done
 }
 
 launch () {
@@ -232,7 +330,7 @@ rm () {
   terminate
 }
 
-ls () {
+list () {
   _get_instance_list
   local header="Name Id Ip Status Type"
   local contents=""
@@ -253,8 +351,8 @@ ls () {
   _print_list "$header" "$contents"
 }
 
-list () {
-  ls
+ls () {
+  list
 }
 
 types () {
@@ -271,51 +369,6 @@ types () {
     contents="${contents}$ty $vcpu $mem $gpu\n"
   done < <(echo "$__type_list")
   _print_list "$header" "$contents"
-}
-
-_instance_check () {
-  if [ "$__running_only" = 1 ];then
-    __instance_filter="--filters Name=instance-state-name,Values=running"
-  fi
-  _select_instances
-  if [ -z "$__instance_list" ];then
-    exit
-  fi
-  if [ $(echo "$__instance_list"|wc -l|awk '{print $1}') != 1 ];then
-    echo "More than 1 instances were selected"
-    echo "$__instance_list"
-    exit 1
-  fi
-  __instance_id=$(echo "$__instance_list"|awk '{print $2}')
-  if [ "$__private_ip" = "1" ];then
-    __instance_ip=$(echo "$__instance_list"|awk '{print $3}')
-  else
-    __instance_ip=$(echo "$__instance_list"|awk '{print $4}')
-  fi
-  local status=$(echo "$__instance_list"|awk '{print $5}')
-  if [ "$status" == "stopped" ];then
-    start
-  fi
-  if [ "$status" == "stopping" ];then
-    echo "$__instance_id is stopping."
-    exit 1
-  fi
-  echo "Waiting for ready..."
-  __instance_filter="--filters Name=instance-state-name,Values=running"
-  _get_instance_list
-  status=$(echo "$__instance_list"|awk '{print $5}')
-  if [ "$status" == "running" ];then
-    return
-  fi
-  while :;do
-    _get_instance_list
-    status=$(echo "$__instance_list"|awk '{print $5}')
-    if [ "$status" == "running" ];then
-      sleep 5
-      break
-    fi
-    sleep 1
-  done
 }
 
 ssh () {
@@ -352,90 +405,6 @@ mosh () {
     sleep 5
     command mosh "$mosh_option" $ip
   done
-}
-
-_get_template_list () {
-  _execute_aws "aws ec2 describe-launch-templates --query 'LaunchTemplates[*].{a:LaunchTemplateName,b:LaunchTemplateId}' --output text"
-  __template_list="$(echo "$__execute_result"|sort -k 1 -V)"
-}
-
-templates () {
-  _get_template_list
-  local header="Name Id"
-  local contents=""
-  local line
-  while read -r line || [ -n "${line}" ];do
-    line=($line)
-    name=${line[0]}
-    id=${line[1]}
-    contents="${contents}$name $id\n"
-  done < <(echo "$__template_list")
-  _print_list "$header" "$contents"
-}
-
-_select_templates () {
-  _get_template_list
-  if [ -z "$__template_list" ];then
-    echo "No template is available."
-    exit 1
-  fi
-  _select "$__template_list"
-  __template_list="$__selected"
-}
-
-_get_template_id () {
-  if [ -z "$__template_id" ];then
-    _select_templates
-    __template_id="$(echo "$__template_list"|awk '{print $2}')"
-  fi
-  if [ -z "$__template_id" ];then
-    exit
-  fi
-}
-
-new_template () {
-  _get_template_id
-  _execute_aws "aws ec2 describe-launch-templates --launch-template-id $__template_id --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
-  local default_version="$__execute_result"
-  _get_image_list
-  _select "$__image_list"
-  local ami=$(echo "$__selected"|awk '{print $2}')
-  local snapshot=$(echo "$__selected"|awk '{print $3}')
-  _execute_aws "aws ec2 create-launch-template-version ${__dry_run_mode} --launch-template-id $__template_id --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
-  if [ "${__dry_run}" = "1" ];then
-    return
-  fi
-  local new_version="$__execute_result"
-  _execute _aws "ec2 modify-launch-template --launch-template-id $__template_id --default-version $new_version"
-  echo "Created the new template version $new_version for $__template_id"
-}
-
-_select_images () {
-  _get_image_list
-  if [ -z "$__image_list" ];then
-    echo "No image is available."
-    exit 1
-  fi
-  _select "$__image_list"
-  __image_list="$__selected"
-}
-
-_get_image_id () {
-  if [ -z "$__image_id" ];then
-    _select_images
-    __image_id="$(echo "$__image_list"|awk '{print $2}')"
-  fi
-  if [ -z "$__image_id" ];then
-    exit
-  fi
-}
-
-_get_image_list () {
-  _execute_aws aws sts get-caller-identity --query "Account" --output text
-  local account="$__execute_result"
-  _execute_aws "aws ec2 describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
-  # Sometime Name includes space prefix (?)
-  __image_list="$(echo "$__execute_result"|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
 }
 
 images () {
@@ -509,6 +478,37 @@ rm_image () {
   fi
   _execute_aws aws ec2 deregister-image ${__dry_run_mode} --image-id "$id"
   _execute_aws aws ec2 delete-snapshot ${__dry_run_mode} --snapshot-id "$snapshot"
+}
+
+templates () {
+  _get_template_list
+  local header="Name Id"
+  local contents=""
+  local line
+  while read -r line || [ -n "${line}" ];do
+    line=($line)
+    name=${line[0]}
+    id=${line[1]}
+    contents="${contents}$name $id\n"
+  done < <(echo "$__template_list")
+  _print_list "$header" "$contents"
+}
+
+new_template () {
+  _get_template_id
+  _execute_aws "aws ec2 describe-launch-templates --launch-template-id $__template_id --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
+  local default_version="$__execute_result"
+  _get_image_list
+  _select "$__image_list"
+  local ami=$(echo "$__selected"|awk '{print $2}')
+  local snapshot=$(echo "$__selected"|awk '{print $3}')
+  _execute_aws "aws ec2 create-launch-template-version ${__dry_run_mode} --launch-template-id $__template_id --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
+  if [ "${__dry_run}" = "1" ];then
+    return
+  fi
+  local new_version="$__execute_result"
+  _execute _aws "ec2 modify-launch-template --launch-template-id $__template_id --default-version $new_version"
+  echo "Created the new template version $new_version for $__template_id"
 }
 
 help () {
