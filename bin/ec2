@@ -170,7 +170,7 @@ _get_ids () {
   local enum_obj=$1
   if [ -z "${__ids[$enum_obj]}" ];then
     _select_objs $enum_obj
-    __ids[$enum_obj]="$(echo "${__list[$enum_obj]}"|awk '{print $2}')"
+    __ids[$enum_obj]="$(echo "${__list[$enum_obj]}"|awk '{print $2}'|tr '\n' ' ')"
   fi
   if [ -z "${__ids[$enum_obj]}" ];then
     exit
@@ -185,7 +185,7 @@ _get_id_name_list () {
       __id_name_list="${output:+${output}, }$(echo "${__list[$enum_obj]}"|grep "$id"|awk '{print $1}') ($id)"
     done
   else
-    __id_name_list="$(echo ${__ids[$enum_obj]}|tr '\n' ' '|sed -e 's/ /, /g' -e 's/, $//')"
+    __id_name_list="$(echo ${__ids[$enum_obj]}|sed -e 's/ /, /g' -e 's/, $//')"
   fi
 }
 
@@ -284,7 +284,7 @@ start () {
   __instance_filter="--filters Name=instance-state-name,Values=stopped"
   _get_ids $__enum_instance
   _execute_aws aws ec2 ${__dry_run_mode} start-instances --instance-ids ${__ids[$__enum_instance]}
-  __get_id_name_list $__enum_insatnce
+  _get_id_name_list $__enum_insatnce
   echo "Started: $__id_name_list"
 }
 
@@ -292,7 +292,7 @@ stop () {
   __instance_filter="--filters Name=instance-state-name,Values=running"
   _get_ids $__enum_instance
   _execute_aws aws ec2 ${__dry_run_mode} stop-instances --instance-ids ${__ids[$__enum_instance]}
-  __get_id_name_list $__enum_insatnce
+  _get_id_name_list $__enum_insatnce
   echo "Stopped: $__id_name_list"
 }
 
@@ -300,7 +300,7 @@ terminate () {
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
   _get_ids $__enum_instance
   _execute_aws aws ec2 ${__dry_run_mode} terminate-instances --instance-ids ${__ids[$__enum_instance]}
-  __get_id_name_list $__enum_insatnce
+  _get_id_name_list $__enum_insatnce
   echo "Terminated: $__id_name_list"
 }
 
@@ -440,7 +440,7 @@ rm_image () {
   fi
   _execute_aws aws ec2 deregister-image ${__dry_run_mode} --image-id "$id"
   _execute_aws aws ec2 delete-snapshot ${__dry_run_mode} --snapshot-id "$snapshot"
-  __get_id_name_list $__enum_image
+  _get_id_name_list $__enum_image
   echo "Deleted: AMI=$__id_name_list, Snapshot=$snapshot"
 }
 
@@ -472,7 +472,7 @@ new_template () {
   fi
   local new_version="$__execute_result"
   _execute _aws "ec2 modify-launch-template --launch-template-id ${__ids[$__enum_template]} --default-version $new_version"
-  __get_id_name_list $__enum_template
+  _get_id_name_list $__enum_template
   echo "Created the new template version $new_version for $__id_name_list"
 }
 
