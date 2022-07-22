@@ -146,15 +146,15 @@ _get_type_list () {
     cmd="$cmd $filters"
   fi
   _execute_aws $cmd
-  __list[$enum_type]="$(echo "$__execute_result"|sort -V)"
+  __list[$__enum_type]="$(echo "$__execute_result"|sort -V)"
 
   if [ -n "$__gpu_filter" ];then
     if [ "$__gpu_filter" == 0 ];then
-      __list[$enum_type]="$(echo "${__list[$enum_type]}"|grep None)"
+      __list[$__enum_type]="$(echo "${__list[$__enum_type]}"|grep None)"
     elif [ "$__gpu_filter" == 1 ];then
-      __list[$enum_type]="$(echo "${__list[$enum_type]}"|grep -v None)"
+      __list[$__enum_type]="$(echo "${__list[$__enum_type]}"|grep -v None)"
     else
-      __list[$enum_type]="$(echo "${__list[$enum_type]}"|grep $__gpu_filter)"
+      __list[$__enum_type]="$(echo "${__list[$__enum_type]}"|grep $__gpu_filter)"
     fi
   fi
 }
@@ -197,7 +197,7 @@ _get_id_name_list () {
   local enum_obj=$1
   __id_name_list=""
   if [ -n "${__list[$enum_obj]}" ];then
-    for id in ${__ids[$__enum_instance]};do
+    for id in ${__ids[$enum_obj]};do
       __id_name_list="${output:+${output}, }$(echo "${__list[$enum_obj]}"|grep "$id"|awk '{print $1}') ($id)"
     done
   else
@@ -274,14 +274,20 @@ launch () {
   if [ "$__private_ip" = "1" ];then
     ip_choice="PrivateIpAddress"
   fi
-  _execute_aws "aws ec2 run-instances ${__dry_run_mode} --launch-template LaunchTemplateId=${__ids[$__enum_template]} $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"a:InstanceId,b:${ip_choice}}\" --output text"
+  local spot_instance
+  if [ "$__spot_instance" = "1" ];then
+    spot_instance="--instance-market-options '{ \"MarketType\": \"spot\" }'"
+  fi
+  _execute_aws "aws ec2 run-instances ${__dry_run_mode} ${spot_instance} --launch-template LaunchTemplateId=${__ids[$__enum_template]} $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:InstanceType}\" --output text"
   if [ "$__dry_run" = "1" ];then
     local id="XXX"
     local ip="XXX"
   else
     local result=(${__execute_result})
-    local id=${result[0]}
-    local ip=${result[1]}
+    name=${result[0]}
+    local id=${result[1]}
+    local ip=${result[2]}
+    type=${result[3]}
   fi
   echo "${__dry_run_mode:+Dry run: }A new instance was launched: Name=$name, Id=$id, ${ip_choice}=$ip, Type=$type"
 }
@@ -486,7 +492,7 @@ types () {
     mem=$(echo "${line[2]}" / 1024 | command bc)
     gpu=$(echo ${line[*]}|cut -d' ' -f 4-|tr ' ' _)
     contents="${contents}$ty $vcpu $mem $gpu\n"
-  done < <(echo "${__list[$enum_type]}")
+  done < <(echo "${__list[$__enum_type]}")
   _print_list "$header" "$contents"
 }
 
@@ -495,7 +501,7 @@ help () {
 }
 
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <dry_run>] [-h] <subcommand>
+HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <dry_run>] [-h] <subcommand>
 
 Subcommands:
 $subcommands
@@ -520,7 +526,7 @@ if [ -f "$__config" ];then
   done < "$__config"
 fi
 
-while getopts i:f:g:p:P:T:t:I:k:u:r:s:a:d:h OPT;do
+while getopts i:f:g:p:P:T:t:S:I:k:u:r:s:a:d:h OPT;do
   case $OPT in
     "i" ) __instance_id=$OPTARG ;;
     "f" ) __name_filter=$OPTARG ;;
@@ -529,6 +535,7 @@ while getopts i:f:g:p:P:T:t:I:k:u:r:s:a:d:h OPT;do
     "P" ) __private_ip=$OPTARG ;;
     "T" ) __template_id=$OPTARG ;;
     "t" ) __instance_type=$OPTARG ;;
+    "S" ) __spot_instance=$OPTARG ;;
     "I" ) __image_name=$OPTARG ;;
     "k" ) __ssh_key=$OPTARG ;;
     "u" ) __ssh_user=$OPTARG ;;

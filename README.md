@@ -11,7 +11,7 @@ or put `bin/ec2` in anywhere in the PATH.
 
 ## Usage
 
-    $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <dry_run>] [-h] <subcommand>
+    $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <dry_run>] [-h] <subcommand>
 
 Subcommands:
 
@@ -66,6 +66,7 @@ Available parameters are:
 * template_id: Launch template id.
 * instance_type: Instance type for launch command.
     * If `select` is passed, you can choose the type from the list.
+* spot_instance: Set 1 to launch a spot instance.
 * image_name: Image name for new_image/rm_image command.
 * ssh_key: Key for ssh.
 * ssh_user: User for ssh.
@@ -91,10 +92,13 @@ Make ~/.config/ec2/config file as follows:
     name_filter=my-instances
     ssh_key=~/.ssh/my_ssh.pem
     ssh_user=ec2-user
+    aws_profile=my-profile
 
 This will show only instances which include `my-instances` in the Name.
 
 It uses the key **~/.ssh/my_ssh.pem** at `ec2 ssh` or `ec2 mosh`, with the user name `ec2-user`.
+
+Set `aws_profile` if you want to use other than the default profile.
 
 ### Launch new instance
 
