@@ -2,6 +2,8 @@
 
 __config_dir="$HOME/.config/ec2"
 __config="$__config_dir/config"
+__type_list_file="$__config_dir/type_list"
+__type_list_file_term=7
 __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
 __obj_name=(instance image template type)
 __get_list_func=(_get_instance_list _get_image_list _get_template_list _get_type_list)
@@ -134,20 +136,24 @@ _get_template_list () {
 }
 
 _get_type_list () {
-  local cmd="aws ec2 describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:GpuInfo.Gpus[0].Name}\" --output text"
-  filters=""
-  if [ -n "$__cpu_filter" ];then
+  if [ -f "$__type_list_file" ];then
+    find "$__type_list_file" -mtime +"$__type_list_file_term" | xargs rm -f
+  fi
+  if [ ! -f "$__type_list_file" ];then
+    local cmd="aws ec2 describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:ProcessorInfo.SupportedArchitectures[0],e:GpuInfo.Gpus[0].Name}\" --output text"
     if [ -n "$filters" ];then
-      filters="${filters},"
+      cmd="$cmd $filters"
     fi
-    filters="${filters}Name=processor-info.supported-architecture,Values=${__cpu_filter}"
+    _execute_aws $cmd
+    __list[$__enum_type]="$(echo "$__execute_result"|sort -V)"
+    echo "${__list[$__enum_type]}" > "$__type_list_file"
+  else
+    __list[$__enum_type]="$(cat "$__type_list_file")"
   fi
-  if [ -n "$filters" ];then
-    cmd="$cmd $filters"
-  fi
-  _execute_aws $cmd
-  __list[$__enum_type]="$(echo "$__execute_result"|sort -V)"
 
+  if [ -n "$__cpu_filter" ];then
+    __list[$__enum_type]="$(echo "${__list[$__enum_type]}"|grep "$__cpu_filter")"
+  fi
   if [ -n "$__gpu_filter" ];then
     if [ "$__gpu_filter" == 0 ];then
       __list[$__enum_type]="$(echo "${__list[$__enum_type]}"|grep None)"
@@ -482,7 +488,7 @@ new_template () {
 
 types () {
   _get_type_list
-  local header="Type vCPU Mem(GiB) GPU"
+  local header="Type vCPU Mem(GiB) Arch GPU"
   local contents=""
   local line
   while read -r line || [ -n "${line}" ];do
@@ -490,8 +496,9 @@ types () {
     ty=${line[0]}
     vcpu=${line[1]}
     mem=$(echo "${line[2]}" / 1024 | command bc)
-    gpu=$(echo ${line[*]}|cut -d' ' -f 4-|tr ' ' _)
-    contents="${contents}$ty $vcpu $mem $gpu\n"
+    arch=${line[3]}
+    gpu=$(echo ${line[*]}|cut -d' ' -f 5-|tr ' ' _)
+    contents="${contents}$ty $vcpu $mem $arch $gpu\n"
   done < <(echo "${__list[$__enum_type]}")
   _print_list "$header" "$contents"
 }
