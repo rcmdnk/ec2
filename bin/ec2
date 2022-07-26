@@ -116,10 +116,11 @@ _get_instance_list () {
     local cmd="$cmd --instance-ids ${__ids[$__enum_instance]}"
   fi
   _execute_aws $cmd
+  # Tab replace is needed, otherwise grep fails to filter
+  __list[$__enum_instance]="$(echo "$__execute_result"|tr "\t" " "|sort -k 1,3 -V)"
   if [ -n "$__name_filter" ];then
-    __execute_result="$(echo "$__execute_result"|grep "$__name_filter")"
+    __list[$__enum_instance]="$(echo "$__list[$__enum_instance]"|tr "\t" " "|grep "$__name_filter")"
   fi
-  __list[$__enum_instance]="$(echo "$__execute_result"|sort -k 1,3 -V)"
 }
 
 _get_image_list () {
@@ -127,12 +128,12 @@ _get_image_list () {
   local account="$__execute_result"
   _execute_aws "aws ec2 describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
   # Sometime Name includes space prefix (?)
-  __list[$__enum_image]="$(echo "$__execute_result"|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
+  __list[$__enum_image]="$(echo "$__execute_result"|tr "\t" " "|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
 }
 
 _get_template_list () {
   _execute_aws "aws ec2 describe-launch-templates --query 'LaunchTemplates[*].{a:LaunchTemplateName,b:LaunchTemplateId}' --output text"
-  __list[$__enum_template]="$(echo "$__execute_result"|sort -k 1 -V)"
+  __list[$__enum_template]="$(echo "$__execute_result"|tr "\t" " "|sort -k 1 -V)"
 }
 
 _get_type_list () {
@@ -145,7 +146,7 @@ _get_type_list () {
       cmd="$cmd $filters"
     fi
     _execute_aws $cmd
-    __list[$__enum_type]="$(echo "$__execute_result"|sort -V)"
+    __list[$__enum_type]="$(echo "$__execute_result"|tr "\t" " "|sort -V)"
     echo "${__list[$__enum_type]}" > "$__type_list_file"
   else
     __list[$__enum_type]="$(cat "$__type_list_file")"
@@ -400,7 +401,7 @@ new_image () {
   _get_ids $__enum_instance 1
   if [ -z "$__image_name" ];then
     _get_instance_list
-    __image_name="$(echo "${__list[$__enum_instance]}"|grep "${__ids[$__enum_instance]}"|awk '{print $1}')"
+    __image_name="$(echo "${__list[$__enum_instance]}"|tr '\t' ' '|grep "${__ids[$__enum_instance]}"|awk '{print $1}')"
     local suffix=$(basename "${__image_name//-//}")
     if [[ "$suffix" =~ ^[0-9]+$ ]];then
       local suffix_new=01
@@ -414,7 +415,7 @@ new_image () {
   _get_image_list
   local image_names="$(echo "${__list[$__enum_image]}"|awk '{print $1}')"
   while :;do
-    if ! echo "$image_names"|grep -q ^"$_image_name"$;then
+    if ! echo "$image_names"|grep -q ^"$__image_name"$;then
       break
     fi
     local suffix=$(basename "${__image_name//-//}")
@@ -480,7 +481,7 @@ new_template () {
   local new_version=XXX
   if [ "${__dry_run}" != "1" ];then
     new_version="$__execute_result"
-    _execute _aws "ec2 modify-launch-template --launch-template-id ${__ids[$__enum_template]} --default-version $new_version"
+    _execute_aws "aws ec2 modify-launch-template --launch-template-id ${__ids[$__enum_template]} --default-version $new_version"
   fi
   _get_id_name_list $__enum_template
   echo "${__dry_run_mode:+Dry run: }Created a new template version $new_version for $__id_name_list"
