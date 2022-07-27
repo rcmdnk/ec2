@@ -1,13 +1,20 @@
 # ec2
 AWS CLI Wrapper for EC2 management.
 
+## Requirement
+
+* [AWS CLI](https://aws.amazon.com/cli/)
+
 ## Installation
 
-Use homebrew:
+Use Homebrew:
 
     $ brew install rcmdnk/rcmdnkpac/ec2
 
-or put `bin/ec2` in anywhere in the PATH.
+If you have not installed `awscli` by Homebrew, it is also installed.
+
+Or put `bin/ec2` in anywhere in the PATH.
+(In this case, you need to install `awscli` by yourself.)
 
 ## Usage
 
@@ -68,6 +75,7 @@ Available parameters are:
     * If `select` is passed, you can choose the type from the list.
 * spot_instance: Set 1 to launch a spot instance.
 * image_name: Image name for new_image/rm_image command.
+* image_name_filter: Filter to pick up images (AMI).
 * ssh_key: Key for ssh.
 * ssh_user: User for ssh.
 * running_only: Show only running instances at ssh/mosh

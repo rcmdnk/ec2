@@ -119,7 +119,7 @@ _get_instance_list () {
   # Tab replace is needed, otherwise grep fails to filter
   __list[$__enum_instance]="$(echo "$__execute_result"|tr "\t" " "|sort -k 1,3 -V)"
   if [ -n "$__name_filter" ];then
-    __list[$__enum_instance]="$(echo "$__list[$__enum_instance]"|tr "\t" " "|grep "$__name_filter")"
+    __list[$__enum_instance]="$(echo "${__list[$__enum_instance]}"|grep "$__name_filter")"
   fi
 }
 
@@ -129,6 +129,10 @@ _get_image_list () {
   _execute_aws "aws ec2 describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
   # Sometime Name includes space prefix (?)
   __list[$__enum_image]="$(echo "$__execute_result"|tr "\t" " "|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
+  echo $__list[$__enum_image]
+  if [ -n "$__image_name_filter" ];then
+    __list[$__enum_image]="$(echo "${__list[$__enum_image]}"|grep "$__image_name_filter")"
+  fi
 }
 
 _get_template_list () {
@@ -509,7 +513,7 @@ help () {
 }
 
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <dry_run>] [-h] <subcommand>
+HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <dry_run>] [-h] <subcommand>
 
 Subcommands:
 $subcommands
@@ -534,7 +538,7 @@ if [ -f "$__config" ];then
   done < "$__config"
 fi
 
-while getopts i:f:g:p:P:T:t:S:I:k:u:r:s:a:d:h OPT;do
+while getopts i:f:g:p:P:T:t:S:I:j:k:u:r:s:a:d:h OPT;do
   case $OPT in
     "i" ) __instance_id=$OPTARG ;;
     "f" ) __name_filter=$OPTARG ;;
@@ -545,6 +549,7 @@ while getopts i:f:g:p:P:T:t:S:I:k:u:r:s:a:d:h OPT;do
     "t" ) __instance_type=$OPTARG ;;
     "S" ) __spot_instance=$OPTARG ;;
     "I" ) __image_name=$OPTARG ;;
+    "j" ) __image_name_filter=$OPTARG ;;
     "k" ) __ssh_key=$OPTARG ;;
     "u" ) __ssh_user=$OPTARG ;;
     "r" ) __running_only=$OPTARG ;;
