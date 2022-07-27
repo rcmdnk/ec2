@@ -13,7 +13,7 @@ Use Homebrew:
 
 If you have not installed `awscli` by Homebrew, it is also installed.
 
-Or put `bin/ec2` in anywhere in the PATH.
+Or put `bin/ec2` anywhere in the PATH.
 (In this case, you need to install `awscli` by yourself.)
 
 ## Usage
@@ -22,31 +22,38 @@ Or put `bin/ec2` in anywhere in the PATH.
 
 Subcommands:
 
+images
+instances
+launch
+list
 * Instance management:
-  * list: List up instances.
-  * ls: Alias of list
+  * instances: List up instances.
+  * list: Alias of instances.
+  * ls: Alias of instances.
   * start: Start instances.
   * stop: Stop instances.
   * launch: Launch a new instance.
+      * If `spot_isntance` is 1, a persistent type spot instance is launched to allow start/stop it.
   * terminate: Terminate instances.
+      * If the instance's lifecycle is `spot`, the spot instance request is also canceled.
   * rm: Alias of terminate.
 * Connection helper:
   * ssh: Connect to an instance with mosh.
   * mosh: Connect to an instance with mosh.
 * Image (AMI) managemen:t
   * images: List up images (AMI).
-  * new_image: Create new image from an instance.
+  * new_image: Create a new image from an instance.
   * rm_image: Deregister AMI and delete the associated snapshot.
 * Template management:
   * templates: List up launch templates.
-  * new_template: Create new template version from an existing template with new AMI.
+  * new_template: Create a new template version from an existing template with a new AMI.
 * Others:
   * types: Show instance types.
   * help: Show help.
 
 ## AWS CLI Profile
 
-If you want to use a profile other than default,
+If you want to use a profile other than the default,
 set:
 
     export AWS_PROFILE=xxx
@@ -66,9 +73,9 @@ Parameters can be set like:
 Available parameters are:
 
 * instance_id: Assign instance id to be managed.
-* name_filter: Only instances which includes this value is listed.
-* gpu_filter: Filter to pick up instance type by gpu.
-* cpu_filter: Filter to pick up instance type by cpu.
+* name_filter: Only instances which include this value is listed.
+* gpu_filter: Filter to pick up instance type by GPU.
+* cpu_filter: Filter to pick up instance type by CPU.
 * private_ip: Set 1 to use private IP addresses instead of public IP addresses.
 * template_id: Launch template id.
 * instance_type: Instance type for launch command.
@@ -79,21 +86,21 @@ Available parameters are:
 * ssh_key: Key for ssh.
 * ssh_user: User for ssh.
 * running_only: Show only running instances at ssh/mosh
-* selection_tool: Selection tool list, separated by `,`. Default value is `sentaku,peco,fzy,fzf`.
+* selection_tool: Selection tool list, separated by `,`. The default value is `sentaku,peco,fzy,fzf`.
     * The first one found is used. If nothing, bash's `select` is used.
     * Tools ref:
         * [sentaku](https://github.com/rcmdnk/sentaku/)
         * [peco](https://github.com/peco/peco)
         * [fzy](https://github.com/jhawthorn/fzy)
         * [fzf](https://github.com/junegunn/fzf)
-* aws_profile: Profile name for aws cli (if not specified, default profile is used.)
+* aws_profile: Profile name for aws cli (if not specified, the default profile is used.)
 * dry_run: Set 1 to run as dry run mode (modification commands are not executed.)
 
 These parameters can be set by arguments, too.
 
 ## Examples
 
-### Manage my instances with prefix "my-insatances"
+### Manage my instances with the prefix "my-instances"
 
 Make ~/.config/ec2/config file as follows:
 
@@ -116,9 +123,9 @@ Then select the template with the selection too.
 
 If you give `-t select`, you can choose the instance type from the list.
 
-You can pass template name by `-T <your template>`, too.
+You can pass the template name by `-T <your template>`, too.
 
-### Create new template version
+### Create a new template version
 
 First, make a new AMI from an existing instance:
 
@@ -128,14 +135,14 @@ Then, make new template version:
 
     $ ec2 new_template
 
-During the command, select the template name what you want to update
-and select new AMI created above.
+During the command, select the template name that you want to update
+and select a new AMI created above.
 
 If old AMI is not necessary, remove it:
 
     $ ec2 rm_image
 
-This command also remove the associated snapshot, too.
+This command also removes the associated snapshot.
 
 Note: `new_image` create a new version of the template. If you do not have any templates,
 make it with the Web interface or aws cli command directly.

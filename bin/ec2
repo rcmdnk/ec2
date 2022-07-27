@@ -111,7 +111,7 @@ _get_instance_list () {
   if [ "$__private_ip" = "1" ];then
     ip_choice="PrivateIpAddress"
   fi
-  local cmd="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:State.Name,e:InstanceType}\" --output text $__instance_filter"
+  local cmd="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:State.Name,e:InstanceType,f:InstanceLifecycle}\" --output text $__instance_filter"
   if [ -n "${__ids[$__enum_instance]}" ];then
     local cmd="$cmd --instance-ids ${__ids[$__enum_instance]}"
   fi
@@ -287,7 +287,7 @@ launch () {
   fi
   local spot_instance
   if [ "$__spot_instance" = "1" ];then
-    spot_instance="--instance-market-options '{ \"MarketType\": \"spot\" }'"
+    spot_instance="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions\": {\"SpotInstanceType\": \"persistent\", \"InstanceInterruptionBehavior\" : \"stop\"} }'"
   fi
   _execute_aws "aws ec2 run-instances ${__dry_run_mode} ${spot_instance} --launch-template LaunchTemplateId=${__ids[$__enum_template]} $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:InstanceType}\" --output text"
   if [ "$__dry_run" = "1" ];then
@@ -300,7 +300,11 @@ launch () {
     local ip=${result[2]}
     type=${result[3]}
   fi
-  echo "${__dry_run_mode:+Dry run: }A new instance was launched: Name=$name, Id=$id, ${ip_choice}=$ip, Type=$type"
+  local spot_instance_msg
+  if [ "$__spot_instance" = "1" ];then
+    spot_instance_msg=", Lifecycle=spot"
+  fi
+  echo "${__dry_run_mode:+Dry run: }A new instance was launched: Name=$name, Id=$id, ${ip_choice}=$ip, Type=$type${spot_instance_msg}"
 }
 
 start () {
@@ -322,18 +326,30 @@ stop () {
 terminate () {
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
   _get_ids $__enum_instance
+  _execute_aws aws ec2 describe-instances --instance-ids ${__ids[$__enum_instance]}--query "Reservations[*].Instances[*].SpotInstanceRequestId" --output text
+  local spot_instances="${__execute_result}"
+  local spot_instance_msg
+  if [ -n "${spot_instances}" ];then
+    spot_instance_msg=", cancel Spot Instance Request:"
+    for spot_request in $(echo ${spot_instances});do
+      if [ -n "${spot_request}" ];then
+        _execute_aws aws ec2 ${__dry_run_mode} cancel-spot-instance-requests --spot-instance-request-ids ${spot_request}
+        spot_instance_msg="$spot_instance_msg $spot_request"
+      fi
+    done
+  fi
   _execute_aws aws ec2 ${__dry_run_mode} terminate-instances --instance-ids ${__ids[$__enum_instance]}
   _get_id_name_list $__enum_insatnce
-  echo "${__dry_run_mode:+Dry run: }Terminated: $__id_name_list"
+  echo "${__dry_run_mode:+Dry run: }Terminated: ${__id_name_list}${spot_instance_msg}"
 }
 
 rm () {
   terminate
 }
 
-list () {
+instances () {
   _get_instance_list
-  local header="Name Id Ip Status Type"
+  local header="Name Id Ip Status Type Lifecycle"
   local contents=""
   local line
   while read -r line || [ -n "${line}" ];do
@@ -343,13 +359,18 @@ list () {
     local ip=${line[2]}
     local st=${line[3]}
     local ty=${line[4]}
-    contents="${contents}$name $id $ip $st $ty\n"
+    local sp=${line[5]}
+    contents="${contents}$name $id $ip $st $ty $sp\n"
   done < <(echo "${__list[$__enum_instance]}")
   _print_list "$header" "$contents"
 }
 
+list () {
+  instances
+}
+
 ls () {
-  list
+  instances
 }
 
 ssh () {
