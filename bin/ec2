@@ -29,7 +29,7 @@ _execute () {
 }
 
 _execute_aws () {
-  local cmd="$* ${__aws_profile:+--profile ${__aws_profile}}"
+  local cmd="aws $* ${__aws_profile:+--profile ${__aws_profile}}"
   __exit_at_fail=0 _execute $cmd
   local ret=$?
   if [ "$ret" -ne 0 ];then
@@ -46,6 +46,10 @@ _execute_aws () {
     ret=$?
   fi
   return $ret
+}
+
+_execute_ec2 () {
+  _execute_aws ec2 "$@"
 }
 
 _select () {
@@ -111,11 +115,11 @@ _get_instance_list () {
   if [ "$__private_ip" = "1" ];then
     ip_choice="PrivateIpAddress"
   fi
-  local cmd="aws ec2 describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:State.Name,e:InstanceType,f:InstanceLifecycle}\" --output text $__instance_filter"
+  local cmd="describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:State.Name,e:InstanceType,f:InstanceLifecycle}\" --output text $__instance_filter"
   if [ -n "${__ids[$__enum_instance]}" ];then
     local cmd="$cmd --instance-ids ${__ids[$__enum_instance]}"
   fi
-  _execute_aws $cmd
+  _execute_ec2 $cmd
   # Tab replace is needed, otherwise grep fails to filter
   __list[$__enum_instance]="$(echo "$__execute_result"|tr "\t" " "|sort -k 1,3 -V)"
   if [ -n "$__name_filter" ];then
@@ -124,9 +128,9 @@ _get_instance_list () {
 }
 
 _get_image_list () {
-  _execute_aws aws sts get-caller-identity --query "Account" --output text
+  _execute_aws sts get-caller-identity --query "Account" --output text
   local account="$__execute_result"
-  _execute_aws "aws ec2 describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
+  _execute_ec2 "describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
   # Sometime Name includes space prefix (?)
   __list[$__enum_image]="$(echo "$__execute_result"|tr "\t" " "|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
   echo $__list[$__enum_image]
@@ -136,7 +140,7 @@ _get_image_list () {
 }
 
 _get_template_list () {
-  _execute_aws "aws ec2 describe-launch-templates --query 'LaunchTemplates[*].{a:LaunchTemplateName,b:LaunchTemplateId}' --output text"
+  _execute_ec2 "describe-launch-templates --query 'LaunchTemplates[*].{a:LaunchTemplateName,b:LaunchTemplateId}' --output text"
   __list[$__enum_template]="$(echo "$__execute_result"|tr "\t" " "|sort -k 1 -V)"
 }
 
@@ -145,11 +149,11 @@ _get_type_list () {
     find "$__type_list_file" -mtime +"$__type_list_file_term" | xargs rm -f
   fi
   if [ ! -f "$__type_list_file" ];then
-    local cmd="aws ec2 describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:ProcessorInfo.SupportedArchitectures[0],e:GpuInfo.Gpus[0].Name}\" --output text"
+    local cmd="describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:ProcessorInfo.SupportedArchitectures[0],e:GpuInfo.Gpus[0].Name}\" --output text"
     if [ -n "$filters" ];then
       cmd="$cmd $filters"
     fi
-    _execute_aws $cmd
+    _execute_ec2 $cmd
     __list[$__enum_type]="$(echo "$__execute_result"|tr "\t" " "|sort -V)"
     echo "${__list[$__enum_type]}" > "$__type_list_file"
   else
@@ -252,8 +256,8 @@ _instance_check () {
 
 launch () {
   _get_ids $__enum_template 1
-  _execute_aws "aws ec2 describe-launch-template-versions --launch-template-id ${__ids[$__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[*].LaunchTemplateData.TagSpecifications[*].Tags[?Key=='Name']|[0][0][0].Value\" --output text"
-  _execute_aws "aws ec2 describe-launch-template-versions --launch-template-id ${__ids[$__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
+  _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[$__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[*].LaunchTemplateData.TagSpecifications[*].Tags[?Key=='Name']|[0][0][0].Value\" --output text"
+  _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[$__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
   local result=($__execute_result)
   local template_name="${result[0]}"
   local type="${result[1]}"
@@ -289,7 +293,7 @@ launch () {
   if [ "$__spot_instance" = "1" ];then
     spot_instance="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions\": {\"SpotInstanceType\": \"persistent\", \"InstanceInterruptionBehavior\" : \"stop\"} }'"
   fi
-  _execute_aws "aws ec2 run-instances ${__dry_run_mode} ${spot_instance} --launch-template LaunchTemplateId=${__ids[$__enum_template]} $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:InstanceType}\" --output text"
+  _execute_ec2 "run-instances ${__dry_run_mode} ${spot_instance} --launch-template LaunchTemplateId=${__ids[$__enum_template]} $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:InstanceType}\" --output text"
   if [ "$__dry_run" = "1" ];then
     local id="XXX"
     local ip="XXX"
@@ -310,7 +314,7 @@ launch () {
 start () {
   __instance_filter="--filters Name=instance-state-name,Values=stopped"
   _get_ids $__enum_instance
-  _execute_aws aws ec2 ${__dry_run_mode} start-instances --instance-ids ${__ids[$__enum_instance]}
+  _execute_ec2 ${__dry_run_mode} start-instances --instance-ids ${__ids[$__enum_instance]}
   _get_id_name_list $__enum_insatnce
   echo "${__dry_run_mode:+Dry run: }Started: $__id_name_list"
 }
@@ -318,7 +322,7 @@ start () {
 stop () {
   __instance_filter="--filters Name=instance-state-name,Values=running"
   _get_ids $__enum_instance
-  _execute_aws aws ec2 ${__dry_run_mode} stop-instances --instance-ids ${__ids[$__enum_instance]}
+  _execute_ec2 ${__dry_run_mode} stop-instances --instance-ids ${__ids[$__enum_instance]}
   _get_id_name_list $__enum_insatnce
   echo "${__dry_run_mode:+Dry run: }Stopped: $__id_name_list"
 }
@@ -326,19 +330,19 @@ stop () {
 terminate () {
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
   _get_ids $__enum_instance
-  _execute_aws aws ec2 describe-instances --instance-ids ${__ids[$__enum_instance]}--query "Reservations[*].Instances[*].SpotInstanceRequestId" --output text
+  _execute_ec2 describe-instances --instance-ids ${__ids[$__enum_instance]}--query "Reservations[*].Instances[*].SpotInstanceRequestId" --output text
   local spot_instances="${__execute_result}"
   local spot_instance_msg
   if [ -n "${spot_instances}" ];then
     spot_instance_msg=", cancel Spot Instance Request:"
     for spot_request in $(echo ${spot_instances});do
       if [ -n "${spot_request}" ];then
-        _execute_aws aws ec2 ${__dry_run_mode} cancel-spot-instance-requests --spot-instance-request-ids ${spot_request}
+        _execute_ec2 ${__dry_run_mode} cancel-spot-instance-requests --spot-instance-request-ids ${spot_request}
         spot_instance_msg="$spot_instance_msg $spot_request"
       fi
     done
   fi
-  _execute_aws aws ec2 ${__dry_run_mode} terminate-instances --instance-ids ${__ids[$__enum_instance]}
+  _execute_ec2 ${__dry_run_mode} terminate-instances --instance-ids ${__ids[$__enum_instance]}
   _get_id_name_list $__enum_insatnce
   echo "${__dry_run_mode:+Dry run: }Terminated: ${__id_name_list}${spot_instance_msg}"
 }
@@ -451,7 +455,7 @@ new_image () {
       __image_name=${__image_name}-01
     fi
   done
-  _execute_aws aws ec2 ${__dry_run_mode} create-image  --instance-id "${__ids[$__enum_instance]}" --name "$__image_name"
+  _execute_ec2 ${__dry_run_mode} create-image  --instance-id "${__ids[$__enum_instance]}" --name "$__image_name"
   echo "${__dry_run_mode:+Dry run: }Created a new AMI $__image_name from ${__ids[$__enum_instance]}"
 }
 
@@ -475,8 +479,8 @@ rm_image () {
       exit 1
     fi
   fi
-  _execute_aws aws ec2 deregister-image ${__dry_run_mode} --image-id "$id"
-  _execute_aws aws ec2 delete-snapshot ${__dry_run_mode} --snapshot-id "$snapshot"
+  _execute_ec2 deregister-image ${__dry_run_mode} --image-id "$id"
+  _execute_ec2 delete-snapshot ${__dry_run_mode} --snapshot-id "$snapshot"
   _get_id_name_list $__enum_image
   echo "${__dry_run_mode:+Dry run: }Deleted: AMI=$__id_name_list, Snapshot=$snapshot"
 }
@@ -497,16 +501,16 @@ templates () {
 
 new_template () {
   _get_ids $__enum_template 1
-  _execute_aws "aws ec2 describe-launch-templates --launch-template-id ${__ids[$__enum_template]} --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
+  _execute_ec2 "describe-launch-templates --launch-template-id ${__ids[$__enum_template]} --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
   local default_version="$__execute_result"
   _select_objs $__enum_image 1
   local ami=$(echo "${__list[$__enum_image]}"|awk '{print $2}')
   local snapshot=$(echo "${__list[$__enum_image]}"|awk '{print $3}')
-  _execute_aws "aws ec2 create-launch-template-version ${__dry_run_mode} --launch-template-id ${__ids[$__enum_template]} --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
+  _execute_ec2 "create-launch-template-version ${__dry_run_mode} --launch-template-id ${__ids[$__enum_template]} --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
   local new_version=XXX
   if [ "${__dry_run}" != "1" ];then
     new_version="$__execute_result"
-    _execute_aws "aws ec2 modify-launch-template --launch-template-id ${__ids[$__enum_template]} --default-version $new_version"
+    _execute_ec2 "modify-launch-template --launch-template-id ${__ids[$__enum_template]} --default-version $new_version"
   fi
   _get_id_name_list $__enum_template
   echo "${__dry_run_mode:+Dry run: }Created a new template version $new_version for $__id_name_list"
