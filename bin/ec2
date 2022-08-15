@@ -538,7 +538,7 @@ help () {
 }
 
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <dry_run>] [-h] <subcommand>
+HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h] <subcommand>
 
 Subcommands:
 $subcommands
@@ -563,7 +563,7 @@ if [ -f "$__config" ];then
   done < "$__config"
 fi
 
-while getopts i:f:g:p:P:T:t:S:I:j:k:u:r:s:a:d:h OPT;do
+while getopts i:f:g:p:P:T:t:S:I:j:k:u:r:s:a:A:d:h OPT;do
   case $OPT in
     "i" ) __instance_id=$OPTARG ;;
     "f" ) __name_filter=$OPTARG ;;
@@ -580,12 +580,18 @@ while getopts i:f:g:p:P:T:t:S:I:j:k:u:r:s:a:d:h OPT;do
     "r" ) __running_only=$OPTARG ;;
     "s" ) __selection_tool=$OPTARG ;;
     "a" ) __aws_profile=$OPTARG ;;
+    "A" ) __all=$OPTARG ;;
     "d" ) __dry_run=$OPTARG ;;
     "h" ) echo "$HELP"; exit ;;
     * ) echo "unknown option: $OPT" 1>&2;echo "$HELP" 1>&2; exit 1;;
   esac
 done
 shift $((OPTIND - 1))
+
+if [ "$__all" = "1" ];then
+  __name_filter=""
+  __image_name_filter=""
+fi
 
 if [ "$__dry_run" = "1" ];then
   __dry_run_mode="--dry-run"

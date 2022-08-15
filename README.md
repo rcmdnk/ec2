@@ -18,14 +18,10 @@ Or put `bin/ec2` anywhere in the PATH.
 
 ## Usage
 
-    $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <dry_run>] [-h] <subcommand>
+    $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-A <all>] [-d <dry_run>] [-h] <subcommand>
 
 Subcommands:
 
-images
-instances
-launch
-list
 * Instance management:
   * instances: List up instances.
   * list: Alias of instances.
@@ -94,6 +90,7 @@ Available parameters are:
         * [fzy](https://github.com/jhawthorn/fzy)
         * [fzf](https://github.com/junegunn/fzf)
 * aws_profile: Profile name for aws cli (if not specified, the default profile is used.)
+* all: Set 1 to ignore filters.
 * dry_run: Set 1 to run as dry run mode (modification commands are not executed.)
 
 These parameters can be set by arguments, too.
