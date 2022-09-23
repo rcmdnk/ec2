@@ -213,7 +213,7 @@ _get_id_name_list () {
   __id_name_list=""
   if [ -n "${__list[$enum_obj]}" ];then
     for id in ${__ids[$enum_obj]};do
-      __id_name_list="${output:+${output}, }$(echo "${__list[$enum_obj]}"|grep "$id"|awk '{print $1}') ($id)"
+      __id_name_list="${__id_name_list:+${__id_name_list}, }${output:+${output}, }$(echo "${__list[$enum_obj]}"|grep "$id"|awk '{print $1}') ($id)"
     done
   else
     __id_name_list="$(echo ${__ids[$enum_obj]}|sed -e 's/ /, /g' -e 's/, $//')"
@@ -315,7 +315,7 @@ start () {
   __instance_filter="--filters Name=instance-state-name,Values=stopped"
   _get_ids $__enum_instance
   _execute_ec2 ${__dry_run_mode} start-instances --instance-ids ${__ids[$__enum_instance]}
-  _get_id_name_list $__enum_insatnce
+  _get_id_name_list $__enum_instance
   echo "${__dry_run_mode:+Dry run: }Started: $__id_name_list"
 }
 
@@ -323,7 +323,7 @@ stop () {
   __instance_filter="--filters Name=instance-state-name,Values=running"
   _get_ids $__enum_instance
   _execute_ec2 ${__dry_run_mode} stop-instances --instance-ids ${__ids[$__enum_instance]}
-  _get_id_name_list $__enum_insatnce
+  _get_id_name_list $__enum_instance
   echo "${__dry_run_mode:+Dry run: }Stopped: $__id_name_list"
 }
 
@@ -334,16 +334,17 @@ terminate () {
   local spot_instances="${__execute_result}"
   local spot_instance_msg
   if [ -n "${spot_instances}" ];then
-    spot_instance_msg=", cancel Spot Instance Request:"
+    spot_instance_msg=""
     for spot_request in $(echo ${spot_instances});do
       if [ -n "${spot_request}" ];then
         _execute_ec2 ${__dry_run_mode} cancel-spot-instance-requests --spot-instance-request-ids ${spot_request}
-        spot_instance_msg="$spot_instance_msg $spot_request"
+        spot_instance_msg="${spot_instance_msg:+${spot_instance_msg}, }$spot_request"
       fi
     done
+    spot_instance_msg=", cancel Spot Instance Request: $spot_instance_msg"
   fi
   _execute_ec2 ${__dry_run_mode} terminate-instances --instance-ids ${__ids[$__enum_instance]}
-  _get_id_name_list $__enum_insatnce
+  _get_id_name_list $__enum_instance
   echo "${__dry_run_mode:+Dry run: }Terminated: ${__id_name_list}${spot_instance_msg}"
 }
 
