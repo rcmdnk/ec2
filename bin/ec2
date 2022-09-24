@@ -256,14 +256,13 @@ _instance_check () {
 
 launch () {
   _get_ids $__enum_template 1
-  _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[$__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[*].LaunchTemplateData.TagSpecifications[*].Tags[?Key=='Name']|[0][0][0].Value\" --output text"
   _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[$__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
   local result=($__execute_result)
   local template_name="${result[0]}"
   local type="${result[1]}"
   local name="${result[2]}"
   if [ -z "$name" ];then
-    name="template_name"
+    name="$template_name"
   fi
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
   _get_instance_list
@@ -606,7 +605,7 @@ if [ -z "$subcommand" ];then
   echo "$HELP"
   exit 1
 fi
-if ! echo " $(echo $subcommands) "|grep -q " $subcommand ";then
+if ! echo "$subcommands"|grep -q "^${subcommand}$";then
   echo "$subcommand is unknown subcommand."
   echo ""
   echo "$HELP"
