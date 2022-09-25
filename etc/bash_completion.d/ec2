@@ -1,0 +1,13 @@
+_ec2 () {
+  if [ "$ZSH_VERSION" != "" ];then
+    compadd $(ec2 commands)
+  else
+    COMPREPLY=($(compgen -W "$(ec2 commands)" -- "${COMP_WORDS[COMP_CWORD]}"))
+  fi
+}
+
+if [ "$ZSH_VERSION" != "" ];then
+  compdef _ec2 ec2
+else
+  complete -o default -F _ec2 ec2
+fi

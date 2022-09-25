@@ -533,6 +533,10 @@ types () {
   _print_list "$header" "$contents"
 }
 
+commands () {
+  echo "$subcommands"
+}
+
 help () {
   echo "$HELP"
 }
