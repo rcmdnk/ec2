@@ -292,7 +292,7 @@ launch () {
   if [ "$__spot_instance" = "1" ];then
     spot_instance="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions\": {\"SpotInstanceType\": \"persistent\", \"InstanceInterruptionBehavior\" : \"stop\"} }'"
   fi
-  _execute_ec2 "run-instances ${__dry_run_mode} ${spot_instance} --launch-template LaunchTemplateId=${__ids[$__enum_template]} $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:InstanceType}\" --output text"
+  _execute_ec2 "run-instances ${__dry_run_mode} ${spot_instance} ${__user_data:+--user-data ${__user_data}} --launch-template LaunchTemplateId=${__ids[$__enum_template]} $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:InstanceType}\" --output text"
   if [ "$__dry_run" = "1" ];then
     local id="XXX"
     local ip="XXX"
@@ -542,7 +542,7 @@ help () {
 }
 
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h] <subcommand>
+HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-U <user_data>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h] <subcommand>
 
 Subcommands:
 $subcommands
@@ -567,7 +567,7 @@ if [ -f "$__config" ];then
   done < "$__config"
 fi
 
-while getopts i:f:g:p:P:T:t:S:I:j:k:u:r:s:a:A:d:h OPT;do
+while getopts i:f:g:p:P:T:t:S:I:j:k:u:U:r:s:a:A:d:h OPT;do
   case $OPT in
     "i" ) __instance_id=$OPTARG ;;
     "f" ) __name_filter=$OPTARG ;;
@@ -581,6 +581,7 @@ while getopts i:f:g:p:P:T:t:S:I:j:k:u:r:s:a:A:d:h OPT;do
     "j" ) __image_name_filter=$OPTARG ;;
     "k" ) __ssh_key=$OPTARG ;;
     "u" ) __ssh_user=$OPTARG ;;
+    "U" ) __user_data=$OPTARG ;;
     "r" ) __running_only=$OPTARG ;;
     "s" ) __selection_tool=$OPTARG ;;
     "a" ) __aws_profile=$OPTARG ;;

@@ -18,7 +18,7 @@ Or put `bin/ec2` anywhere in the PATH.
 
 ## Usage
 
-    $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-A <all>] [-d <dry_run>] [-h] <subcommand>
+    $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-U <user_data>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-A <all>] [-d <dry_run>] [-h] <subcommand>
 
 Subcommands:
 
@@ -81,6 +81,7 @@ Available parameters are:
 * image_name_filter: Filter to pick up images (AMI).
 * ssh_key: Key for ssh.
 * ssh_user: User for ssh.
+* user_data: user data file for luanch (run-instances), e.g: file:///path/to/your/user/data/script
 * running_only: Show only running instances at ssh/mosh
 * selection_tool: Selection tool list, separated by `,`. The default value is `sentaku,peco,fzy,fzf`.
     * The first one found is used. If nothing, bash's `select` is used.
