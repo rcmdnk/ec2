@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-__config_dir="$HOME/.config/ec2"
+__config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
 __type_list_file="$__config_dir/type_list"
 __type_list_file_term=7
