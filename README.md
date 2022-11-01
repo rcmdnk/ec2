@@ -45,6 +45,8 @@ Subcommands:
   * new_template: Create a new template version from an existing template with a new AMI.
 * Others:
   * types: Show instance types.
+  * pricing: Show a price of the instance type.
+  * price: Alias of pricing.
   * help: Show help.
 
 ## AWS CLI Profile

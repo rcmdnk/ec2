@@ -133,7 +133,6 @@ _get_image_list () {
   _execute_ec2 "describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
   # Sometime Name includes space prefix (?)
   __list[$__enum_image]="$(echo "$__execute_result"|tr "\t" " "|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
-  echo $__list[$__enum_image]
   if [ -n "$__image_name_filter" ];then
     __list[$__enum_image]="$(echo "${__list[$__enum_image]}"|grep "$__image_name_filter")"
   fi
@@ -281,7 +280,7 @@ launch () {
   done
   if [ "$__instance_type" == "select" ];then
     _select_objs $__enum_type 1
-   __instance_type=$(echo ${__list[$__enum_type]}|awk '{print $1}')
+    __instance_type=$(echo "${__list[$__enum_type]}"|awk '{print $1}')
   fi
   local instance_type="--instance-type ${__instance_type:-${type}}"
   local ip_choice="PublicIpAddress"
@@ -532,6 +531,40 @@ types () {
   done < <(echo "${__list[$__enum_type]}")
   _print_list "$header" "$contents"
 }
+
+pricing () {
+  if [ "$__instance_type" == "select" ] || [ -z "$__instance_type" ];then
+    _select_objs $__enum_type 0
+    __instance_type=$(echo "${__list[$__enum_type]}"|awk '{print $1}')
+  fi
+  __instance_type=(${__instance_type})
+  _execute_aws configure get region
+  local region="${__execute_result}"
+  echo "Type USD"
+  local t
+  for t in ${__instance_type[@]};do
+    _execute_aws pricing get-products \
+      --region us-east-1 \
+      --service-code AmazonEC2 \
+      --filters \
+                'Type=TERM_MATCH,Field=instanceType,Value='${t} \
+                'Type=TERM_MATCH,Field=regionCode,Value='${region} \
+                'Type=TERM_MATCH,Field=preInstalledSw,Value=NA' \
+                'Type=TERM_MATCH,Field=operatingSystem,Value=Linux' \
+                'Type=TERM_MATCH,Field=tenancy,Value=Shared' \
+                'Type=TERM_MATCH,Field=capacitystatus,Value=UnusedCapacityReservation' \
+      --output text \
+      --query 'PriceList[0]'
+    local usd=$(echo "${__execute_result#*USD\":\"}"|cut -d'"' -f 1)
+    echo ${t} ${usd}
+  done
+}
+
+price () {
+  pricing
+}
+
+
 
 commands () {
   echo "$subcommands"
