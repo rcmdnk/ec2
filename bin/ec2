@@ -396,19 +396,23 @@ ssh () {
 
 mosh () {
   _instance_check
-  local mosh_option=""
+  local ssh_option=""
   if [ -n "$__ssh_key" ];then
-    mosh_option="--ssh=ssh -i $__ssh_key"
+    ssh_option="--ssh=ssh -i $__ssh_key"
   fi
   local ip=$__instance_ip
   if [ -n "$__ssh_user" ];then
     ip="$__ssh_user@$ip"
   fi
-  command mosh "$mosh_option" $ip
+  local server=""
+  if [ -n "$__mosh_server" ];then
+    server="--server=$__mosh_server"
+  fi
+  command mosh "$ssh_option" $ip $server
   while test $? -ne 0;do
     echo "Waiting for ready..."
     sleep 5
-    command mosh "$mosh_option" $ip
+    command mosh "$ssh_option" $ip $server
   done
 }
 
@@ -600,7 +604,7 @@ if [ -f "$__config" ];then
   done < "$__config"
 fi
 
-while getopts i:f:g:p:P:T:t:S:I:j:k:u:U:r:s:a:A:d:h OPT;do
+while getopts i:f:g:p:P:T:t:S:I:j:k:u:m:U:r:s:a:A:d:h OPT;do
   case $OPT in
     "i" ) __instance_id=$OPTARG ;;
     "f" ) __name_filter=$OPTARG ;;
@@ -614,6 +618,7 @@ while getopts i:f:g:p:P:T:t:S:I:j:k:u:U:r:s:a:A:d:h OPT;do
     "j" ) __image_name_filter=$OPTARG ;;
     "k" ) __ssh_key=$OPTARG ;;
     "u" ) __ssh_user=$OPTARG ;;
+    "m" ) __mosh_server=$OPTARG ;;
     "U" ) __user_data=$OPTARG ;;
     "r" ) __running_only=$OPTARG ;;
     "s" ) __selection_tool=$OPTARG ;;
