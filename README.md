@@ -18,7 +18,7 @@ Or put `bin/ec2` anywhere in the PATH.
 
 ## Usage
 
-    $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-A <all>] [-d <dry_run>] [-h] <subcommand>
+    $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json>] [-C <cli_input_json_directory>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-A <all>] [-d <dry_run>] [-h] <subcommand>
 
 Subcommands:
 
@@ -76,6 +76,9 @@ Available parameters are:
 * cpu_filter: Filter to pick up instance type by CPU.
 * private_ip: Set 1 to use private IP addresses instead of public IP addresses.
 * template_id: Launch template id.
+* no_template: Set 1 not tu use launch template.
+* cli_input_json: A json file which has parameters to launch an instance.
+* cli_input_json_directory: A directory which has json files. If cli_input_json is not assigned and cli_input_json_directory is set, files are searched and it enters the selection mode.
 * instance_type: Instance type for launch command.
     * If `select` is passed, you can choose the type from the list.
 * spot_instance: Set 1 to launch a spot instance.

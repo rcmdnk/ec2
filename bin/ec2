@@ -254,14 +254,29 @@ _instance_check () {
 }
 
 launch () {
-  _get_ids $__enum_template 1
-  _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[$__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
-  local result=($__execute_result)
-  local template_name="${result[0]}"
-  local type="${result[1]}"
-  local name="${result[2]}"
-  if [ -z "$name" ];then
-    name="$template_name"
+  local name=""
+  local type=""
+  if [ "$__no_template" != "1" ];then
+    _get_ids $__enum_template 1
+    _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[$__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
+    local result=($__execute_result)
+    local template_name="${result[0]}"
+    type="${result[1]}"
+    name="${result[2]}"
+    if [ -z "$name" ];then
+      name="$template_name"
+    fi
+    local launch_template="--launch-template LaunchTemplateId=${__ids[$__enum_template]}"
+  fi
+  if [ -n "$__cli_input_json" ];then
+    local cli_input_json="--cli-input-json $__cli_input_json"
+    name="$(basename ${__cli_input_json%.json})"
+  elif [ -n "$__cli_input_json_directory" ];then
+    _select "$(command ls "$__cli_input_json_directory")"
+    if [ -n "$__selected" ];then
+      local cli_input_json="--cli-input-json file://$__cli_input_json_directory/$__selected"
+      name="$(basename ${__selected%.json})"
+    fi
   fi
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
   _get_instance_list
@@ -282,7 +297,9 @@ launch () {
     _select_objs $__enum_type 1
     __instance_type=$(echo "${__list[$__enum_type]}"|awk '{print $1}')
   fi
-  local instance_type="--instance-type ${__instance_type:-${type}}"
+  if [ -n "${__instance_type:-${type}}" ];then
+    local instance_type="--instance-type ${__instance_type:-${type}}"
+  fi
   local ip_choice="PublicIpAddress"
   if [ "$__private_ip" = "1" ];then
     ip_choice="PrivateIpAddress"
@@ -291,7 +308,7 @@ launch () {
   if [ "$__spot_instance" = "1" ];then
     spot_instance="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions\": {\"SpotInstanceType\": \"persistent\", \"InstanceInterruptionBehavior\" : \"stop\"} }'"
   fi
-  _execute_ec2 "run-instances ${__dry_run_mode} ${spot_instance} ${__user_data:+--user-data ${__user_data}} --launch-template LaunchTemplateId=${__ids[$__enum_template]} $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:InstanceType}\" --output text"
+  _execute_ec2 "run-instances ${__dry_run_mode} ${spot_instance} ${__user_data:+--user-data ${__user_data}} $launch_template $cli_input_json $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:InstanceType}\" --output text"
   if [ "$__dry_run" = "1" ];then
     local id="XXX"
     local ip="XXX"
@@ -579,7 +596,7 @@ help () {
 }
 
 subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-U <user_data>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h] <subcommand>
+HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h] <subcommand>
 
 Subcommands:
 $subcommands
@@ -604,7 +621,7 @@ if [ -f "$__config" ];then
   done < "$__config"
 fi
 
-while getopts i:f:g:p:P:T:t:S:I:j:k:u:m:U:r:s:a:A:d:h OPT;do
+while getopts i:f:g:p:P:T:N:t:S:I:j:k:u:m:U:r:s:a:A:d:h OPT;do
   case $OPT in
     "i" ) __instance_id=$OPTARG ;;
     "f" ) __name_filter=$OPTARG ;;
@@ -612,6 +629,9 @@ while getopts i:f:g:p:P:T:t:S:I:j:k:u:m:U:r:s:a:A:d:h OPT;do
     "p" ) __cpu_filter=$OPTARG ;;
     "P" ) __private_ip=$OPTARG ;;
     "T" ) __template_id=$OPTARG ;;
+    "N" ) __no_template=$OPTARG ;;
+    "c" ) __cli_input_json=$OPTARG ;;
+    "C" ) __cli_input_json_directory=$OPTARG ;;
     "t" ) __instance_type=$OPTARG ;;
     "S" ) __spot_instance=$OPTARG ;;
     "I" ) __image_name=$OPTARG ;;
