@@ -281,17 +281,22 @@ launch () {
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
   _get_instance_list
   local names=$(echo "${__list[$__enum_instance]}"|awk '{print $1}')
+
+  local suffix=$(basename "${name//-//}")
+  if [[ "$suffix" =~ ^[0-9]+$ ]];then
+    name_base="${name%${suffix}}"
+  else
+    name_base="${name}"
+  fi
+  suffix="01"
+  name="${name_base}-${suffix}"
+
   while :;do
     if ! echo "$names"|grep -q "^${name}$";then
       break
     fi
-    local suffix=$(basename "${name//-//}")
-    if [[ "$suffix" =~ ^[0-9]+$ ]];then
-      local suffix_new=$(printf "%02d" $((suffix + 1)))
-      name=${name%${suffix}}$suffix_new
-    else
-      name=${name}-01
-    fi
+    suffix=$(printf "%02d" $((suffix + 1)))
+    name="${name_base}-${suffix}"
   done
   if [ "$__instance_type" == "select" ];then
     _select_objs $__enum_type 1
