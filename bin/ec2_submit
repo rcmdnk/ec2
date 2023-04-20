@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+
+__config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
+__job_list="${__config_dir}/job_list"
+
+if ! type ec2 >& /dev/null;then
+  echo "Install ec2 (https://github.com/rcmdnk/ec2)"
+  exit 1
+fi
+
+if [ "$1" = "ls" ];then
+  echo "PID DATE TIME SCRIPT STATUS"
+  touch "$__job_list"
+  cat "$__job_list"
+  exit
+fi
+
+if [ $# -ne 5 ];then
+  echo "Usage: ec2_submit <ssh_user> <ssh_key> <cli-input-json> <instance-type> <script>"
+  echo "or"
+  echo "       ec2_submit ls"
+  exit 1
+fi
+ssh_user=$1
+ssh_key=$2
+cli_input_json=$3
+instance_type=$4
+script=$5
+
+sedi () {
+  sed -i .tmp "$1" "$2"
+  rm -f "$2".tmp
+}
+
+job_id="$$ $(date +"%Y-%m-%d %H:%M:%S") $(basename "$script")"
+
+clear_job () {
+  sedi "/${job_id}/d" "$__job_list"
+}
+
+trap "clear_job;exit" EXIT HUP INT QUIT ABRT SEGV TERM
+
+echo "$job_id starting" >> "$__job_list"
+
+output=$(ec2 -c "$cli_input_json" -t "$instance_type" launch)
+ret=$?
+if [ $ret -ne 0 ];then
+  echo "Failed to launch instance"
+  echo "$output"
+  exit 1
+fi
+instance_id=$(echo "$output" |tr ',' $'\n'|grep Id|cut -d '=' -f2)
+instance_ip=$(echo "$output" |tr ',' $'\n'|grep PrivateIpAddress|cut -d '=' -f2)
+
+sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} launching/" "$__job_list"
+
+while :;do
+  ssh -oStrictHostKeyChecking=no -i "$ssh_key" "$ssh_user@$instance_ip" test -f ready >&/dev/null
+  ret=$?
+  if [ $ret -eq 0 ];then
+    break
+  fi
+  sleep 5
+done
+
+sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} running/" "$__job_list"
+
+scp -oStrictHostKeyChecking=no -i "$ssh_key" "$script" "$ssh_user"@"$instance_ip":
+ssh -oStrictHostKeyChecking=no -i "$ssh_key" "$ssh_user"@"$instance_ip" "bash $script"
+ec2 -i "$instance_id" terminate

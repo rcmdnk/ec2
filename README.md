@@ -16,10 +16,12 @@ $ brew install rcmdnk/rcmdnkpac/ec2
 
 If you have not installed `awscli` by Homebrew, it is also installed.
 
-Or put `bin/ec2` anywhere in the PATH.
+Or put `bin/ec2` and `bin/ec2_submit` anywhere in the PATH.
 (In this case, you need to install `awscli` by yourself.)
 
-## Usage
+## ec2
+
+### Usage
 
 ```
 $ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json>] [-C <cli_input_json_directory>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-A <all>] [-d <dry_run>] [-h] <subcommand>
@@ -54,7 +56,7 @@ Subcommands:
   - price: Alias of pricing.
   - help: Show help.
 
-## AWS CLI Profile
+### AWS CLI Profile
 
 If you want to use a profile other than the default,
 set:
@@ -65,7 +67,7 @@ export AWS_PROFILE=xxx
 
 before using ec2.
 
-## Configuration
+### Configuration
 
 Use **~/.config/ec2/config**.
 
@@ -111,9 +113,9 @@ Available parameters are:
 
 These parameters can be set by arguments, too.
 
-## Examples
+### Examples
 
-### Manage my instances with the prefix "my-instances"
+#### Manage my instances with the prefix "my-instances"
 
 Make ~/.config/ec2/config file as follows:
 
@@ -130,7 +132,7 @@ It uses the key **~/.ssh/my_ssh.pem** at `ec2 ssh` or `ec2 mosh`, with the user 
 
 Set `aws_profile` if you want to use other than the default profile.
 
-### Launch new instance
+#### Launch new instance
 
 ```
 $ ec2 -t r3.large launch
@@ -142,7 +144,7 @@ If you give `-t select`, you can choose the instance type from the list.
 
 You can pass the template name by `-T <your template>`, too.
 
-### Create a new template version
+#### Create a new template version
 
 First, make a new AMI from an existing instance:
 
@@ -170,9 +172,9 @@ This command also removes the associated snapshot.
 Note: `new_image` create a new version of the template. If you do not have any templates,
 make it with the Web interface or aws cli command directly.
 
-## Development
+### Development
 
-### pre-commit
+#### pre-commit
 
 Install pre-commit by pip:
 
@@ -196,4 +198,30 @@ Then, automatically checked at `git commit` or run checks manually:
 
 ```
 $ pre-commit run -a
+```
+
+## ec2_submit
+
+```
+Usage: ec2_submit <ssh_user> <ssh_key> <cli-input-json> <instance-type> <script>
+or
+       ec2_submit ls
+```
+
+`ec2_submit` does:
+
+- Launch new ec2 instance
+- Copy the script to the instance
+- Run the script in the instance
+
+The script will be executed at the HOME directory, then you should write a script
+properly to manage the directory position.
+
+Jobs are managed in **~/.config/ec2/job_list**.
+There are information of existing jobs: PID of the job, Starting DateTime, Script Name, \[InstanceID,\] \[InstanceIP,\] Status.
+
+You can check by
+
+```
+$ ec2_submit ls
 ```
