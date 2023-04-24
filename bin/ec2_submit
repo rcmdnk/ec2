@@ -28,8 +28,9 @@ instance_type=$4
 script=$5
 
 sedi () {
-  sed -i .tmp "$1" "$2"
-  rm -f "$2".tmp
+  tmpfile=$(mktemp)
+  sed "$1" "$2" > "$tmpfile"
+  mv "$tmpfile" "$2"
 }
 
 job_id="$$ $(date +"%Y-%m-%d %H:%M:%S") $(basename "$script")"
