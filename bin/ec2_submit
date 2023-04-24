@@ -67,5 +67,5 @@ done
 sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} running/" "$__job_list"
 
 scp -oStrictHostKeyChecking=no -i "$ssh_key" "$script" "$ssh_user"@"$instance_ip":
-ssh -oStrictHostKeyChecking=no -i "$ssh_key" "$ssh_user"@"$instance_ip" "bash $script"
+ssh -oStrictHostKeyChecking=no -i "$ssh_key" "$ssh_user"@"$instance_ip" "bash $(basename "$script")"
 ec2 -i "$instance_id" terminate
