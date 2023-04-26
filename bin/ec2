@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 __config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
+__job_list="${__config_dir}/job_list"
 __type_list_file="$__config_dir/type_list"
 __type_list_file_term=7
 __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
@@ -13,6 +14,103 @@ __enum_template=2
 __enum_type=3
 __list=()
 __ids=()
+
+__cmd=$(basename "$0")
+
+_read_config () {
+  local line
+  local key
+  local var
+  if [ -f "$__config" ];then
+    while read -r line || [ -n "${line}" ];do
+      line="${line#"${line%%[![:space:]]*}"}"
+      line="${line%"${line##*[![:space:]]}"}"
+      if [ -z "$line" ];then
+        continue
+      fi
+      key=${line%%=*}
+      var=${line#*=}
+      eval "__${key}=${var}"
+    done < "$__config"
+  fi
+}
+
+__options_help="[-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h]"
+
+_read_arg () {
+  while getopts i:f:g:p:P:T:N:c:C:t:S:I:j:k:u:m:U:r:s:a:A:d:h OPT;do
+    case $OPT in
+      "i" ) __instance_id=$OPTARG ;;
+      "f" ) __name_filter=$OPTARG ;;
+      "g" ) __gpu_filter=$OPTARG ;;
+      "p" ) __cpu_filter=$OPTARG ;;
+      "P" ) __private_ip=$OPTARG ;;
+      "T" ) __template_id=$OPTARG ;;
+      "N" ) __no_template=$OPTARG ;;
+      "c" ) __cli_input_json=$OPTARG ;;
+      "C" ) __cli_input_json_directory=$OPTARG ;;
+      "t" ) __instance_type=$OPTARG ;;
+      "S" ) __spot_instance=$OPTARG ;;
+      "I" ) __image_name=$OPTARG ;;
+      "j" ) __image_name_filter=$OPTARG ;;
+      "k" ) __ssh_key=$OPTARG ;;
+      "u" ) __ssh_user=$OPTARG ;;
+      "m" ) __mosh_server=$OPTARG ;;
+      "U" ) __user_data=$OPTARG ;;
+      "r" ) __running_only=$OPTARG ;;
+      "s" ) __selection_tool=$OPTARG ;;
+      "a" ) __aws_profile=$OPTARG ;;
+      "A" ) __all=$OPTARG ;;
+      "d" ) __dry_run=$OPTARG ;;
+      "h" ) echo "$HELP"; exit ;;
+      * ) echo "unknown option: $OPT" 1>&2;echo "$HELP" 1>&2; exit 1;;
+    esac
+  done
+  shift $((OPTIND - 1))
+  __positional=("$@")
+}
+
+_print_list () {
+  # shellcheck disable=SC2206
+  local headers=($1)
+  local contents="$2"
+  local n_cols=${#headers[@]}
+  local width=()
+  local i
+  for ((i=0; i<n_cols; i++));do
+    width[i]=${#headers[$i]}
+  done
+  local line
+  while read -r line || [ -n "${line}" ];do
+    # shellcheck disable=SC2206
+    local columns=($line)
+    for ((i=0; i<n_cols; i++));do
+      if (( ${width[$i]} < ${#columns[$i]} ));then
+        width[i]=${#columns[$i]}
+      fi
+    done
+  done < <(echo -n "$contents")
+  local format_header=""
+  local format=""
+  for ((i=0; i<n_cols; i++));do
+    format_header="${format_header:+${format_header} }%${width[$i]}s"
+    format="${format:+${format} }%-${width[$i]}s"
+  done
+  # shellcheck disable=SC2059
+  printf "$format_header\n" "${headers[@]}"
+  # shellcheck disable=SC2059
+  printf "%0$(printf "$format_header" "${headers[@]}"|wc -c|xargs)d\n"|tr 0 -
+  while read -r line || [ -n "${line}" ];do
+    # shellcheck disable=SC2059,SC2086
+    printf "$format\n" $line
+  done < <(echo -n "$contents")
+}
+
+_sedi () {
+  tmpfile=$(mktemp)
+  sed "$1" "$2" > "$tmpfile"
+  mv "$tmpfile" "$2"
+}
 
 _execute () {
   __execute_result="$(eval "$*" 2>&1)"
@@ -77,42 +175,6 @@ _select () {
       break
     done
   fi
-}
-
-_print_list () {
-  # shellcheck disable=SC2206
-  local headers=($1)
-  local contents="$2"
-  local n_cols=${#headers[@]}
-  local width=()
-  local i
-  for ((i=0; i<n_cols; i++));do
-    width[i]=${#headers[$i]}
-  done
-  local line
-  while read -r line || [ -n "${line}" ];do
-    # shellcheck disable=SC2206
-    local columns=($line)
-    for ((i=0; i<n_cols; i++));do
-      if (( ${width[$i]} < ${#columns[$i]} ));then
-        width[i]=${#columns[$i]}
-      fi
-    done
-  done < <(echo -n "$contents")
-  local format_header=""
-  local format=""
-  for ((i=0; i<n_cols; i++));do
-    format_header="${format_header:+${format_header} }%${width[$i]}s"
-    format="${format:+${format} }%-${width[$i]}s"
-  done
-  # shellcheck disable=SC2059
-  printf "$format_header\n" "${headers[@]}"
-  # shellcheck disable=SC2059
-  printf "%0$(printf "$format_header" "${headers[@]}"|wc -c|xargs)d\n"|tr 0 -
-  while read -r line || [ -n "${line}" ];do
-    # shellcheck disable=SC2059,SC2086
-    printf "$format\n" $line
-  done < <(echo -n "$contents")
 }
 
 _get_instance_list () {
@@ -230,7 +292,11 @@ _instance_check () {
   if [ "$__running_only" = 1 ];then
     __instance_filter="--filters Name=instance-state-name,Values=running"
   fi
-  _select_objs $__enum_instance 1
+  if [ -z "${__ids[$__enum_instance]}" ];then
+    _select_objs $__enum_instance 1
+  else
+    _get_instance_list
+  fi
   # shellcheck disable=SC2206
   local instance_info=(${__list[$__enum_instance]})
   __ids[__enum_instance]=${instance_info[1]}
@@ -243,7 +309,6 @@ _instance_check () {
     echo "${__ids[$__enum_instance]} is stopping."
     exit 1
   fi
-  echo "Waiting for ready..."
   __instance_filter="--filters Name=instance-state-name,Values=running"
   _get_instance_list
   status=$(echo "${__list[$__enum_instance]}"|awk '{print $4}')
@@ -412,6 +477,7 @@ ls () {
 }
 
 ssh () {
+  cmd="${1:-ssh}"
   _instance_check
   local ssh_option=""
   if [ -n "$__ssh_key" ];then
@@ -421,38 +487,96 @@ ssh () {
   if [ -n "$__ssh_user" ];then
     ip="$__ssh_user@$ip"
   fi
-  # shellcheck disable=SC2086
-  command ssh $ssh_option $ip
-  while test $? -ne 0;do
+  while :;do
+    # shellcheck disable=SC2086
+    command ssh $ssh_option $ip "sudo tail -n1 /var/log/cloud-init-output.log |grep 'Cloud-init.*finished at.*seconds$'" >/dev/null 2>&1
+    ret=$?
+    if [ $ret -eq 0 ];then
+      break
+    fi
     echo "Waiting for ready..."
     sleep 5
-    # shellcheck disable=SC2086
-    command ssh $ssh_option $ip
   done
+  if [ "$cmd" = "mosh" ];then
+    ssh_option=""
+    if [ -n "$__ssh_key" ];then
+      ssh_option="--ssh=ssh -i $__ssh_key"
+    fi
+    if [ -n "$__mosh_server" ];then
+    ssh_option="$ssh_option --server=$__mosh_server"
+    fi
+  fi
+  # shellcheck disable=SC2086
+  command $cmd $ssh_option $ip $__execute_command
 }
 
 mosh () {
+  ssh mosh
+  _instance_check
+}
+
+scp () {
   _instance_check
   local ssh_option=""
   if [ -n "$__ssh_key" ];then
-    ssh_option="--ssh=ssh -i $__ssh_key"
+    ssh_option="$ssh_option -i $__ssh_key"
   fi
   local ip=$__instance_ip
   if [ -n "$__ssh_user" ];then
     ip="$__ssh_user@$ip"
   fi
-  local server=""
-  if [ -n "$__mosh_server" ];then
-    server="--server=$__mosh_server"
-  fi
-  # shellcheck disable=SC2086
-  command mosh "$ssh_option" $ip $server
-  while test $? -ne 0;do
+  while :;do
+    # shellcheck disable=SC2086
+    command ssh $ssh_option $ip "exit"
+    ret=$?
+    if [ $ret -eq 0 ];then
+      break
+    fi
     echo "Waiting for ready..."
     sleep 5
-    # shellcheck disable=SC2086
-    command mosh "$ssh_option" $ip $server
   done
+  # shellcheck disable=SC2086
+  command scp $ssh_option $__file $ip:
+}
+
+_clear_job () {
+  _sedi "/${job_id}/d" "$__job_list"
+}
+
+submit () {
+  local job_id
+  job_id="$$ $(date +"%Y-%m-%d %H:%M:%S") $(basename "$__file")"
+
+  trap "_clear_job;exit" EXIT HUP INT QUIT ABRT SEGV TERM
+
+  echo "$job_id starting" >> "$__job_list"
+
+  output=$(launch)
+  ret=$?
+  if [ $ret -ne 0 ];then
+    echo "Failed to launch instance"
+    echo "$output"
+    exit 1
+  fi
+  local instance_id
+  instance_id=$(echo "$output" |tr ',' $'\n'|grep Id|cut -d '=' -f2)
+  local instance_ip
+  instance_ip=$(echo "$output" |tr ',' $'\n'|grep PrivateIpAddress|cut -d '=' -f2)
+  __ids[__enum_instance]="$instance_id"
+
+  _sedi "s/${job_id}.*$/${job_id} launching ${instance_id} ${instance_ip}/" "$__job_list"
+  __execute_command="exit"
+  ssh
+  _sedi "s/${job_id}.*$/${job_id} running ${instance_id} ${instance_ip}/" "$__job_list"
+  scp
+  __execute_command="bash $(basename "$__file")"
+  ssh
+  terminate
+}
+
+jobs () {
+  touch "$__job_list"
+  _print_list "PID DATE TIME SCRIPT STATUS" "$(cat "$__job_list")"
 }
 
 images () {
@@ -622,22 +746,21 @@ price () {
   pricing
 }
 
-
-
 commands () {
-  echo "$subcommands"
+  echo "$__subcommands"
 }
 
 help () {
   echo "$HELP"
 }
 
-subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1)
-HELP="Usage: $0 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h] <subcommand>
+_read_config
+
+__subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1 | tr '\n' ' ')
+HELP="Usage: $__cmd $__options_help <subcommand>
 
 Subcommands:
-$subcommands
-
+$__subcommands
 "
 
 if [ $# -eq 0 ];then
@@ -645,48 +768,7 @@ if [ $# -eq 0 ];then
   exit
 fi
 
-if [ -f "$__config" ];then
-  while read -r line || [ -n "${line}" ];do
-    line="${line#"${line%%[![:space:]]*}"}"
-    line="${line%"${line##*[![:space:]]}"}"
-    if [ -z "$line" ];then
-      continue
-    fi
-    key=${line%%=*}
-    var=${line#*=}
-    eval "__${key}=${var}"
-  done < "$__config"
-fi
-
-while getopts i:f:g:p:P:T:N:c:C:t:S:I:j:k:u:m:U:r:s:a:A:d:h OPT;do
-  case $OPT in
-    "i" ) __instance_id=$OPTARG ;;
-    "f" ) __name_filter=$OPTARG ;;
-    "g" ) __gpu_filter=$OPTARG ;;
-    "p" ) __cpu_filter=$OPTARG ;;
-    "P" ) __private_ip=$OPTARG ;;
-    "T" ) __template_id=$OPTARG ;;
-    "N" ) __no_template=$OPTARG ;;
-    "c" ) __cli_input_json=$OPTARG ;;
-    "C" ) __cli_input_json_directory=$OPTARG ;;
-    "t" ) __instance_type=$OPTARG ;;
-    "S" ) __spot_instance=$OPTARG ;;
-    "I" ) __image_name=$OPTARG ;;
-    "j" ) __image_name_filter=$OPTARG ;;
-    "k" ) __ssh_key=$OPTARG ;;
-    "u" ) __ssh_user=$OPTARG ;;
-    "m" ) __mosh_server=$OPTARG ;;
-    "U" ) __user_data=$OPTARG ;;
-    "r" ) __running_only=$OPTARG ;;
-    "s" ) __selection_tool=$OPTARG ;;
-    "a" ) __aws_profile=$OPTARG ;;
-    "A" ) __all=$OPTARG ;;
-    "d" ) __dry_run=$OPTARG ;;
-    "h" ) echo "$HELP"; exit ;;
-    * ) echo "unknown option: $OPT" 1>&2;echo "$HELP" 1>&2; exit 1;;
-  esac
-done
-shift $((OPTIND - 1))
+_read_arg "$@"
 
 if [ "$__all" = "1" ];then
   __name_filter=""
@@ -699,18 +781,29 @@ fi
 __ids[__enum_instance]="$__instance_id"
 __ids[__enum_template]="$__template_id"
 
-subcommand=$1
-shift
-if [ -z "$subcommand" ];then
+__subcommand="${__positional[0]}"
+__positional=("${__positional[@]:1:$((${#__positional[@]}))}")
+if [ -z "$__subcommand" ];then
   echo "$HELP"
   exit 1
 fi
-if ! echo "$subcommands"|grep -q "^${subcommand}$";then
-  echo "$subcommand is unknown subcommand."
+if ! echo " $__subcommands "|grep -q " $__subcommand ";then
+  echo "$__subcommand is unknown subcommand."
   echo ""
   echo "$HELP"
   exit 1
 fi
 
-$subcommand
+if [ "$__subcommand" == "ssh" ];then
+  __execute_command="${__positional[0]}"
+fi
 
+if [ "$__subcommand" = "scp" ] || [ "$__subcommand" = "submit" ];then
+  __file="${__positional[0]}"
+  if [ -z "$__file" ];then
+    echo "Usage: $__cmd [options] $__subcommand <file>"
+    exit 1
+  fi
+fi
+
+$__subcommand
