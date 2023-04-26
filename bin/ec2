@@ -93,7 +93,7 @@ _print_list () {
   local format_header=""
   local format=""
   for ((i=0; i<n_cols; i++));do
-    format_header="${format_header:+${format_header} }%${width[$i]}s"
+    format_header="${format_header:+${format_header} }%-${width[$i]}s"
     format="${format:+${format} }%-${width[$i]}s"
   done
   # shellcheck disable=SC2059
