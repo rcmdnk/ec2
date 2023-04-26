@@ -24,7 +24,10 @@ Or put `bin/ec2` and `bin/ec2_submit` anywhere in the PATH.
 ### Usage
 
 ```
-$ ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json>] [-C <cli_input_json_directory>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-A <all>] [-d <dry_run>] [-h] <subcommand>
+Usage: ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h] <subcommand>
+
+Subcommands:
+commands help images instances jobs launch list ls mosh new_image new_template price pricing rm rm_image scp ssh start stop submit templates terminate types
 ```
 
 Subcommands:
@@ -41,8 +44,10 @@ Subcommands:
     - If the instance's lifecycle is `spot`, the spot instance request is also canceled.
   - rm: Alias of terminate.
 - Connection helper:
-  - ssh: Connect to an instance with mosh.
+  - ssh \[commands\]: Connect to an instance with mosh.
   - mosh: Connect to an instance with mosh.
+  - scp <file>: Send a file to an intance.
+  - submit <file>: Launch an instance, send a fiel to the instance, execute a file in the instance, terminate the instance.
 - Image (AMI) managemen:t
   - images: List up images (AMI).
   - new_image: Create a new image from an instance.
