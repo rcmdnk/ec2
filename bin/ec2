@@ -549,7 +549,7 @@ submit () {
 
   trap "_clear_job;exit" EXIT HUP INT QUIT ABRT SEGV TERM
 
-  echo "$job_id starting" >> "$__job_list"
+  echo "$job_id - - starting" >> "$__job_list"
 
   output=$(launch)
   ret=$?
@@ -564,10 +564,10 @@ submit () {
   instance_ip=$(echo "$output" |tr ',' $'\n'|grep PrivateIpAddress|cut -d '=' -f2)
   __ids[__enum_instance]="$instance_id"
 
-  _sedi "s/${job_id}.*$/${job_id} launching ${instance_id} ${instance_ip}/" "$__job_list"
+  _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} launching/" "$__job_list"
   __execute_command="exit"
   ssh
-  _sedi "s/${job_id}.*$/${job_id} running ${instance_id} ${instance_ip}/" "$__job_list"
+  _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} running/" "$__job_list"
   scp
   __execute_command="bash $(basename "$__file")"
   ssh
@@ -576,7 +576,7 @@ submit () {
 
 jobs () {
   touch "$__job_list"
-  _print_list "PID DATE TIME SCRIPT STATUS" "$(cat "$__job_list")"
+  _print_list "PID DATE TIME SCRIPT ID IP STATUS" "$(cat "$__job_list")"
 }
 
 images () {
