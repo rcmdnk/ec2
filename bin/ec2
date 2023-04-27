@@ -549,8 +549,15 @@ submit () {
 
   trap "_clear_job;exit" EXIT HUP INT QUIT ABRT SEGV TERM
 
-  echo "$job_id - - starting" >> "$__job_list"
+  echo "$job_id - - preparing" >> "$__job_list"
+  while :;do
+    if ! grep -q -e " starting$" "$__job_list";then
+      break
+    fi
+    sleep 1
+  done
 
+  _sedi "s/${job_id}.*$/${job_id} - - starting/" "$__job_list"
   output=$(launch)
   ret=$?
   if [ $ret -ne 0 ];then
