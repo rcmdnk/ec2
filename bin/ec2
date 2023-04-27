@@ -804,6 +804,10 @@ if [ "$__subcommand" = "scp" ] || [ "$__subcommand" = "submit" ];then
     echo "Usage: $__cmd [options] $__subcommand <file>"
     exit 1
   fi
+  if [ ! -f "$__file" ];then
+    echo "$__file does not exist"
+    exit 1
+  fi
 fi
 
 $__subcommand
