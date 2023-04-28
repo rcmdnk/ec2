@@ -5,6 +5,7 @@ AWS CLI Wrapper for EC2 management.
 ## Requirement
 
 - [AWS CLI](https://aws.amazon.com/cli/)
+- For macOS, install [flock](https://github.com/discoteq/flock) or [util-linux](https://github.com/util-linux/util-linux)
 
 ## Installation
 
