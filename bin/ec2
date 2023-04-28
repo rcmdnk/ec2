@@ -338,11 +338,10 @@ _get_name_number () {
   suffix=$(basename "${name//-//}")
   if [[ "$suffix" =~ ^[0-9]+$ ]];then
     name_base="${name%-"${suffix}"}"
-    suffix="$(printf "%d" "$suffix")"
   else
     name_base="${name}"
-    suffix=1
   fi
+  suffix=1
   name="${name_base}-$(printf "%02d" "$suffix")"
   while :;do
     if ! echo "$names"|grep -q "^${name}$";then
@@ -629,7 +628,7 @@ new_image () {
   local image_names
   image_names="$(echo "${__list[$__enum_image]}"|awk '{print $1}')"
 
-  __image_name=$(__get_name_number "$__image_name" "$image_names")
+  __image_name=$(_get_name_number "$__image_name" "$image_names")
 
   _execute_ec2 "${__dry_run_mode} create-image  --instance-id ${__ids[$__enum_instance]} --name $__image_name"
   echo "${__dry_run_mode:+Dry run: }Created a new AMI $__image_name from ${__ids[$__enum_instance]}"
