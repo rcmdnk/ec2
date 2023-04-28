@@ -4,6 +4,8 @@ __config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
 __job_list="${__config_dir}/job_list"
 __type_list_file="$__config_dir/type_list"
+__submit_sedi_lock="${__config_dir}/submit_sedi.lock"
+__submit_launch_lock="${__config_dir}/submit_launch.lock"
 __type_list_file_term=7
 __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
 __obj_name=(instance image template type)
@@ -107,9 +109,12 @@ _print_list () {
 }
 
 _sedi () {
-  tmpfile=$(mktemp)
-  sed "$1" "$2" > "$tmpfile"
-  mv "$tmpfile" "$2"
+  {
+    flock -x 200
+    tmpfile=$(mktemp)
+    sed "$1" "$2" > "$tmpfile"
+    mv "$tmpfile" "$2"
+  } 200> "$__submit_sedi_lock"
 }
 
 _execute () {
@@ -552,34 +557,36 @@ _clear_job () {
 }
 
 submit () {
+  if ! type flock >/dev/null 2>&1;then
+    echo "flock is required for 'submit'"
+    echo "Install flock by Homebrew ('brew install flock' or anything)"
+    exit 1
+  fi
+
   local job_id
   job_id="$$ $(date +"%Y-%m-%d %H:%M:%S") $(basename "$__file")"
 
   trap "_clear_job;exit" EXIT HUP INT QUIT ABRT SEGV TERM
 
-  echo "$job_id - - preparing" >> "$__job_list"
-  while :;do
-    if ! grep -q -e " starting$" "$__job_list";then
-      break
+  echo "$job_id - - starting" >> "$__job_list"
+
+  {
+    flock -x 201
+    output=$(launch)
+    ret=$?
+    if [ $ret -ne 0 ];then
+      echo "Failed to launch instance"
+      echo "$output"
+      exit 1
     fi
-    sleep 1
-  done
+    local instance_id
+    instance_id=$(echo "$output" |tr ',' $'\n'|grep Id|cut -d '=' -f2)
+    local instance_ip
+    instance_ip=$(echo "$output" |tr ',' $'\n'|grep PrivateIpAddress|cut -d '=' -f2)
+    __ids[__enum_instance]="$instance_id"
+    _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} launching/" "$__job_list"
+  } 201> "$__submit_launch_lock"
 
-  _sedi "s/${job_id}.*$/${job_id} - - starting/" "$__job_list"
-  output=$(launch)
-  ret=$?
-  if [ $ret -ne 0 ];then
-    echo "Failed to launch instance"
-    echo "$output"
-    exit 1
-  fi
-  local instance_id
-  instance_id=$(echo "$output" |tr ',' $'\n'|grep Id|cut -d '=' -f2)
-  local instance_ip
-  instance_ip=$(echo "$output" |tr ',' $'\n'|grep PrivateIpAddress|cut -d '=' -f2)
-  __ids[__enum_instance]="$instance_id"
-
-  _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} launching/" "$__job_list"
   __execute_command="exit"
   ssh
   _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} running/" "$__job_list"
