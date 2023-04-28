@@ -326,6 +326,29 @@ _instance_check () {
   done
 }
 
+_get_name_number () {
+  local name="$1"
+  local names="$2"
+  local suffix
+  suffix=$(basename "${name//-//}")
+  if [[ "$suffix" =~ ^[0-9]+$ ]];then
+    name_base="${name%-"${suffix}"}"
+    suffix="$(printf "%d" "$suffix")"
+  else
+    name_base="${name}"
+    suffix=1
+  fi
+  name="${name_base}-$(printf "%02d" "$suffix")"
+  while :;do
+    if ! echo "$names"|grep -q "^${name}$";then
+      break
+    fi
+    ((suffix++))
+    name="${name_base}-$(printf "%02d" "$suffix")"
+  done
+  echo "$name"
+}
+
 launch () {
   local name=""
   local type=""
@@ -357,23 +380,8 @@ launch () {
   local names
   names=$(echo "${__list[$__enum_instance]}"|awk '{print $1}')
 
-  local suffix
-  suffix=$(basename "${name//-//}")
-  if [[ "$suffix" =~ ^[0-9]+$ ]];then
-    name_base="${name%-"${suffix}"}"
-  else
-    name_base="${name}"
-  fi
-  suffix="01"
-  name="${name_base}-${suffix}"
+  name=$(_get_name_number "$name" "$names")
 
-  while :;do
-    if ! echo "$names"|grep -q "^${name}$";then
-      break
-    fi
-    suffix=$(printf "%02d" $((suffix + 1)))
-    name="${name_base}-${suffix}"
-  done
   if [ "$__instance_type" == "select" ];then
     _select_objs $__enum_type 1
     __instance_type=$(echo "${__list[$__enum_type]}"|awk '{print $1}')
@@ -604,34 +612,18 @@ new_image () {
   if [ -z "$__image_name" ];then
     _get_instance_list
     __image_name="$(echo "${__list[$__enum_instance]}"|tr '\t' ' '|grep "${__ids[$__enum_instance]}"|awk '{print $1}')"
-    local suffix
-    suffix=$(basename "${__image_name//-//}")
-    if [[ "$suffix" =~ ^[0-9]+$ ]];then
-      local suffix_new=01
-      __image_name=${__image_name%"${suffix}"}$suffix_new
-    fi
   fi
   if [ -z "$__image_name" ];then
     echo "Set image_name by: ec2 -I <image_name> new_images"
     exit 1
   fi
+
   _get_image_list
   local image_names
   image_names="$(echo "${__list[$__enum_image]}"|awk '{print $1}')"
-  while :;do
-    if ! echo "$image_names"|grep -q ^"$__image_name"$;then
-      break
-    fi
-    local suffix
-    suffix=$(basename "${__image_name//-//}")
-    if [[ "$suffix" =~ ^[0-9]+$ ]];then
-      local suffix_new
-      suffix_new=$(printf "%02d" $((suffix + 1)))
-      __image_name=${__image_name%"${suffix}"}$suffix_new
-    else
-      __image_name=${__image_name}-01
-    fi
-  done
+
+  __image_name=$(__get_name_number "$__image_name" "$image_names")
+
   _execute_ec2 "${__dry_run_mode} create-image  --instance-id ${__ids[$__enum_instance]} --name $__image_name"
   echo "${__dry_run_mode:+Dry run: }Created a new AMI $__image_name from ${__ids[$__enum_instance]}"
 }
