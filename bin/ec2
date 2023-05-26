@@ -123,6 +123,18 @@ _sedi () {
   )
 }
 
+_check_job_instances () {
+  (
+    eval "exec $__submit_sedi_lock_fd>$__submit_sedi_lock"
+    flock -x $__submit_sedi_lock_fd
+    if [ -n "$__max_jobs" ] && (( __max_jobs > 0 )) && (( $(grep -c -e running -e starting -e launching -e terminating "$__job_list") > __max_jobs ));then
+      echo 1
+    else
+      echo 0
+    fi
+  )
+}
+
 _execute () {
   __execute_result="$(eval "$*" 2>&1)"
   local ret=$?
@@ -580,7 +592,7 @@ submit () {
   echo "$job_id - - waiting" >> "$__job_list"
 
   while :;do
-    if [ -n "$__max_jobs" ] && (( __max_jobs > 0 )) && (( $(grep -c -e running -e launching -e terminating "$__job_list") > __max_jobs ));then
+    if [ "$(_check_job_instances)" = 1 ];then
       sleep 5
     else
       break
