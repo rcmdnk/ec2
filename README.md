@@ -24,10 +24,10 @@ Or put `bin/ec2` and `bin/ec2_submit` anywhere in the PATH.
 ### Usage
 
 ```
-Usage: ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h] <subcommand>
+Usage: ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-M <max_jobs>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h] <subcommand>
 
 Subcommands:
-commands help images instances jobs launch list ls mosh new_image new_template price pricing rm rm_image scp ssh start stop submit templates terminate types
+commands delete_job help images instances jobs launch list ls mosh new_image new_template price pricing rm rm_image scp ssh start stop submit templates terminate types
 ```
 
 Subcommands:
@@ -106,7 +106,8 @@ Available parameters are:
 - ssh_user: User for ssh.
 - mosh_server: Mosh server path.
 - user_data: user data file for luanch (run-instances), e.g: file:///path/to/your/user/data/script
-- running_only: Show only running instances at ssh/mosh
+- running_only: Show only running instances at ssh/mosh.
+- max_jobs: Maximum number of submitted jobs running in parallel.
 - selection_tool: Selection tool list, separated by `,`. The default value is `sentaku,peco,fzy,fzf`.
   - The first one found is used. If nothing, bash's `select` is used.
   - Tools ref:
