@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-__version="v0.0.40"
+__version="v0.0.41"
 __date="26/May/2023"
 __config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
