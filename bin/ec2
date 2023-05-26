@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-__version="v0.0.41"
+__version="v0.0.42"
 __date="26/May/2023"
 __config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
@@ -115,7 +115,7 @@ _print_list () {
 
 _sedi () {
   {
-    eval "exec $__submit_sedi_lock_fd > $__submit_sedi_lock"
+    eval "exec $__submit_sedi_lock_fd>$__submit_sedi_lock"
     flock -x $__submit_sedi_lock_fd
     tmpfile=$(mktemp)
     sed "$1" "$2" > "$tmpfile"
@@ -588,7 +588,7 @@ submit () {
   done
 
   {
-    eval "exec $__submit_launch_lock_fd > $__submit_launch_lock"
+    eval "exec $__submit_launch_lock_fd>$__submit_launch_lock"
     flock -x $__submit_launch_lock_fd
     output=$(launch)
     ret=$?
