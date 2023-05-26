@@ -5,7 +5,6 @@ AWS CLI Wrapper for EC2 management.
 ## Requirement
 
 - [AWS CLI](https://aws.amazon.com/cli/)
-- For macOS, install [flock](https://github.com/discoteq/flock) or [util-linux](https://github.com/util-linux/util-linux)
 
 ## Installation
 
@@ -48,7 +47,9 @@ Subcommands:
   - ssh \[commands\]: Connect to an instance with mosh.
   - mosh: Connect to an instance with mosh.
   - scp <file>: Send a file to an intance.
-  - submit <file>: Launch an instance, send a fiel to the instance, execute a file in the instance, terminate the instance.
+  - submit <file>: Launch an instance, send a file to the instance, execute a file in the instance, terminate the instance.
+  - jobs: Show jobs.
+  - delete_job: delete submitted job.
 - Image (AMI) managemen:t
   - images: List up images (AMI).
   - new_image: Create a new image from an instance.
@@ -204,30 +205,4 @@ Then, automatically checked at `git commit` or run checks manually:
 
 ```
 $ pre-commit run -a
-```
-
-## ec2_submit
-
-```
-Usage: ec2_submit <ssh_user> <ssh_key> <cli-input-json> <instance-type> <script>
-or
-       ec2_submit ls
-```
-
-`ec2_submit` does:
-
-- Launch new ec2 instance
-- Copy the script to the instance
-- Run the script in the instance
-
-The script will be executed at the HOME directory, then you should write a script
-properly to manage the directory position.
-
-Jobs are managed in **~/.config/ec2/job_list**.
-There are information of existing jobs: PID of the job, Starting DateTime, Script Name, \[InstanceID,\] \[InstanceIP,\] Status.
-
-You can check by
-
-```
-$ ec2_submit ls
 ```

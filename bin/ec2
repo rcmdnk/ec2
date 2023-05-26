@@ -552,7 +552,11 @@ scp () {
 }
 
 _clear_job () {
-  _sedi "/${job_id}/d" "$__job_list"
+  if [ -n "${__ids[$__enum_instance]}" ];then
+    _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} terminating/" "$__job_list"
+    terminate
+  fi
+  _sedi "/^${job_id} /d" "$__job_list"
 }
 
 submit () {
@@ -565,7 +569,7 @@ submit () {
   local job_id
   job_id="$$ $(date +"%Y-%m-%d %H:%M:%S") $(basename "$__file")"
 
-  trap "_clear_job;exit" EXIT HUP INT QUIT ABRT SEGV TERM
+  trap "_clear_job;exit 1" HUP INT QUIT ABRT SEGV TERM
 
   echo "$job_id - - starting" >> "$__job_list"
 
@@ -592,12 +596,55 @@ submit () {
   scp
   __execute_command="bash $(basename "$__file")"
   ssh
-  terminate
+  _clear_job
 }
 
 jobs () {
   touch "$__job_list"
   _print_list "PID DATE TIME SCRIPT ID IP STATUS" "$(cat "$__job_list")"
+}
+
+delete_job () {
+  if [ ! -f "$__job_list" ];then
+    echo "No job"
+    exit 0
+  fi
+  local job_list
+  job_list=$(cat "$__job_list")
+  if [ -z "$job_list" ];then
+    echo "No job"
+    exit 0
+  fi
+
+  local job
+  local jobs
+  if [ -z "${__positional[0]}" ];then
+    _select "$(cat "$__job_list")"
+    jobs="$__selected"
+  else
+    for pid in "${__positional[@]}";do
+      job=$(echo "$job_list"|grep "^$pid ")
+      if [ -z "$job" ];then
+        echo "No job for PID: $pid"
+        continue
+      fi
+      if [ -n "$jobs" ];then
+        jobs="$jobs"$'\n'"$job"
+      else
+        jobs="$job"
+      fi
+    done
+  fi
+  local job_id
+  while read -r pid date time script instance_id instance_ip; do
+    echo "Deleting job: $pid $date $time $script $instance_id $instance_ip $status"
+    _sedi "s/$pid $date ${time}.*$/${pid} ${date} ${time} ${script} ${instance_id} ${instance_ip} deleting/" "$__job_list"
+    kill "$pid"
+    if [ "$instance_id" != "-" ];then
+      __ids[__enum_instance]="$instance_id"
+      terminate
+    fi
+  done < <(echo "$jobs")
 }
 
 images () {
