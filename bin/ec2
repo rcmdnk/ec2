@@ -577,7 +577,7 @@ submit () {
 
   trap "_clear_job;exit 1" HUP INT QUIT ABRT SEGV TERM
 
-  echo "$job_id - - starting" >> "$__job_list"
+  echo "$job_id - - waiting" >> "$__job_list"
 
   while :;do
     if [ -n "$__max_jobs" ] && (( __max_jobs > 0 )) && (( $(grep -c -e running -e launching -e terminating "$__job_list") > __max_jobs ));then
@@ -587,6 +587,7 @@ submit () {
     fi
   done
 
+  _sedi "s/${job_id}.*$/${job_id} - - starting/" "$__job_list"
   output=$(
     eval "exec $__submit_launch_lock_fd>$__submit_launch_lock"
     flock -x $__submit_launch_lock_fd
