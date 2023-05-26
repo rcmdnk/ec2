@@ -590,6 +590,7 @@ submit () {
   output=$(
     eval "exec $__submit_launch_lock_fd>$__submit_launch_lock"
     flock -x $__submit_launch_lock_fd
+    _sedi "s/${job_id}.*$/${job_id} - - launching/" "$__job_list"
     output=$(launch)
     ret=$?
     if [ $ret -ne 0 ];then
