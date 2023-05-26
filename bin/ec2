@@ -618,8 +618,7 @@ delete_job () {
     exit 0
   fi
 
-  local job
-  local jobs
+  local job jobs
   if [ -z "${__positional[0]}" ];then
     _select "$(cat "$__job_list")"
     jobs="$__selected"
@@ -637,8 +636,8 @@ delete_job () {
       fi
     done
   fi
-  local job_id
-  while read -r pid date time script instance_id instance_ip; do
+  local pid date time script instance_id instance_ip status
+  while read -r pid date time script instance_id instance_ip status; do
     echo "Deleting job: $pid $date $time $script $instance_id $instance_ip $status"
     _sedi "s/$pid $date ${time}.*$/${pid} ${date} ${time} ${script} ${instance_id} ${instance_ip} deleting/" "$__job_list"
     kill "$pid"
