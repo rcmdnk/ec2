@@ -114,13 +114,13 @@ _print_list () {
 }
 
 _sedi () {
-  {
+  (
     eval "exec $__submit_sedi_lock_fd>$__submit_sedi_lock"
     flock -x $__submit_sedi_lock_fd
     tmpfile=$(mktemp)
     sed "$1" "$2" > "$tmpfile"
     mv "$tmpfile" "$2"
-  }
+  )
 }
 
 _execute () {
@@ -587,7 +587,7 @@ submit () {
     fi
   done
 
-  {
+  output=$(
     eval "exec $__submit_launch_lock_fd>$__submit_launch_lock"
     flock -x $__submit_launch_lock_fd
     output=$(launch)
@@ -597,13 +597,14 @@ submit () {
       echo "$output"
       exit 1
     fi
-    local instance_id
-    instance_id=$(echo "$output" |tr ',' $'\n'|grep Id|cut -d '=' -f2)
-    local instance_ip
-    instance_ip=$(echo "$output" |tr ',' $'\n'|grep PrivateIpAddress|cut -d '=' -f2)
-    __ids[__enum_instance]="$instance_id"
-    _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} launching/" "$__job_list"
-  }
+    echo "$output"
+  )
+  local instance_id
+  instance_id=$(echo "$output" |tr ',' $'\n'|grep Id|cut -d '=' -f2)
+  local instance_ip
+  instance_ip=$(echo "$output" |tr ',' $'\n'|grep PrivateIpAddress|cut -d '=' -f2)
+  __ids[__enum_instance]="$instance_id"
+  _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} launching/" "$__job_list"
 
   __execute_command="exit"
   ssh
