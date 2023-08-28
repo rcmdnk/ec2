@@ -613,12 +613,13 @@ submit () {
     ret=$?
     echo "$output"
     if [ $ret -ne 0 ];then
-      echo "Failed to launch instance"
+      echo "Failed to launch instance for job: $job_id"
       exit $ret
     fi
   )
   ret=$?
   if [ $ret -ne 0 ];then
+    echo "$output" 1>&2
     exit $ret
   fi
   local instance_id
