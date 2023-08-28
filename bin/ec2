@@ -10,6 +10,7 @@ __submit_sedi_lock="${__config_dir}/submit_sedi.lock"
 __submit_sedi_lock_fd="200"
 __submit_launch_lock="${__config_dir}/submit_launch.lock"
 __submit_launch_lock_fd="201"
+__exit_at_fail=1
 __type_list_file_term=7
 __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
 __obj_name=(instance image template type)
@@ -610,13 +611,16 @@ submit () {
     _sedi "s/${job_id}.*$/${job_id} - - launching/" "$__job_list"
     output=$(launch)
     ret=$?
+    echo "$output"
     if [ $ret -ne 0 ];then
       echo "Failed to launch instance"
-      echo "$output"
-      exit 1
+      exit $ret
     fi
-    echo "$output"
   )
+  ret=$?
+  if [ $ret -ne 0 ];then
+    exit $ret
+  fi
   local instance_id
   instance_id=$(echo "$output" |tr ',' $'\n'|grep Id|cut -d '=' -f2)
   local instance_ip
