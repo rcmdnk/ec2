@@ -620,6 +620,7 @@ submit () {
   ret=$?
   if [ $ret -ne 0 ];then
     echo "$output" 1>&2
+    _clear_job
     exit $ret
   fi
   local instance_id
