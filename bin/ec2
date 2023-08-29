@@ -30,6 +30,7 @@ _read_config () {
   local var
   if [ -f "$__config" ];then
     while read -r line || [ -n "${line}" ];do
+      line="$(echo "$line"|cut -d '#' -f1)"
       line="${line#"${line%%[![:space:]]*}"}"
       line="${line%"${line##*[![:space:]]}"}"
       if [ -z "$line" ];then
