@@ -379,14 +379,14 @@ _get_name_number () {
 
 launch () {
   local name=""
-  local type=""
+  local instance_type=""
   if [ "$__no_template" != "1" ];then
     _get_ids $__enum_template 1
     _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[$__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
     # shellcheck disable=SC2206
     local result=($__execute_result)
     local template_name="${result[0]}"
-    type="${result[1]}"
+    instance_type="${result[1]}"
     name="${result[2]}"
     if [ -z "$name" ];then
       name="$template_name"
@@ -414,8 +414,8 @@ launch () {
     _select_objs $__enum_type 1
     __instance_type=$(echo "${__list[$__enum_type]}"|awk '{print $1}')
   fi
-  if [ -n "${__instance_type:-${type}}" ];then
-    local instance_type="--instance-type ${__instance_type:-${type}}"
+  if [ -n "${__instance_type:-${instance_type}}" ];then
+    local instance_type_opt="--instance-type ${__instance_type:-${instance_type}}"
   fi
   local ip_choice="PublicIpAddress"
   if [ "$__private_ip" = "1" ];then
@@ -425,7 +425,7 @@ launch () {
   if [ "$__spot_instance" = "1" ];then
     spot_instance="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions\": {\"SpotInstanceType\": \"persistent\", \"InstanceInterruptionBehavior\" : \"stop\"} }'"
   fi
-  _execute_ec2 "run-instances ${__dry_run_mode} ${spot_instance} ${__user_data:+--user-data ${__user_data}} $launch_template $cli_input_json $instance_type --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:InstanceType}\" --output text"
+  _execute_ec2 "run-instances ${__dry_run_mode} ${spot_instance} ${__user_data:+--user-data ${__user_data}} $launch_template $cli_input_json $instance_type_opt --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:InstanceType}\" --output text"
   if [ "$__dry_run" = "1" ];then
     local id="XXX"
     local ip="XXX"
@@ -435,13 +435,13 @@ launch () {
     name=${result[0]}
     local id=${result[1]}
     local ip=${result[2]}
-    type=${result[3]}
+    instance_type=${result[3]}
   fi
   local spot_instance_msg
   if [ "$__spot_instance" = "1" ];then
     spot_instance_msg=", Lifecycle=spot"
   fi
-  echo "${__dry_run_mode:+Dry run: }A new instance was launched: Name=$name, Id=$id, ${ip_choice}=$ip, Type=$type${spot_instance_msg}"
+  echo "${__dry_run_mode:+Dry run: }A new instance was launched: Name=$name, Id=$id, ${ip_choice}=$ip, Type=${instance_type}${spot_instance_msg}"
 }
 
 start () {
