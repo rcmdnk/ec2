@@ -43,10 +43,10 @@ _read_config () {
   fi
 }
 
-__options_help="[-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-M <max_jobs>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h]"
+__options_help="[-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-n <n_cpu_core>] [-H <n_thread>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-M <max_jobs>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h]"
 
 _read_arg () {
-  while getopts i:f:g:p:P:T:N:c:C:t:S:I:j:k:u:m:U:r:M:s:a:A:d:h OPT;do
+  while getopts i:f:g:p:P:T:N:c:C:t:n:H:S:I:j:k:u:m:U:r:M:s:a:A:d:h OPT;do
     case $OPT in
       "i" ) __instance_id=$OPTARG ;;
       "f" ) __name_filter=$OPTARG ;;
@@ -58,6 +58,8 @@ _read_arg () {
       "c" ) __cli_input_json=$OPTARG ;;
       "C" ) __cli_input_json_directory=$OPTARG ;;
       "t" ) __instance_type=$OPTARG ;;
+      "n" ) __n_cpu_core=$OPTARG ;;
+      "H" ) __n_thread=$OPTARG ;;
       "S" ) __spot_instance=$OPTARG ;;
       "I" ) __image_name=$OPTARG ;;
       "j" ) __image_name_filter=$OPTARG ;;
@@ -246,7 +248,7 @@ _get_type_list () {
   fi
   if [ ! -f "$__type_list_file" ];then
     # shellcheck disable=SC2089
-    local cmd="describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:MemoryInfo.SizeInMiB,d:ProcessorInfo.SupportedArchitectures[0],e:GpuInfo.Gpus[0].Name}\" --output text"
+    local cmd="describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:VCpuInfo.DefaultCores,d:VCpuInfo.DefaultThreadsPerCore,e:MemoryInfo.SizeInMiB,f:ProcessorInfo.SupportedArchitectures[0],g:GpuInfo.Gpus[0].Name}\" --output text"
     if [ -n "$filters" ];then
       cmd="$cmd $filters"
     fi
@@ -412,20 +414,30 @@ launch () {
 
   if [ "$__instance_type" == "select" ];then
     _select_objs $__enum_type 1
-    __instance_type=$(echo "${__list[$__enum_type]}"|awk '{print $1}')
+    instance_type=$(echo "${__list[$__enum_type]}"|awk '{print $1}')
   fi
-  if [ -n "${__instance_type:-${instance_type}}" ];then
-    local instance_type_opt="--instance-type ${__instance_type:-${instance_type}}"
-  fi
-  local ip_choice="PublicIpAddress"
-  if [ "$__private_ip" = "1" ];then
-    ip_choice="PrivateIpAddress"
+  if [ -n "${instance_type}" ];then
+    local instance_type_opt="--instance-type ${instance_type}"
+    local cpu_options
+    if [ -n "$__n_cpu_core" ] || [ -n "$__n_thread" ];then
+      if [ -z "$__n_cpu_core" ] || [ -z "$__n_thread" ];then
+        _get_type_list
+        read -r -a type_info <<< "${__list[$__enum_type]}"
+        cpu_core=${__n_cpu_core:-${type_info[2]}}
+        n_thread=${__n_thread:-${type_info[3]}}
+      fi
+      cpu_options="--cpu-options \"CoreCount=${cpu_core},ThreadsPerCore=${n_thread}\""
+    fi
   fi
   local spot_instance
   if [ "$__spot_instance" = "1" ];then
     spot_instance="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions\": {\"SpotInstanceType\": \"persistent\", \"InstanceInterruptionBehavior\" : \"stop\"} }'"
   fi
-  _execute_ec2 "run-instances ${__dry_run_mode} ${spot_instance} ${__user_data:+--user-data ${__user_data}} $launch_template $cli_input_json $instance_type_opt --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:InstanceType}\" --output text"
+  local ip_choice="PublicIpAddress"
+  if [ "$__private_ip" = "1" ];then
+    ip_choice="PrivateIpAddress"
+  fi
+  _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${spot_instance} ${__user_data:+--user-data ${__user_data}} $launch_template $cli_input_json $instance_type_opt --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:InstanceType}\" --output text"
   if [ "$__dry_run" = "1" ];then
     local id="XXX"
     local ip="XXX"
@@ -788,7 +800,7 @@ new_template () {
 
 types () {
   _get_type_list
-  local header="Type vCPU Mem(GiB) Arch GPU"
+  local header="Type vCPU Core Thread Mem(GiB) Arch GPU"
   local contents=""
   local line
   while read -r line || [ -n "${line}" ];do
@@ -796,10 +808,12 @@ types () {
     line=($line)
     ty=${line[0]}
     vcpu=${line[1]}
-    mem=$(echo "${line[2]}" / 1024 | command bc)
-    arch=${line[3]}
-    gpu=$(echo "${line[*]}"|cut -d' ' -f 5-|tr ' ' _)
-    contents=${contents}"$ty $vcpu $mem $arch $gpu"$'\n'
+    core=${line[2]}
+    thread=${line[3]}
+    mem=$(echo "${line[4]}" / 1024 | command bc)
+    arch=${line[5]}
+    gpu=$(echo "${line[*]}"|cut -d' ' -f 7-|tr ' ' _)
+    contents=${contents}"$ty $vcpu $core $thread $mem $arch $gpu"$'\n'
   done < <(echo "${__list[$__enum_type]}")
   _print_list "$header" "$contents"
 }
