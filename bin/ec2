@@ -198,10 +198,8 @@ _select () {
   if [ -n "$tool" ];then
     __selected=$(echo "${input[*]}"|$tool)
   else
-    orig_ifs=$IFS
-    IFS=$'\n'
-    IFS=$orig_ifs
-    select value in "${input[@]}";do
+    while IFS=$'\n' read -r line; do values+=("$line"); done < <(echo "${input[*]}")
+    select value in "${values[@]}";do
       __selected=$value
       break
     done
