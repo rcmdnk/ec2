@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-__version="v0.0.44"
-__date="05/Jul/2023"
+__version="v0.0.45"
+__date="20/Oct/2023"
 __config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
 __job_list="${__config_dir}/job_list"
@@ -46,39 +46,43 @@ _read_config () {
 __options_help="[-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-n <n_cpu_core>] [-H <n_thread>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-M <max_jobs>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h]"
 
 _read_arg () {
-  while getopts i:f:g:p:P:T:N:c:C:t:n:H:S:I:j:k:u:m:U:r:M:s:a:A:d:h OPT;do
-    case $OPT in
-      "i" ) __instance_id=$OPTARG ;;
-      "f" ) __name_filter=$OPTARG ;;
-      "g" ) __gpu_filter=$OPTARG ;;
-      "p" ) __cpu_filter=$OPTARG ;;
-      "P" ) __private_ip=$OPTARG ;;
-      "T" ) __template_id=$OPTARG ;;
-      "N" ) __no_template=$OPTARG ;;
-      "c" ) __cli_input_json=$OPTARG ;;
-      "C" ) __cli_input_json_directory=$OPTARG ;;
-      "t" ) __instance_type=$OPTARG ;;
-      "n" ) __n_cpu_core=$OPTARG ;;
-      "H" ) __n_thread=$OPTARG ;;
-      "S" ) __spot_instance=$OPTARG ;;
-      "I" ) __image_name=$OPTARG ;;
-      "j" ) __image_name_filter=$OPTARG ;;
-      "k" ) __ssh_key=$OPTARG ;;
-      "u" ) __ssh_user=$OPTARG ;;
-      "m" ) __mosh_server=$OPTARG ;;
-      "U" ) __user_data=$OPTARG ;;
-      "r" ) __running_only=$OPTARG ;;
-      "M" ) __max_jobs=$OPTARG ;;
-      "s" ) __selection_tool=$OPTARG ;;
-      "a" ) __aws_profile=$OPTARG ;;
-      "A" ) __all=$OPTARG ;;
-      "d" ) __dry_run=$OPTARG ;;
-      "h" ) echo "$HELP"; exit ;;
-      * ) echo "unknown option: $OPT" 1>&2;echo "$HELP" 1>&2; exit 1;;
-    esac
+  __positional=()
+  while [ $OPTIND -le "$#" ];do
+    if getopts i:f:g:p:P:T:N:c:C:t:n:H:S:I:j:k:u:m:U:r:M:s:a:A:d:h OPT;then
+      case $OPT in
+        "i" ) __instance_id=$OPTARG ;;
+        "f" ) __name_filter=$OPTARG ;;
+        "g" ) __gpu_filter=$OPTARG ;;
+        "p" ) __cpu_filter=$OPTARG ;;
+        "P" ) __private_ip=$OPTARG ;;
+        "T" ) __template_id=$OPTARG ;;
+        "N" ) __no_template=$OPTARG ;;
+        "c" ) __cli_input_json=$OPTARG ;;
+        "C" ) __cli_input_json_directory=$OPTARG ;;
+        "t" ) __instance_type=$OPTARG ;;
+        "n" ) __n_cpu_core=$OPTARG ;;
+        "H" ) __n_thread=$OPTARG ;;
+        "S" ) __spot_instance=$OPTARG ;;
+        "I" ) __image_name=$OPTARG ;;
+        "j" ) __image_name_filter=$OPTARG ;;
+        "k" ) __ssh_key=$OPTARG ;;
+        "u" ) __ssh_user=$OPTARG ;;
+        "m" ) __mosh_server=$OPTARG ;;
+        "U" ) __user_data=$OPTARG ;;
+        "r" ) __running_only=$OPTARG ;;
+        "M" ) __max_jobs=$OPTARG ;;
+        "s" ) __selection_tool=$OPTARG ;;
+        "a" ) __aws_profile=$OPTARG ;;
+        "A" ) __all=$OPTARG ;;
+        "d" ) __dry_run=$OPTARG ;;
+        "h" ) echo "$HELP"; exit ;;
+        * ) echo "unknown option: $OPT" 1>&2;echo "$HELP" 1>&2; exit 1;;
+      esac
+    else
+      __positional+=("${!OPTIND}")
+      ((OPTIND++))
+    fi
   done
-  shift $((OPTIND - 1))
-  __positional=("$@")
 }
 
 _print_list () {
@@ -865,7 +869,7 @@ version () {
 _read_config
 
 __subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1 | tr '\n' ' ')
-HELP="Usage: $__cmd $__options_help <subcommand>
+HELP="Usage: $__cmd $__options_help <subcommand> [options]
 
 Subcommands:
 $__subcommands
