@@ -50,33 +50,33 @@ _read_arg () {
   while [ $OPTIND -le "$#" ];do
     if getopts i:f:g:p:P:T:N:c:C:t:n:H:S:I:j:k:u:m:U:r:M:s:a:A:d:h OPT;then
       case $OPT in
-        "i" ) __instance_id=$OPTARG ;;
-        "f" ) __name_filter=$OPTARG ;;
-        "g" ) __gpu_filter=$OPTARG ;;
-        "p" ) __cpu_filter=$OPTARG ;;
-        "P" ) __private_ip=$OPTARG ;;
-        "T" ) __template_id=$OPTARG ;;
-        "N" ) __no_template=$OPTARG ;;
-        "c" ) __cli_input_json=$OPTARG ;;
-        "C" ) __cli_input_json_directory=$OPTARG ;;
-        "t" ) __instance_type=$OPTARG ;;
-        "n" ) __n_cpu_core=$OPTARG ;;
-        "H" ) __n_thread=$OPTARG ;;
-        "S" ) __spot_instance=$OPTARG ;;
-        "I" ) __image_name=$OPTARG ;;
-        "j" ) __image_name_filter=$OPTARG ;;
-        "k" ) __ssh_key=$OPTARG ;;
-        "u" ) __ssh_user=$OPTARG ;;
-        "m" ) __mosh_server=$OPTARG ;;
-        "U" ) __user_data=$OPTARG ;;
-        "r" ) __running_only=$OPTARG ;;
-        "M" ) __max_jobs=$OPTARG ;;
-        "s" ) __selection_tool=$OPTARG ;;
-        "a" ) __aws_profile=$OPTARG ;;
-        "A" ) __all=$OPTARG ;;
-        "d" ) __dry_run=$OPTARG ;;
-        "h" ) echo "$HELP"; exit ;;
-        * ) echo "unknown option: $OPT" 1>&2;echo "$HELP" 1>&2; exit 1;;
+        i ) __instance_id=$OPTARG ;;
+        f ) __name_filter=$OPTARG ;;
+        g ) __gpu_filter=$OPTARG ;;
+        p ) __cpu_filter=$OPTARG ;;
+        P ) __private_ip=$OPTARG ;;
+        T ) __template_id=$OPTARG ;;
+        N ) __no_template=$OPTARG ;;
+        c ) __cli_input_json=$OPTARG ;;
+        C ) __cli_input_json_directory=$OPTARG ;;
+        t ) __instance_type=$OPTARG ;;
+        n ) __n_cpu_core=$OPTARG ;;
+        H ) __n_thread=$OPTARG ;;
+        S ) __spot_instance=$OPTARG ;;
+        I ) __image_name=$OPTARG ;;
+        j ) __image_name_filter=$OPTARG ;;
+        k ) __ssh_key=$OPTARG ;;
+        u ) __ssh_user=$OPTARG ;;
+        m ) __mosh_server=$OPTARG ;;
+        U ) __user_data=$OPTARG ;;
+        r ) __running_only=$OPTARG ;;
+        M ) __max_jobs=$OPTARG ;;
+        s ) __selection_tool=$OPTARG ;;
+        a ) __aws_profile=$OPTARG ;;
+        A ) __all=$OPTARG ;;
+        d ) __dry_run=$OPTARG ;;
+        h ) echo "$HELP"; exit ;;
+        \? ) echo "$HELP" 1>&2; exit 1;;
       esac
     else
       __positional+=("${!OPTIND}")
