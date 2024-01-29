@@ -94,7 +94,7 @@ Available parameters are:
 - cpu_filter: Filter to pick up instance type by CPU.
 - private_ip: Set 1 to use private IP addresses instead of public IP addresses.
 - template_id: Launch template id.
-- no_template: Set 1 not tu use launch template.
+- no_template: Set 1 not to use launch template.
 - cli_input_json: A json file which has parameters to launch an instance.
 - cli_input_json_directory: A directory which has json files. If cli_input_json is not assigned and cli_input_json_directory is set, files are searched and it enters the selection mode.
 - instance_type: Instance type for launch command.
