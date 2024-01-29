@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-__version="v0.0.49"
-__date="26/Dec/2023"
+__version="v0.0.50"
+__date="01/Jan/2024"
 __config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
 __job_list="${__config_dir}/job_list"
