@@ -416,10 +416,10 @@ launch () {
 
   if [ "$__instance_type" == "select" ];then
     _select_objs $__enum_type 1
-    instance_type=$(echo "${__list[$__enum_type]}"|awk '{print $1}')
+    __instance_type=$(echo "${__list[$__enum_type]}"|awk '{print $1}')
   fi
-  if [ -n "${instance_type}" ];then
-    local instance_type_opt="--instance-type ${instance_type}"
+  if [ -n "${__instance_type}" ];then
+    local instance_type_opt="--instance-type ${__instance_type}"
     local cpu_options
     if [ -n "$__n_cpu_core" ] || [ -n "$__n_thread" ];then
       if [ -z "$__n_cpu_core" ] || [ -z "$__n_thread" ];then
