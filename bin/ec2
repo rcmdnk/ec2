@@ -24,6 +24,8 @@ __ids=()
 
 __cmd=$(basename "$0")
 
+__opt_spot="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions\": {\"SpotInstanceType\": \"persistent\", \"InstanceInterruptionBehavior\" : \"stop\"} }'"
+
 _read_config () {
   local line
   local key
@@ -43,12 +45,12 @@ _read_config () {
   fi
 }
 
-__options_help="[-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-n <n_cpu_core>] [-H <n_thread>] [-S <spot_instance>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-M <max_jobs>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h]"
+__options_help="[-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-n <n_cpu_core>] [-H <n_thread>] [-S <spot_instance>] [-R <retry_non_spot> ] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-M <max_jobs>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-h]"
 
 _read_arg () {
   __positional=()
   while [ $OPTIND -le "$#" ];do
-    if getopts i:f:g:p:P:T:N:c:C:t:n:H:S:I:j:k:u:m:U:r:M:s:a:A:d:h OPT;then
+    if getopts i:f:g:p:P:T:N:c:C:t:n:H:S:R:I:j:k:u:m:U:r:M:s:a:A:d:h OPT;then
       case $OPT in
         i ) __instance_id=$OPTARG ;;
         f ) __name_filter=$OPTARG ;;
@@ -63,6 +65,7 @@ _read_arg () {
         n ) __n_cpu_core=$OPTARG ;;
         H ) __n_thread=$OPTARG ;;
         S ) __spot_instance=$OPTARG ;;
+        R ) __retry_non_spot=$OPTARG ;;
         I ) __image_name=$OPTARG ;;
         j ) __image_name_filter=$OPTARG ;;
         k ) __ssh_key=$OPTARG ;;
@@ -164,22 +167,36 @@ _execute () {
 
 _execute_aws () {
   local cmd="aws $* ${__aws_profile:+--profile ${__aws_profile}}"
-  __exit_at_fail=0 _execute "$cmd"
-  local ret=$?
-  if [ "$ret" -ne 0 ];then
-    if [ "$ret" -ne 255 ];then
-      echo "$__execute_result" 1>&2
-      exit $ret
+  local subsubcmd
+  subsubcmd=$(echo "$*"|cut -d ' ' -f2)
+
+  while :;do
+    __exit_at_fail=0 _execute "$cmd"
+    local ret=$?
+    if [ "$ret" -eq 0 ];then
+      return 0
     fi
-    aws sso login ${__aws_profile:+--profile ${__aws_profile}} 1>&2
-    ret=$?
-    if [ "$ret" -ne 0 ];then
-      exit $ret
+    if [ "$ret" -eq 255 ];then
+      aws sso login ${__aws_profile:+--profile ${__aws_profile}} 1>&2
+      ret=$?
+      if [ "$ret" -eq 0 ];then
+        continue
+      else
+        echo "$__execute_result" 1>&2
+        exit $ret
+      fi
     fi
-    _execute "$cmd"
-    ret=$?
-  fi
-  return $ret
+    if [ "$ret" -eq 254 ] && [ "$subsubcmd" = "run-instances" ] && [ "$__retry_non_spot" != "0" ];then
+      if echo "$__execute_result"|grep -q "InsufficientInstanceCapacity";then
+        echo "$__execute_result" 1>&2
+        echo "Trying to launch non-spot instance"
+        cmd=${cmd//$__opt_spot/}
+        continue
+      fi
+    fi
+    echo "$__execute_result" 1>&2
+    exit $ret
+  done
 }
 
 _execute_ec2 () {
@@ -436,7 +453,7 @@ launch () {
   fi
   local spot_instance
   if [ "$__spot_instance" = "1" ];then
-    spot_instance="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions\": {\"SpotInstanceType\": \"persistent\", \"InstanceInterruptionBehavior\" : \"stop\"} }'"
+    spot_instance="$__opt_spot"
   fi
   local ip_choice="PublicIpAddress"
   if [ "$__private_ip" = "1" ];then
