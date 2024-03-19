@@ -189,7 +189,7 @@ _execute_aws () {
     if [ "$ret" -eq 254 ] && [ "$subsubcmd" = "run-instances" ] && [ "$__retry_non_spot" != "0" ];then
       if echo "$__execute_result"|grep -q "InsufficientInstanceCapacity";then
         echo "$__execute_result" 1>&2
-        echo "Trying to launch non-spot instance"
+        echo "Trying to launch non-spot instance" 1>&2
         cmd=${cmd//$__opt_spot/}
         continue
       fi
