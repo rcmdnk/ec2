@@ -670,7 +670,11 @@ submit () {
   _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} running/" "$__job_list"
   scp
   __execute_command="bash $(basename "$__file")"
+  echo "finishing job: $job_id"
+  _execute_ec2 "describe-instances --instance-ids ${instance_id} --query \"Reservations[*].Instances[*].StateTransitionReason\" --output text"
+  echo "Instance transition reason: $reason"
   ssh
+  echo "Clear job: $job_id"
   _clear_job
   _execute_ec2 "describe-instances --instance-ids ${instance_id} --query \"Reservations[*].Instances[*].StateTransitionReason\" --output text"
   local reason="${__execute_result}"
