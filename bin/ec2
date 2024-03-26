@@ -672,13 +672,12 @@ submit () {
   __execute_command="bash $(basename "$__file")"
   echo "finishing job: $job_id"
   _execute_ec2 "describe-instances --instance-ids ${instance_id} --query \"Reservations[*].Instances[*].StateTransitionReason\" --output text"
-  echo "Instance transition reason: $reason"
+  echo "Instance transition reason: $__execute_result"
   ssh
   echo "Clear job: $job_id"
   _clear_job
   _execute_ec2 "describe-instances --instance-ids ${instance_id} --query \"Reservations[*].Instances[*].StateTransitionReason\" --output text"
-  local reason="${__execute_result}"
-  echo "Instance finish reason: $reason"
+  echo "Instance finish reason: $__execute_result"
 }
 
 jobs () {
