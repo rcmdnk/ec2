@@ -668,6 +668,10 @@ submit () {
   __execute_command="exit"
   ssh
   _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} running/" "$__job_list"
+  _execute_ec2 "describe-instances --instance-ids ${instance_id} --query \"Reservations[*].Instances[*].InstanceType\" --output text"
+  local instance_type
+  instance_type="$__execute_result"
+  echo "Running $__file at job_id=$job_id, insatnce_id=$instance_id, instance_ip=$instance_ip, instance_type=$instance_type"
   scp
   __execute_command="bash $(basename "$__file")"
   ssh
