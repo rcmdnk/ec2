@@ -180,6 +180,9 @@ _execute_aws () {
     if [ "$ret" -eq 0 ];then
       return 0
     fi
+    if [ "$__exit_at_fail" = "0" ];then
+      return $ret
+    fi
     if [ "$ret" -eq 255 ];then
       aws sso login ${__aws_profile:+--profile ${__aws_profile}} 1>&2
       ret=$?
@@ -727,11 +730,12 @@ delete_job () {
   while read -r pid date time script instance_id instance_ip status; do
     echo "Deleting job: $pid $date $time $script $instance_id $instance_ip $status"
     _sedi "s/$pid $date ${time}.*$/${pid} ${date} ${time} ${script} ${instance_id} ${instance_ip} deleting/" "$__job_list"
-    kill "$pid"
+    kill -kill "$pid"
     if [ "$instance_id" != "-" ];then
       __ids[__enum_instance]="$instance_id"
-      terminate
+      __exit_at_fail=0 terminate
     fi
+    _sedi "/$pid /d" "$__job_list"
   done < <(echo "$jobs")
 }
 
