@@ -93,6 +93,8 @@ _print_list () {
   # shellcheck disable=SC2206
   local headers=($1)
   local contents="$2"
+  # shellcheck disable=SC2206
+  local types=($3)
   local n_cols=${#headers[@]}
   local width=()
   local i
@@ -113,7 +115,11 @@ _print_list () {
   local format=""
   for ((i=0; i<n_cols; i++));do
     format_header="${format_header:+${format_header} }%-${width[$i]}s"
-    format="${format:+${format} }%-${width[$i]}s"
+    if [ "${types[$i]}" == "d" ];then
+      format="${format:+${format} }%${width[$i]}d"
+    else
+      format="${format:+${format} }%-${width[$i]}s"
+    fi
   done
   # shellcheck disable=SC2059
   printf "$format_header\n" "${headers[@]}"
@@ -850,12 +856,12 @@ types () {
     vcpu=${line[1]}
     core=${line[2]}
     thread=${line[3]}
-    mem=$(echo "${line[4]}" / 1024 | command bc)
+    mem=$((line[4] / 1024))
     arch=${line[5]}
     gpu=$(echo "${line[*]}"|cut -d' ' -f 7-|tr ' ' _)
     contents=${contents}"$ty $vcpu $core $thread $mem $arch $gpu"$'\n'
   done < <(echo "${__list[$__enum_type]}")
-  _print_list "$header" "$contents"
+  _print_list "$header" "$contents" "s d d d d s s"
 }
 
 pricing () {
