@@ -328,7 +328,7 @@ _select_objs () {
 _get_ids () {
   local enum_obj=$1
   local only=$2
-  if [ -z "${__ids[enum_obj]}" ];then
+  if [ "${__ids[enum_obj]}" == "select" ] || [ -z "${__ids[enum_obj]}" ];then
     _select_objs "$enum_obj" "$only"
     __ids[enum_obj]="$(echo "${__list[enum_obj]}"|awk '{print $2}'|tr '\n' ' ')"
   fi
@@ -402,6 +402,7 @@ _get_name_number () {
 launch () {
   local name=""
   local instance_type=""
+
   if [ -n "${__ids[__enum_template]}" ] || [ "$__no_template" != "1" ];then
     _get_ids $__enum_template 1
     _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
@@ -415,7 +416,8 @@ launch () {
     fi
     local launch_template="--launch-template LaunchTemplateId=${__ids[__enum_template]}"
   fi
-  if [ -n "$__cli_input_json" ];then
+
+  if [ -n "$__cli_input_json" ] && [ "$__cli_input_json" != "select" ];then
     local cli_input_json="--cli-input-json $__cli_input_json"
     name="$(basename "${__cli_input_json%.json}")"
   elif [ -n "$__cli_input_json_directory" ];then
