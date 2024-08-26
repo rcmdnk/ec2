@@ -168,7 +168,7 @@ _execute () {
     if echo "$__execute_result"|grep -q DryRunOperation;then
       return
     elif [ "$__exit_at_fail" != "0" ];then
-      echo "$__execute_result" 1>&2
+      echo "ERR_CODE=$ret: $__execute_result" 1>&2
       exit $ret
     fi
   fi
@@ -195,7 +195,7 @@ _execute_aws () {
       if [ "$ret" -eq 0 ];then
         continue
       else
-        echo "$__execute_result" 1>&2
+        echo "ERR_CODE=$ret: $__execute_result" 1>&2
         exit $ret
       fi
     fi
@@ -207,7 +207,7 @@ _execute_aws () {
         continue
       fi
     fi
-    echo "$__execute_result" 1>&2
+    echo "ERR_CODE=$ret: $__execute_result" 1>&2
     exit $ret
   done
 }
@@ -661,13 +661,13 @@ submit () {
     ret=$?
     echo "$output"
     if [ $ret -ne 0 ];then
-      echo "Failed to launch instance for job: $job_id"
+      echo "ERR_CODE=$ret: Failed to launch instance for job: $job_id"
       exit $ret
     fi
   )
   ret=$?
   if [ $ret -ne 0 ];then
-    echo "$output" 1>&2
+    echo "ERR_CODE=$ret: $output" 1>&2
     _clear_job
     exit $ret
   fi
