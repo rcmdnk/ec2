@@ -616,7 +616,7 @@ _clear_job () {
 submit () {
   if ! type flock >/dev/null 2>&1;then
     echo "flock is required for 'submit'"
-    echo "Install flock by Homebrew ('brew install flock' or anything)"
+    echo "Install flock ('brew install flock' or anything)"
     exit 1
   fi
 
