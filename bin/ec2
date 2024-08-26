@@ -356,31 +356,25 @@ _instance_check () {
     _get_instance_list
   fi
   # shellcheck disable=SC2206
-  local instance_info=(${__list[$__enum_instance]})
-  __ids[__enum_instance]=${instance_info[1]}
-  __instance_ip=${instance_info[2]}
-  local status=${instance_info[3]}
-  if [ "$status" == "stopped" ];then
-    start
-  fi
-  if [ "$status" == "stopping" ];then
-    echo "${__ids[$__enum_instance]} is stopping."
-    exit 1
-  fi
-  __instance_filter="--filters Name=instance-state-name,Values=running"
-  _get_instance_list
-  status=$(echo "${__list[$__enum_instance]}"|awk '{print $4}')
-  if [ "$status" == "running" ];then
-    return
-  fi
+  __ids[__enum_instance]=$(echo "${__list[$__enum_instance]}"|awk '{print $2}')
+  __instance_ip=$(echo "${__list[$__enum_instance]}"|awk '{print $3}')
+  local status=$(echo "${__list[$__enum_instance]}"|awk '{print $4}')
+
   while :;do
-    _get_instance_list
-    status=$(echo "${__list[$__enum_instance]}"|awk '{print $4}')
     if [ "$status" == "running" ];then
-      sleep 5
       break
     fi
-    sleep 1
+    if [ "$status" == "stopped" ];then
+      start
+      sleep 5
+    elif [ "$status" == "" ];then
+      echo "${__ids[$__enum_instance]} does not exist."
+      exit 1
+    else
+      sleep 1
+    fi
+    _get_instance_list
+    status=$(echo "${__list[$__enum_instance]}"|awk '{print $4}')
   done
 }
 
