@@ -42,12 +42,12 @@ _read_config () {
   fi
 }
 
-__options_help="[-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-n <n_cpu_core>] [-H <n_thread>] [-S <spot_instance>] [-R <retry_non_spot> ] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-r <running_only>] [-M <max_jobs>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-v <verbose>] [-h]"
+__options_help="[-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-n <n_cpu_core>] [-H <n_thread>] [-S <spot_instance>] [-R <retry_non_spot> ] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-M <max_jobs>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-v <verbose>] [-h]"
 
 _read_arg () {
   __positional=()
   while [ $OPTIND -le "$#" ];do
-    if getopts i:f:g:p:P:T:N:c:C:t:n:H:S:R:I:j:k:u:m:U:r:M:s:a:A:d:v:h OPT;then
+    if getopts i:f:g:p:P:T:N:c:C:t:n:H:S:R:I:j:k:u:m:U:M:s:a:A:d:v:h OPT;then
       case $OPT in
         i ) __instance_id=$OPTARG ;;
         f ) __name_filter=$OPTARG ;;
@@ -69,7 +69,6 @@ _read_arg () {
         u ) __ssh_user=$OPTARG ;;
         m ) __mosh_server=$OPTARG ;;
         U ) __user_data=$OPTARG ;;
-        r ) __running_only=$OPTARG ;;
         M ) __max_jobs=$OPTARG ;;
         s ) __selection_tool=$OPTARG ;;
         a ) __aws_profile=$OPTARG ;;
@@ -351,9 +350,6 @@ _get_id_name_list () {
 }
 
 _instance_check () {
-  if [ "$__running_only" = 1 ];then
-    __instance_filter="--filters Name=instance-state-name,Values=running"
-  fi
   if [ -z "${__ids[$__enum_instance]}" ];then
     _select_objs $__enum_instance 1
   else
