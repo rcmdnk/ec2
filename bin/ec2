@@ -42,12 +42,12 @@ _read_config () {
   fi
 }
 
-__options_help="[-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-n <n_cpu_core>] [-H <n_thread>] [-S <spot_instance>] [-R <retry_non_spot> ] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-M <max_jobs>] [-s <selection_tool>] [-a <aws_profile>] [-A <all>] [-d <dry_run>] [-v <verbose>] [-h]"
+__options_help="[-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-n <n_cpu_core>] [-H <n_thread>] [-S <spot_instance>] [-R <retry_non_spot> ] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-M <max_jobs>] [-D <current_dir> ] [-s <selection_tool>] [-a <aws_profile>] [-A <all>] [-d <dry_run>] [-v <verbose>] [-h]"
 
 _read_arg () {
   __positional=()
   while [ $OPTIND -le "$#" ];do
-    if getopts i:f:g:p:P:T:N:c:C:t:n:H:S:R:I:j:k:u:m:U:M:s:a:A:d:v:h OPT;then
+    if getopts i:f:g:p:P:T:N:c:C:t:n:H:S:R:I:j:k:u:m:U:M:D:s:a:A:d:v:h OPT;then
       case $OPT in
         i ) __instance_id=$OPTARG ;;
         f ) __name_filter=$OPTARG ;;
@@ -70,6 +70,7 @@ _read_arg () {
         m ) __mosh_server=$OPTARG ;;
         U ) __user_data=$OPTARG ;;
         M ) __max_jobs=$OPTARG ;;
+        D ) __current_dir=$OPTARG ;;
         s ) __selection_tool=$OPTARG ;;
         a ) __aws_profile=$OPTARG ;;
         A ) __all=$OPTARG ;;
@@ -667,7 +668,10 @@ submit () {
   local instance_type="$__execute_result"
   echo "Running $__file at job_id=$job_id, insatnce_id=$instance_id, instance_ip=$instance_ip, instance_type=$instance_type"
   scp
-  __execute_command="bash $(basename "$__file")"
+  __execute_command="bash ~/$(basename "$__file")"
+  if [ "$__current_dir" = 1 ];then
+    __execute_command="cd $PWD; $__execute_command"
+  fi
   ssh
   echo "finishing job: $job_id"
   _execute_ec2 "describe-instances --instance-ids ${instance_id} --query \"Reservations[*].Instances[*].StateTransitionReason\" --output text"
