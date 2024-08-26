@@ -402,7 +402,7 @@ _get_name_number () {
 launch () {
   local name=""
   local instance_type=""
-  if [ "$__no_template" != "1" ];then
+  if [ -n "${__ids[$__enum_template]}" ] || [ "$__no_template" != "1" ];then
     _get_ids $__enum_template 1
     _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[$__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
     # shellcheck disable=SC2206
