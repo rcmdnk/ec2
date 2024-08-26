@@ -95,26 +95,26 @@ _print_list () {
   local width=()
   local i
   for ((i=0; i<n_cols; i++));do
-    width[i]=${#headers[$i]}
+    width[i]=${#headers[i]}
   done
   local line
   while read -r line || [ -n "${line}" ];do
     # shellcheck disable=SC2206
     local columns=($line)
     for ((i=0; i<n_cols; i++));do
-      if (( ${width[$i]} < ${#columns[$i]} ));then
-        width[i]=${#columns[$i]}
+      if (( width[i] < ${#columns[i]} ));then
+        width[i]=${#columns[i]}
       fi
     done
   done < <(echo -n "$contents")
   local format_header=""
   local format=""
   for ((i=0; i<n_cols; i++));do
-    format_header="${format_header:+${format_header} }%-${width[$i]}s"
-    if [ "${types[$i]}" == "d" ];then
-      format="${format:+${format} }%${width[$i]}d"
+    format_header="${format_header:+${format_header} }%-${width[i]}s"
+    if [ "${types[i]}" == "d" ];then
+      format="${format:+${format} }%${width[i]}d"
     else
-      format="${format:+${format} }%-${width[$i]}s"
+      format="${format:+${format} }%-${width[i]}s"
     fi
   done
   # shellcheck disable=SC2059
@@ -245,14 +245,14 @@ _ip_choice () {
 _get_instance_list () {
   # shellcheck disable=SC2089
   local cmd="describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:State.Name,e:InstanceType,f:InstanceLifecycle}\" --output text $__instance_filter"
-  if [ -n "${__ids[$__enum_instance]}" ];then
-    local cmd="$cmd --instance-ids ${__ids[$__enum_instance]}"
+  if [ -n "${__ids[__enum_instance]}" ];then
+    local cmd="$cmd --instance-ids ${__ids[__enum_instance]}"
   fi
   _execute_ec2 "$cmd"
   # Tab replace is needed, otherwise grep fails to filter
   __list[__enum_instance]="$(echo "$__execute_result"|tr "\t" " "|sort -k 1,3 -V)"
   if [ -n "$__name_filter" ];then
-    __list[__enum_instance]="$(echo "${__list[$__enum_instance]}"|grep "$__name_filter")"
+    __list[__enum_instance]="$(echo "${__list[__enum_instance]}"|grep "$__name_filter")"
   fi
 }
 
@@ -263,7 +263,7 @@ _get_image_list () {
   # Sometime Name includes space prefix (?)
   __list[__enum_image]="$(echo "$__execute_result"|tr "\t" " "|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
   if [ -n "$__image_name_filter" ];then
-    __list[__enum_image]="$(echo "${__list[$__enum_image]}"|grep "$__image_name_filter")"
+    __list[__enum_image]="$(echo "${__list[__enum_image]}"|grep "$__image_name_filter")"
   fi
 }
 
@@ -284,21 +284,21 @@ _get_type_list () {
     fi
     _execute_ec2 "$cmd"
     __list[__enum_type]="$(echo "$__execute_result"|tr "\t" " "|sort -V)"
-    echo "${__list[$__enum_type]}" > "$__type_list_file"
+    echo "${__list[__enum_type]}" > "$__type_list_file"
   else
     __list[__enum_type]="$(cat "$__type_list_file")"
   fi
 
   if [ -n "$__cpu_filter" ];then
-    __list[__enum_type]="$(echo "${__list[$__enum_type]}"|grep "$__cpu_filter")"
+    __list[__enum_type]="$(echo "${__list[__enum_type]}"|grep "$__cpu_filter")"
   fi
   if [ -n "$__gpu_filter" ];then
     if [ "$__gpu_filter" == 0 ];then
-      __list[__enum_type]="$(echo "${__list[$__enum_type]}"|grep None)"
+      __list[__enum_type]="$(echo "${__list[__enum_type]}"|grep None)"
     elif [ "$__gpu_filter" == 1 ];then
-      __list[__enum_type]="$(echo "${__list[$__enum_type]}"|grep -v None)"
+      __list[__enum_type]="$(echo "${__list[__enum_type]}"|grep -v None)"
     else
-      __list[__enum_type]="$(echo "${__list[$__enum_type]}"|grep "$__gpu_filter")"
+      __list[__enum_type]="$(echo "${__list[__enum_type]}"|grep "$__gpu_filter")"
     fi
   fi
 }
@@ -306,19 +306,19 @@ _get_type_list () {
 _select_objs () {
   local enum_obj=$1
   local only=$2
-  ${__get_list_func[$enum_obj]}
-  if [ -z "${__list[$enum_obj]}" ];then
-    echo "No ${__obj_name[$enum_obj]} is available"
+  ${__get_list_func[enum_obj]}
+  if [ -z "${__list[enum_obj]}" ];then
+    echo "No ${__obj_name[enum_obj]} is available"
     exit 1
   fi
-  _select "${__list[$enum_obj]}"
+  _select "${__list[enum_obj]}"
   if [ -z "$__selected" ];then
-    echo "No ${__obj_name[$enum_obj]} was selected"
+    echo "No ${__obj_name[enum_obj]} was selected"
     exit 1
   fi
   if [ "$only" = "1" ];then
     if [ "$(echo "$__selected"|wc -l|xargs)" != 1 ];then
-      echo "More than 1 ${__obj_name[$enum_obj]}s were selected"
+      echo "More than 1 ${__obj_name[enum_obj]}s were selected"
       exit 1
     fi
   fi
@@ -328,11 +328,11 @@ _select_objs () {
 _get_ids () {
   local enum_obj=$1
   local only=$2
-  if [ -z "${__ids[$enum_obj]}" ];then
+  if [ -z "${__ids[enum_obj]}" ];then
     _select_objs "$enum_obj" "$only"
-    __ids[enum_obj]="$(echo "${__list[$enum_obj]}"|awk '{print $2}'|tr '\n' ' ')"
+    __ids[enum_obj]="$(echo "${__list[enum_obj]}"|awk '{print $2}'|tr '\n' ' ')"
   fi
-  if [ -z "${__ids[$enum_obj]}" ];then
+  if [ -z "${__ids[enum_obj]}" ];then
     exit
   fi
 }
@@ -340,25 +340,25 @@ _get_ids () {
 _get_id_name_list () {
   local enum_obj=$1
   __id_name_list=""
-  if [ -n "${__list[$enum_obj]}" ];then
-    for id in ${__ids[$enum_obj]};do
-      __id_name_list="${__id_name_list:+${__id_name_list}, }${output:+${output}, }$(echo "${__list[$enum_obj]}"|grep "$id"|awk '{print $1}') ($id)"
+  if [ -n "${__list[enum_obj]}" ];then
+    for id in ${__ids[enum_obj]};do
+      __id_name_list="${__id_name_list:+${__id_name_list}, }${output:+${output}, }$(echo "${__list[enum_obj]}"|grep "$id"|awk '{print $1}') ($id)"
     done
   else
-    __id_name_list="$(echo "${__ids[$enum_obj]}"|sed -e 's/ /, /g' -e 's/, $//')"
+    __id_name_list="$(echo "${__ids[enum_obj]}"|sed -e 's/ /, /g' -e 's/, $//')"
   fi
 }
 
 _instance_check () {
-  if [ -z "${__ids[$__enum_instance]}" ];then
+  if [ -z "${__ids[__enum_instance]}" ];then
     _select_objs $__enum_instance 1
   else
     _get_instance_list
   fi
   # shellcheck disable=SC2206
-  __ids[__enum_instance]=$(echo "${__list[$__enum_instance]}"|awk '{print $2}')
-  __instance_ip=$(echo "${__list[$__enum_instance]}"|awk '{print $3}')
-  local status=$(echo "${__list[$__enum_instance]}"|awk '{print $4}')
+  __ids[__enum_instance]=$(echo "${__list[__enum_instance]}"|awk '{print $2}')
+  __instance_ip=$(echo "${__list[__enum_instance]}"|awk '{print $3}')
+  local status=$(echo "${__list[__enum_instance]}"|awk '{print $4}')
 
   while :;do
     if [ "$status" == "running" ];then
@@ -368,13 +368,13 @@ _instance_check () {
       start
       sleep 5
     elif [ "$status" == "" ];then
-      echo "${__ids[$__enum_instance]} does not exist."
+      echo "${__ids[__enum_instance]} does not exist."
       exit 1
     else
       sleep 1
     fi
     _get_instance_list
-    status=$(echo "${__list[$__enum_instance]}"|awk '{print $4}')
+    status=$(echo "${__list[__enum_instance]}"|awk '{print $4}')
   done
 }
 
@@ -402,9 +402,9 @@ _get_name_number () {
 launch () {
   local name=""
   local instance_type=""
-  if [ -n "${__ids[$__enum_template]}" ] || [ "$__no_template" != "1" ];then
+  if [ -n "${__ids[__enum_template]}" ] || [ "$__no_template" != "1" ];then
     _get_ids $__enum_template 1
-    _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[$__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
+    _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
     # shellcheck disable=SC2206
     local result=($__execute_result)
     local template_name="${result[0]}"
@@ -413,7 +413,7 @@ launch () {
     if [ -z "$name" ];then
       name="$template_name"
     fi
-    local launch_template="--launch-template LaunchTemplateId=${__ids[$__enum_template]}"
+    local launch_template="--launch-template LaunchTemplateId=${__ids[__enum_template]}"
   fi
   if [ -n "$__cli_input_json" ];then
     local cli_input_json="--cli-input-json $__cli_input_json"
@@ -427,13 +427,13 @@ launch () {
   fi
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
   _get_instance_list
-  local names=$(echo "${__list[$__enum_instance]}"|awk '{print $1}')
+  local names=$(echo "${__list[__enum_instance]}"|awk '{print $1}')
 
   name=$(_get_name_number "$name" "$names")
 
   if [ "$__instance_type" == "select" ];then
     _select_objs $__enum_type 1
-    __instance_type=$(echo "${__list[$__enum_type]}"|awk '{print $1}')
+    __instance_type=$(echo "${__list[__enum_type]}"|awk '{print $1}')
   fi
   if [ -n "${__instance_type}" ];then
     instance_type="${__instance_type}"
@@ -444,7 +444,7 @@ launch () {
     if [ -n "$__n_cpu_core" ] || [ -n "$__n_thread" ];then
       if [ -z "$__n_cpu_core" ] || [ -z "$__n_thread" ];then
         _get_type_list
-        read -r -a type_info <<< "${__list[$__enum_type]}"
+        read -r -a type_info <<< "${__list[__enum_type]}"
         cpu_core=${__n_cpu_core:-${type_info[2]}}
         n_thread=${__n_thread:-${type_info[3]}}
       fi
@@ -477,7 +477,7 @@ launch () {
 start () {
   __instance_filter="--filters Name=instance-state-name,Values=stopped"
   _get_ids $__enum_instance
-  _execute_ec2 "$__dry_run_mode start-instances --instance-ids ${__ids[$__enum_instance]}"
+  _execute_ec2 "$__dry_run_mode start-instances --instance-ids ${__ids[__enum_instance]}"
   _get_id_name_list $__enum_instance
   echo "${__dry_run_mode:+Dry run: }Started: $__id_name_list"
 }
@@ -485,7 +485,7 @@ start () {
 stop () {
   __instance_filter="--filters Name=instance-state-name,Values=running"
   _get_ids $__enum_instance
-  _execute_ec2 "$__dry_run_mode stop-instances --instance-ids ${__ids[$__enum_instance]}"
+  _execute_ec2 "$__dry_run_mode stop-instances --instance-ids ${__ids[__enum_instance]}"
   _get_id_name_list $__enum_instance
   echo "${__dry_run_mode:+Dry run: }Stopped: $__id_name_list"
 }
@@ -493,7 +493,7 @@ stop () {
 terminate () {
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
   _get_ids ${__enum_instance}
-  _execute_ec2 "describe-instances --instance-ids ${__ids[$__enum_instance]} --query \"Reservations[*].Instances[*].SpotInstanceRequestId\" --output text"
+  _execute_ec2 "describe-instances --instance-ids ${__ids[__enum_instance]} --query \"Reservations[*].Instances[*].SpotInstanceRequestId\" --output text"
   local spot_instances="${__execute_result}"
   local spot_instance_msg
   if [ -n "${spot_instances}" ];then
@@ -506,7 +506,7 @@ terminate () {
     done
     spot_instance_msg=", cancel Spot Instance Request: $spot_instance_msg"
   fi
-  _execute_ec2 "${__dry_run_mode} terminate-instances --instance-ids ${__ids[$__enum_instance]}"
+  _execute_ec2 "${__dry_run_mode} terminate-instances --instance-ids ${__ids[__enum_instance]}"
   _get_id_name_list ${__enum_instance}
   echo "${__dry_run_mode:+Dry run: }Terminated: ${__id_name_list}${spot_instance_msg}"
 }
@@ -530,7 +530,7 @@ instances () {
     local ty=${line[4]}
     local sp=${line[5]}
     contents=${contents}"$name $id $ip $st $ty $sp"$'\n'
-  done < <(echo "${__list[$__enum_instance]}")
+  done < <(echo "${__list[__enum_instance]}")
   _print_list "$header" "$contents"
 }
 
@@ -606,7 +606,7 @@ scp () {
 }
 
 _clear_job () {
-  if [ -n "${__ids[$__enum_instance]}" ];then
+  if [ -n "${__ids[__enum_instance]}" ];then
     _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} terminating/" "$__job_list"
     terminate
   fi
@@ -732,7 +732,7 @@ images () {
     id=$(echo "$line"|awk '{print $2}')
     snapshot=$(echo "$line"|awk '{print $3}')
     contents=${contents}"$name $id $snapshot"$'\n'
-  done < <(echo "${__list[$__enum_image]}")
+  done < <(echo "${__list[__enum_image]}")
   _print_list "$header" "$contents"
 }
 
@@ -740,7 +740,7 @@ new_image () {
   _get_ids $__enum_instance 1
   if [ -z "$__image_name" ];then
     _get_instance_list
-    __image_name="$(echo "${__list[$__enum_instance]}"|tr '\t' ' '|grep "${__ids[$__enum_instance]}"|awk '{print $1}')"
+    __image_name="$(echo "${__list[__enum_instance]}"|tr '\t' ' '|grep "${__ids[__enum_instance]}"|awk '{print $1}')"
   fi
   if [ -z "$__image_name" ];then
     echo "Set image_name by: ec2 -I <image_name> new_images"
@@ -748,19 +748,19 @@ new_image () {
   fi
 
   _get_image_list
-  local image_names="$(echo "${__list[$__enum_image]}"|awk '{print $1}')"
+  local image_names="$(echo "${__list[__enum_image]}"|awk '{print $1}')"
 
   __image_name=$(_get_name_number "$__image_name" "$image_names")
 
-  _execute_ec2 "${__dry_run_mode} create-image  --instance-id ${__ids[$__enum_instance]} --name $__image_name"
-  echo "${__dry_run_mode:+Dry run: }Created a new AMI $__image_name from ${__ids[$__enum_instance]}"
+  _execute_ec2 "${__dry_run_mode} create-image  --instance-id ${__ids[__enum_instance]} --name $__image_name"
+  echo "${__dry_run_mode:+Dry run: }Created a new AMI $__image_name from ${__ids[__enum_instance]}"
 }
 
 rm_image () {
   if [ -z "$__image_name" ];then
     _select_objs $__enum_image 1
-    local id=$(echo "${__list[$__enum_image]}"|awk '{print $2}')
-    local snapshot=$(echo "${__list[$__enum_image]}"|awk '{print $3}')
+    local id=$(echo "${__list[__enum_image]}"|awk '{print $2}')
+    local snapshot=$(echo "${__list[__enum_image]}"|awk '{print $3}')
   else
     _get_image_list
     while read -r line || [ -n "${line}" ];do
@@ -770,7 +770,7 @@ rm_image () {
         local snapshot=$(echo "$line"|awk '{print $3}')
         break
       fi
-    done < <(echo "${__list[$__enum_image]}")
+    done < <(echo "${__list[__enum_image]}")
     if [ -z "$id" ];then
       echo "$__image_name is not found"
       exit 1
@@ -793,22 +793,22 @@ templates () {
     name=${line[0]}
     id=${line[1]}
     contents=${contents}"$name $id"$'\n'
-  done < <(echo "${__list[$__enum_template]}")
+  done < <(echo "${__list[__enum_template]}")
   _print_list "$header" "$contents"
 }
 
 new_template () {
   _get_ids $__enum_template 1
-  _execute_ec2 "describe-launch-templates --launch-template-id ${__ids[$__enum_template]} --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
+  _execute_ec2 "describe-launch-templates --launch-template-id ${__ids[__enum_template]} --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
   local default_version="$__execute_result"
   _select_objs $__enum_image 1
-  local ami=$(echo "${__list[$__enum_image]}"|awk '{print $2}')
-  local snapshot=$(echo "${__list[$__enum_image]}"|awk '{print $3}')
-  _execute_ec2 "create-launch-template-version ${__dry_run_mode} --launch-template-id ${__ids[$__enum_template]} --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
+  local ami=$(echo "${__list[__enum_image]}"|awk '{print $2}')
+  local snapshot=$(echo "${__list[__enum_image]}"|awk '{print $3}')
+  _execute_ec2 "create-launch-template-version ${__dry_run_mode} --launch-template-id ${__ids[__enum_template]} --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
   local new_version=XXX
   if [ "${__dry_run}" != "1" ];then
     new_version="${__execute_result}"
-    _execute_ec2 "modify-launch-template --launch-template-id ${__ids[$__enum_template]} --default-version $new_version"
+    _execute_ec2 "modify-launch-template --launch-template-id ${__ids[__enum_template]} --default-version $new_version"
   fi
   _get_id_name_list $__enum_template
   echo "${__dry_run_mode:+Dry run: }Created a new template version $new_version for $__id_name_list"
@@ -830,14 +830,14 @@ types () {
     arch=${line[5]}
     gpu=$(echo "${line[*]}"|cut -d' ' -f 7-|tr ' ' _)
     contents=${contents}"$ty $vcpu $core $thread $mem $arch $gpu"$'\n'
-  done < <(echo "${__list[$__enum_type]}")
+  done < <(echo "${__list[__enum_type]}")
   _print_list "$header" "$contents" "s d d d d s s"
 }
 
 pricing () {
   if [ "$__instance_type" == "select" ] || [ -z "$__instance_type" ];then
     _select_objs $__enum_type 0
-    __instance_type=$(echo "${__list[$__enum_type]}"|awk '{print $1}')
+    __instance_type=$(echo "${__list[__enum_type]}"|awk '{print $1}')
   fi
   # shellcheck disable=SC2206
   local types=(${__instance_type//,/ })
