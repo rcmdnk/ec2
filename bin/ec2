@@ -240,13 +240,17 @@ _select () {
   fi
 }
 
-_get_instance_list () {
+_ip_choice () {
   local ip_choice="PublicIpAddress"
   if [ "$__private_ip" = "1" ];then
     ip_choice="PrivateIpAddress"
   fi
+  echo "$ip_choice"
+}
+_get_instance_list () {
   # shellcheck disable=SC2089
-  local cmd="describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:State.Name,e:InstanceType,f:InstanceLifecycle}\" --output text $__instance_filter"
+  local cmd
+  cmd="describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:State.Name,e:InstanceType,f:InstanceLifecycle}\" --output text $__instance_filter"
   if [ -n "${__ids[$__enum_instance]}" ];then
     local cmd="$cmd --instance-ids ${__ids[$__enum_instance]}"
   fi
@@ -468,11 +472,7 @@ launch () {
   if [ "$__spot_instance" = "1" ];then
     spot_instance="$__opt_spot"
   fi
-  local ip_choice="PublicIpAddress"
-  if [ "$__private_ip" = "1" ];then
-    ip_choice="PrivateIpAddress"
-  fi
-  _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${spot_instance} ${__user_data:+--user-data ${__user_data}} $launch_template $cli_input_json $instance_type_opt --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:${ip_choice},d:InstanceType}\" --output text"
+  _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${spot_instance} ${__user_data:+--user-data ${__user_data}} $launch_template $cli_input_json $instance_type_opt --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
   if [ "$__dry_run" = "1" ];then
     local id="XXX"
     local ip="XXX"
@@ -488,7 +488,7 @@ launch () {
   if [ "$__spot_instance" = "1" ];then
     spot_instance_msg=", Lifecycle=spot"
   fi
-  echo "${__dry_run_mode:+Dry run: }A new instance was launched: Name=$name, Id=$id, ${ip_choice}=$ip, Type=${instance_type}${spot_instance_msg}"
+  echo "${__dry_run_mode:+Dry run: }A new instance was launched: Name=$name, Id=$id, $(_ip_choice)=$ip, Type=${instance_type}${spot_instance_msg}"
 }
 
 start () {
@@ -674,11 +674,7 @@ submit () {
   local instance_id
   instance_id=$(echo "$output" |tr ',' $'\n'|grep Id|cut -d '=' -f2)
   local instance_ip
-  local ip_choice="PublicIpAddress"
-  if [ "$__private_ip" = "1" ];then
-    ip_choice="PrivateIpAddress"
-  fi
-  instance_ip=$(echo "$output" |tr ',' $'\n'|grep $ip_choice|cut -d '=' -f2)
+  instance_ip=$(echo "$output" |tr ',' $'\n'|grep "$(_ip_choice)"|cut -d '=' -f2)
   __ids[__enum_instance]="$instance_id"
   _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} launching/" "$__job_list"
 
