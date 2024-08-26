@@ -24,7 +24,7 @@ Or put `bin/ec2` and `bin/ec2_submit` anywhere in the PATH.
 ### Usage
 
 ```
-Usage: ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-n <n_cpu_core>] [-H <n_thread>] [-S <spot_instance>] [-R <retry_non_spot>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-M <max_jobs>] [-s <selection_tool>] [-a <aws_profile>] [-d <all>] [-d <dry_run>] [-v <verbose>] [-h] <subcommand> [options]
+Usage: ec2 [-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-n <n_cpu_core>] [-H <n_thread>] [-S <spot_instance>] [-R <retry_non_spot>] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-M <max_jobs>] [-s <selection_tool>] [-a <aws_profile>] [-A <all>] [-d <dry_run>] [-v <verbose>] [-h] <subcommand> [options]
 
 Subcommands:
 commands delete_job help images instances jobs launch list ls mosh new_image new_template price pricing rm rm_image scp ssh start stop submit templates terminate types
