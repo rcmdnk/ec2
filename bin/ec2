@@ -46,43 +46,46 @@ __options_help="[-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu
 
 _read_arg () {
   __positional=()
-  while [ $OPTIND -le "$#" ];do
-    if getopts i:f:g:p:P:T:N:c:C:t:n:H:S:R:I:j:k:u:m:U:M:D:s:a:A:d:v:h OPT;then
-      case $OPT in
-        i ) __instance_id=$OPTARG ;;
-        f ) __name_filter=$OPTARG ;;
-        g ) __gpu_filter=$OPTARG ;;
-        p ) __cpu_filter=$OPTARG ;;
-        P ) __private_ip=$OPTARG ;;
-        T ) __template_id=$OPTARG ;;
-        N ) __no_template=$OPTARG ;;
-        c ) __cli_input_json=$OPTARG ;;
-        C ) __cli_input_json_directory=$OPTARG ;;
-        t ) __instance_type=$OPTARG ;;
-        n ) __n_cpu_core=$OPTARG ;;
-        H ) __n_thread=$OPTARG ;;
-        S ) __spot_instance=$OPTARG ;;
-        R ) __retry_non_spot=$OPTARG ;;
-        I ) __image_name=$OPTARG ;;
-        j ) __image_name_filter=$OPTARG ;;
-        k ) __ssh_key=$OPTARG ;;
-        u ) __ssh_user=$OPTARG ;;
-        m ) __mosh_server=$OPTARG ;;
-        U ) __user_data=$OPTARG ;;
-        M ) __max_jobs=$OPTARG ;;
-        D ) __current_dir=$OPTARG ;;
-        s ) __selection_tool=$OPTARG ;;
-        a ) __aws_profile=$OPTARG ;;
-        A ) __all=$OPTARG ;;
-        d ) __dry_run=$OPTARG ;;
-        v ) __verbose=$OPTARG ;;
-        h ) echo "$HELP"; exit ;;
-        \? ) echo "$HELP" 1>&2; exit 1;;
-      esac
-    else
-      __positional+=("${!OPTIND}")
-      ((OPTIND++))
-    fi
+  while [[ $# -gt 0 ]]; do
+    local opt="${1//_/-}"
+    case $opt in
+      -i|--instance-id) __instance_id="$2"; shift; shift;;
+      -f|--name-filter) __name_filter="$2"; shift; shift;;
+      -g|--gpu-filter) __gpu_filter="$2"; shift; shift;;
+      -p|--cpu-filter) __cpu_filter="$2"; shift; shift;;
+      -P|--private-ip) __private_ip="$2"; shift; shift;;
+      -T|--template-id) __template_id="$2"; shift; shift;;
+      -N|--no-template) __no_template="$2"; shift; shift;;
+      -c|--cli-input-json) __cli_input_json="$2"; shift; shift;;
+      -C|--cli-input-json-directory) __cli_input_json_directory="$2"; shift; shift;;
+      -t|--instance-type) __instance_type="$2"; shift; shift;;
+      -n|--n-cpu-core) __n_cpu_core="$2"; shift; shift;;
+      -H|--n-thread) __n_thread="$2"; shift; shift;;
+      -S|--spot-instance) __spot_instance="$2"; shift; shift;;
+      -R|--retry-non-spot) __retry_non_spot="$2"; shift; shift;;
+      -I|--image-name) __image_name="$2"; shift; shift;;
+      -j|--image-name_filter) __image_name_filter="$2"; shift; shift;;
+      -k|--ssh-key) __ssh_key="$2"; shift; shift;;
+      -u|--ssh-user) __ssh_user="$2"; shift; shift;;
+      -m|--mosh-server) __mosh_server="$2"; shift; shift;;
+      -U|--user-data) __user_data="$2"; shift; shift;;
+      -M|--max-jobs) __max_jobs="$2"; shift; shift;;
+      -D|--current-dir) __current_dir="$2"; shift; shift;;
+      -s|--selection-tool) __selection_tool="$2"; shift; shift;;
+      -a|--aws-profile) __aws_profile="$2"; shift; shift;;
+      -A|--all) __all="$2"; shift; shift;;
+      -d|--dry-run) __dry_run="$2"; shift; shift;;
+      -v|--verbose) __verbose="$2"; shift; shift;;
+      -h|--help) echo "$HELP"; exit;;
+      -*)
+        echo "Unknown option: $1" 1>&2
+        exit 1
+        ;;
+      *)
+        __positional+=("$1")
+        shift
+        ;;
+    esac
   done
 }
 
