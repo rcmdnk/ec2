@@ -115,16 +115,11 @@ _execute () {
 
 _execute_aws () {
   local cmd="aws $* ${__aws_profile:+--profile ${__aws_profile}}"
-  local subsubcmd=$(echo "$*"|cut -d ' ' -f2)
-
   while :;do
     __exit_at_fail=0 _execute "$cmd"
     local ret=$?
     if [ "$ret" -eq 0 ];then
       return 0
-    fi
-    if [ "$__exit_at_fail" = "0" ];then
-      return $ret
     fi
     if [ "$ret" -eq 255 ];then
       aws sso login ${__aws_profile:+--profile ${__aws_profile}} 1>&2
@@ -136,13 +131,8 @@ _execute_aws () {
         exit $ret
       fi
     fi
-    if [ "$ret" -eq 254 ] && [ "$subsubcmd" = "run-instances" ] && [ "$__retry_non_spot" != "0" ];then
-      if echo "$__execute_result"|grep -q "InsufficientInstanceCapacity";then
-        echo "$__execute_result" 1>&2
-        echo "Trying to launch non-spot instance" 1>&2
-        cmd=${cmd//$__opt_spot/}
-        continue
-      fi
+    if [ "$__exit_at_fail" = "0" ];then
+      return $ret
     fi
     echo "ERR_CODE=$ret: $__execute_result" 1>&2
     exit $ret
@@ -410,7 +400,13 @@ launch () {
     fi
     user_data="--user-data $__user_data"
   fi
-  _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${spot_instance} ${user_data} $launch_template $cli_input_json $instance_type_opt --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
+  __exit_at_fail=0 _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${spot_instance} ${user_data} ${launch_template} ${cli_input_json} ${instance_type_opt} --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
+  ret=$?
+  if [ $ret -eq 254 ] && echo "${__execute_result}"|grep -q "InsufficientInstanceCapacity";then
+    echo "${__execute_result}" 1>&2
+    echo "Trying to launch non-spot instance" 1>&2
+    _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${user_data} ${launch_template} ${cli_input_json} ${instance_type_opt} --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
+  fi
   if [ "$__dry_run" = "1" ];then
     local id="XXX"
     local ip="XXX"
