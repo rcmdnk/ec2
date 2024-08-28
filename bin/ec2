@@ -641,12 +641,10 @@ submit () {
   ssh
   ret=$?
   echo "finishing job: $job_id, return code: $ret"
-  _execute_ec2 "describe-instances --instance-ids ${instance_id} --query \"Reservations[*].Instances[*].StateTransitionReason\" --output text"
-  echo "Instance transition reason: $__execute_result"
+  _execute_ec2 "describe-instances --instance-ids ${instance_id} --query \"Reservations[*].Instances[*].{a:State.Name,b:StateTransitionReason}\" --output text"
+  echo "Instance state: $__execute_result"
   echo "Clear job: $job_id"
   _clear_job
-  _execute_ec2 "describe-instances --instance-ids ${instance_id} --query \"Reservations[*].Instances[*].StateTransitionReason\" --output text"
-  echo "Instance finish reason: $__execute_result"
 }
 
 jobs () {
