@@ -299,7 +299,7 @@ _instance_check () {
     if [ "$status" == "stopped" ];then
       __exit_at_fail=0 start
       ret=$?
-      if [ $ret -ne 254 ] || ! echo "${__execute_result}"|grep -q "IncorrectSpotRequestState";then
+      if [ $ret -ne 0 ] && [ $ret -ne 254 ] || ! echo "${__execute_result}"|grep -q "IncorrectSpotRequestState";then
         echo "ERR_CODE=$ret: $__execute_result" 1>&2
         exit $ret
       fi
