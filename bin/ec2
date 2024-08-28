@@ -387,17 +387,17 @@ launch () {
     instance_type="${__instance_type}"
   fi
   if [ -n "${instance_type}" ];then
-    local instance_type_opt="--instance-type ${instance_type}"
-    local cpu_options
-    if [ -n "$__n_cpu_core" ] || [ -n "$__n_thread" ];then
-      if [ -z "$__n_cpu_core" ] || [ -z "$__n_thread" ];then
-        _get_type_list
-        read -r -a type_info <<< "${__list[__enum_type]}"
-        cpu_core=${__n_cpu_core:-${type_info[2]}}
-        n_thread=${__n_thread:-${type_info[3]}}
-      fi
-      cpu_options="--cpu-options \"CoreCount=${cpu_core},ThreadsPerCore=${n_thread}\""
+    instance_type_opt="--instance-type ${instance_type}"
+  fi
+  local cpu_options
+  if [ -n "$__n_cpu_core" ] || [ -n "$__n_thread" ];then
+    if [ -z "$__n_cpu_core" ] || [ -z "$__n_thread" ];then
+      _get_type_list
+      read -r -a type_info <<< "${__list[__enum_type]}"
+      cpu_core=${__n_cpu_core:-${type_info[2]}}
+      n_thread=${__n_thread:-${type_info[3]}}
     fi
+    cpu_options="--cpu-options \"CoreCount=${cpu_core},ThreadsPerCore=${n_thread}\""
   fi
   local spot_instance
   if [ "$__spot_instance" = "1" ];then
