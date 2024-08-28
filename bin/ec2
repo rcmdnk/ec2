@@ -297,7 +297,12 @@ _instance_check () {
       break
     fi
     if [ "$status" == "stopped" ];then
-      start
+      __exit_at_fail=0 start
+      ret=$?
+      if [ $ret -ne 254 ] || ! echo "${__execute_result}"|grep -q "IncorrectSpotRequestState";then
+        echo "ERR_CODE=$ret: $__execute_result" 1>&2
+        exit $ret
+      fi
       sleep 5
     elif [ "$status" == "" ];then
       echo "${__ids[__enum_instance]} does not exist."
@@ -402,10 +407,15 @@ launch () {
   fi
   __exit_at_fail=0 _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${spot_instance} ${user_data} ${launch_template} ${cli_input_json} ${instance_type_opt} --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
   ret=$?
-  if [ $ret -eq 254 ] && echo "${__execute_result}"|grep -q "InsufficientInstanceCapacity";then
-    echo "${__execute_result}" 1>&2
-    echo "Trying to launch non-spot instance" 1>&2
-    _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${user_data} ${launch_template} ${cli_input_json} ${instance_type_opt} --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
+  if [ $ret -ne 0 ];then
+    if [ $ret -eq 254 ] && echo "${__execute_result}"|grep -q "InsufficientInstanceCapacity";then
+      echo "${__execute_result}" 1>&2
+      echo "Trying to launch non-spot instance" 1>&2
+      _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${user_data} ${launch_template} ${cli_input_json} ${instance_type_opt} --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
+    else
+      echo "ERR_CODE=$ret: $__execute_result" 1>&2
+      exit $ret
+    fi
   fi
   if [ "$__dry_run" = "1" ];then
     local id="XXX"
@@ -427,8 +437,7 @@ launch () {
 
 start () {
   # Start stopped instances.
-  __instance_filter="--filters Name=instance-state-name,Values=stopped"
-  _get_ids $__enum_instance
+  __instance_filter="--filters Name=instance-state-name,Values=stopped" _get_ids $__enum_instance
   _execute_ec2 "$__dry_run_mode start-instances --instance-ids ${__ids[__enum_instance]}"
   _get_id_name_list $__enum_instance
   echo "${__dry_run_mode:+Dry run: }Started: $__id_name_list"
@@ -436,8 +445,7 @@ start () {
 
 stop () {
   # Stop running instances.
-  __instance_filter="--filters Name=instance-state-name,Values=running"
-  _get_ids $__enum_instance
+  __instance_filter="--filters Name=instance-state-name,Values=running" _get_ids $__enum_instance
   _execute_ec2 "$__dry_run_mode stop-instances --instance-ids ${__ids[__enum_instance]}"
   _get_id_name_list $__enum_instance
   echo "${__dry_run_mode:+Dry run: }Stopped: $__id_name_list"
@@ -445,8 +453,7 @@ stop () {
 
 terminate () {
   # Terminate instances.
-  __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
-  _get_ids ${__enum_instance}
+  __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped" _get_ids ${__enum_instance}
   _execute_ec2 "describe-instances --instance-ids ${__ids[__enum_instance]} --query \"Reservations[*].Instances[*].SpotInstanceRequestId\" --output text"
   local spot_instances="${__execute_result}"
   local spot_instance_msg
