@@ -625,7 +625,7 @@ submit () {
     _clear_job
     exit $ret
   fi
-  local instance_id=$(echo "$output" |tr ',' $'\n'|grep " ^Id"|cut -d '=' -f2)
+  local instance_id=$(echo "$output" |tr ',' $'\n'|grep "^ Id"|cut -d '=' -f2)
   local instance_ip=$(echo "$output" |tr ',' $'\n'|grep "^ $(_ip_choice)"|cut -d '=' -f2)
   local instance_type=$(echo "$output" |tr ',' $'\n'|grep "^ Type"|cut -d '=' -f2)
   __ids[__enum_instance]="$instance_id"
