@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2155
 
-__version="v0.1.0"
+__version="v0.1.1"
 __date="8/Aug/2024"
 __config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
