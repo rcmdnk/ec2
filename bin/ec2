@@ -634,12 +634,12 @@ submit () {
   __execute_command="exit"
   ssh
   _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} running/" "$__job_list"
-  echo "Running $__file at job_id=$job_id, insatnce_id=$instance_id, instance_ip=$instance_ip, instance_type=$instance_type"
   scp
   __execute_command="bash ~/$(basename "$__file")"
   if [ "$__current_dir" = 1 ];then
     __execute_command="cd $PWD; $__execute_command"
   fi
+  echo "Running $__file at job_id=$job_id, insatnce_id=$instance_id, instance_ip=$instance_ip, instance_type=$instance_type"
   ssh
   ret=$?
   echo "finishing job: $job_id, return code: $ret"
