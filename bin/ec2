@@ -847,7 +847,7 @@ commands () {
 
 help () {
   # Show help.
-  echo "$HELP"
+  _print_help
 }
 
 version () {
@@ -875,6 +875,11 @@ _read_config () {
 _read_arg () {
   __positional=()
   while [[ $# -gt 0 ]]; do
+    if [ "$1" = "--" ];then
+      shift
+      __positional+=("$@")
+      break
+    fi
     local opt="${1//_/-}"
     case $opt in
       -i|--instance-id) __instance_id="$2"; shift; shift;;
@@ -903,14 +908,14 @@ _read_arg () {
       -A|--all) __all="$2"; shift; shift;;
       -d|--dry-run) __dry_run="$2"; shift; shift;;
       -v|--verbose) __verbose="$2"; shift; shift;;
-      -h|--help) echo "$HELP"; exit;;
+      -h|--help) _print_help; exit;;
       -*)
         echo "Unknown option: $1" 1>&2
         exit 1
         ;;
       *)
         if [ "$1" = "help" ];then
-          echo "$HELP"
+          _print_help
           exit
         fi
         __positional+=("$1")
@@ -929,7 +934,7 @@ _opt_comments () {
 If cli_input_json is not assigned and cli_input_json_directory is set,
 files are searched and it enters the selection mode.";;
     --cpu-filter) echo "Filter to pick up instance type by CPU.";;
-    --current-dir) echo "Set 1 to use the current directory as the working directory.";;
+    --current-dir) echo "Set 1 to use the current directory as the working directory by submit.";;
     --dry-run) echo "Set 1 to run as dry run mode (modification commands are not executed.)";;
     --gpu-filter) echo "Filter to pick up instance type by GPU.";;
     --help) echo "Show help.";;
@@ -1051,7 +1056,7 @@ _print_options () {
   done
 }
 
-_make_help () {
+_print_help () {
   printf "Usage: %s <subcommand> [options]\n\n" "$__cmd"
   _print_subcommands
   echo
@@ -1062,10 +1067,8 @@ _make_help () {
 
 __subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1 | tr '\n' ' ')
 
-HELP="$(_make_help)"
-
 if [ $# -eq 0 ];then
-  echo "$HELP"
+  _print_help
   exit
 fi
 
@@ -1076,14 +1079,14 @@ __subcommand="${__positional[0]}"
 __positional=("${__positional[@]:1:$((${#__positional[@]}))}")
 
 if [ -z "$__subcommand" ];then
-  echo "$HELP"
+  _print_help
   exit 1
 fi
 
 if ! echo " $__subcommands "|grep -q " $__subcommand ";then
   echo "$__subcommand is unknown subcommand."
   echo ""
-  echo "$HELP"
+  _print_help
   exit 1
 fi
 
