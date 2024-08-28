@@ -80,7 +80,6 @@ Options:
   --n-cpu-core, -n                   Set number of CPU core of instance to set other than default number.
   --n-thread, -H                     Set 1 to disable hyper-threading.
   --name-filter, -f                  Only instances which include this value is listed.
-  --no-template, -N                  Set 1 not to use launch template.
   --private-ip, -P                   Set 1 to use private IP addresses instead of public IP addresses.
   --retry-non-spot, -R               Set 0 to disable retry to launch a non-spot instance
                                      when launching a spot instance failed.
@@ -152,8 +151,6 @@ Set `aws_profile` if you want to use other than the default profile.
 ```
 $ ec2 -t r3.large launch
 ```
-
-Then select the template with the selection too.
 
 If you give `-t select`, you can choose the instance type from the list.
 

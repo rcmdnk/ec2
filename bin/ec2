@@ -346,7 +346,7 @@ launch () {
   local name=""
   local instance_type=""
 
-  if [ -n "${__ids[__enum_template]}" ] || [ "$__no_template" != "1" ];then
+  if [ -n "${__ids[__enum_template]}" ];then
     _get_ids $__enum_template 1
     _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
     # shellcheck disable=SC2206
@@ -883,7 +883,6 @@ _read_arg () {
       -p|--cpu-filter) __cpu_filter="$2"; shift; shift;;
       -P|--private-ip) __private_ip="$2"; shift; shift;;
       -T|--template-id) __template_id="$2"; shift; shift;;
-      -N|--no-template) __no_template="$2"; shift; shift;;
       -c|--cli-input-json) __cli_input_json="$2"; shift; shift;;
       -C|--cli-input-json-directory) __cli_input_json_directory="$2"; shift; shift;;
       -t|--instance-type) __instance_type="$2"; shift; shift;;
@@ -945,7 +944,6 @@ If '' or 'select' is passed, it is selected interactively.";;
     --n-cpu-core) echo "Set number of CPU core of instance to set other than default number.";;
     --n-thread) echo "Set 1 to disable hyper-threading.";;
     --name-filter) echo "Only instances which include this value is listed.";;
-    --no-template) echo "Set 1 not to use launch template.";;
     --private-ip) echo "Set 1 to use private IP addresses instead of public IP addresses.";;
     --retry-non-spot) echo "Set 0 to disable retry to launch a non-spot instance
 when launching a spot instance failed.";;
@@ -960,7 +958,8 @@ Tools ref:
     --spot-instance) echo "Set 1 to launch a spot instance.";;
     --ssh-key) echo "Key for ssh.";;
     --ssh-user) echo "User for ssh.";;
-    --template-id) echo "Assign template id. If '' or 'select' is passed, it is selected interactively.";;
+    --template-id) echo "Assign template id. If not given, not templated is used.
+If 'select' is passed, it is selected interactively.";;
     --user-data) echo "user data file for luanch (run-instances),
 e.g: file:///path/to/your/user/data/script";;
     --verbose) echo "Set 1 to run as verbose mode (show executing commands.)";;
@@ -991,7 +990,6 @@ _opt_keys () {
     --n-cpu-core) echo --n-cpu-core, -n;;
     --n-thread) echo --n-thread, -H;;
     --name-filter) echo --name-filter, -f;;
-    --no-template) echo --no-template, -N;;
     --private-ip) echo --private-ip, -P;;
     --retry-non-spot) echo --retry-non-spot, -R;;
     --selection-tool) echo --selection-tool, -s;;
@@ -1008,7 +1006,7 @@ _opt_keys () {
   esac
 }
 
-__options=(--all --aws-profile --cli-input-json --cli-input-json-directory --cpu-filter --current-dir --dry-run --gpu-filter --help --image-name --image-name-filter --instance-id --instance-type --max-jobs --mosh-server --n-cpu-core --n-thread --name-filter --no-template --private-ip --retry-non-spot --selection-tool --spot-instance --ssh-key --ssh-user --template-id --user-data --verbose)
+__options=(--all --aws-profile --cli-input-json --cli-input-json-directory --cpu-filter --current-dir --dry-run --gpu-filter --help --image-name --image-name-filter --instance-id --instance-type --max-jobs --mosh-server --n-cpu-core --n-thread --name-filter --private-ip --retry-non-spot --selection-tool --spot-instance --ssh-key --ssh-user --template-id --user-data --verbose)
 
 _extract_comments () {
   local func="$1"
