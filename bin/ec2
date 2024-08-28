@@ -27,68 +27,6 @@ __cmd=$(basename "$0")
 
 __opt_spot="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions\": {\"SpotInstanceType\": \"persistent\", \"InstanceInterruptionBehavior\" : \"stop\"} }'"
 
-_read_config () {
-  local line
-  if [ -f "$__config" ];then
-    while read -r line || [ -n "${line}" ];do
-      line="$(echo "$line"|cut -d '#' -f1)"
-      line="${line#"${line%%[![:space:]]*}"}"
-      line="${line%"${line##*[![:space:]]}"}"
-      if [ -z "$line" ];then
-        continue
-      fi
-      eval "__${line%%=*}=${line#*=}"
-    done < "$__config"
-  fi
-}
-
-__options_help="[-i <instance_id>] [-f <name_filter>] [-g <gpu_filter>] [-p <cpu_filter>] [-P <private_ip>] [-T <template_id>] [-N <no_template>] [-c <cli_input_json> ] [-C <cli_input_json_directory>] [-t <instance_type>] [-n <n_cpu_core>] [-H <n_thread>] [-S <spot_instance>] [-R <retry_non_spot> ] [-I <image_name>] [-j <image_name_filter>] [-k <ssh_key>] [-u <ssh_user>] [-m <mosh_server>] [-U <user_data>] [-M <max_jobs>] [-D <current_dir> ] [-s <selection_tool>] [-a <aws_profile>] [-A <all>] [-d <dry_run>] [-v <verbose>] [-h]"
-
-_read_arg () {
-  __positional=()
-  while [[ $# -gt 0 ]]; do
-    local opt="${1//_/-}"
-    case $opt in
-      -i|--instance-id) __instance_id="$2"; shift; shift;;
-      -f|--name-filter) __name_filter="$2"; shift; shift;;
-      -g|--gpu-filter) __gpu_filter="$2"; shift; shift;;
-      -p|--cpu-filter) __cpu_filter="$2"; shift; shift;;
-      -P|--private-ip) __private_ip="$2"; shift; shift;;
-      -T|--template-id) __template_id="$2"; shift; shift;;
-      -N|--no-template) __no_template="$2"; shift; shift;;
-      -c|--cli-input-json) __cli_input_json="$2"; shift; shift;;
-      -C|--cli-input-json-directory) __cli_input_json_directory="$2"; shift; shift;;
-      -t|--instance-type) __instance_type="$2"; shift; shift;;
-      -n|--n-cpu-core) __n_cpu_core="$2"; shift; shift;;
-      -H|--n-thread) __n_thread="$2"; shift; shift;;
-      -S|--spot-instance) __spot_instance="$2"; shift; shift;;
-      -R|--retry-non-spot) __retry_non_spot="$2"; shift; shift;;
-      -I|--image-name) __image_name="$2"; shift; shift;;
-      -j|--image-name_filter) __image_name_filter="$2"; shift; shift;;
-      -k|--ssh-key) __ssh_key="$2"; shift; shift;;
-      -u|--ssh-user) __ssh_user="$2"; shift; shift;;
-      -m|--mosh-server) __mosh_server="$2"; shift; shift;;
-      -U|--user-data) __user_data="$2"; shift; shift;;
-      -M|--max-jobs) __max_jobs="$2"; shift; shift;;
-      -D|--current-dir) __current_dir="$2"; shift; shift;;
-      -s|--selection-tool) __selection_tool="$2"; shift; shift;;
-      -a|--aws-profile) __aws_profile="$2"; shift; shift;;
-      -A|--all) __all="$2"; shift; shift;;
-      -d|--dry-run) __dry_run="$2"; shift; shift;;
-      -v|--verbose) __verbose="$2"; shift; shift;;
-      -h|--help) echo "$HELP"; exit;;
-      -*)
-        echo "Unknown option: $1" 1>&2
-        exit 1
-        ;;
-      *)
-        __positional+=("$1")
-        shift
-        ;;
-    esac
-  done
-}
-
 _print_list () {
   # shellcheck disable=SC2206
   local headers=($1)
@@ -404,6 +342,7 @@ _get_name_number () {
 }
 
 launch () {
+  # Launch a new instance.
   local name=""
   local instance_type=""
 
@@ -481,6 +420,7 @@ launch () {
 }
 
 start () {
+  # Start stopped instances.
   __instance_filter="--filters Name=instance-state-name,Values=stopped"
   _get_ids $__enum_instance
   _execute_ec2 "$__dry_run_mode start-instances --instance-ids ${__ids[__enum_instance]}"
@@ -489,6 +429,7 @@ start () {
 }
 
 stop () {
+  # Stop running instances.
   __instance_filter="--filters Name=instance-state-name,Values=running"
   _get_ids $__enum_instance
   _execute_ec2 "$__dry_run_mode stop-instances --instance-ids ${__ids[__enum_instance]}"
@@ -497,6 +438,7 @@ stop () {
 }
 
 terminate () {
+  # Terminate instances.
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
   _get_ids ${__enum_instance}
   _execute_ec2 "describe-instances --instance-ids ${__ids[__enum_instance]} --query \"Reservations[*].Instances[*].SpotInstanceRequestId\" --output text"
@@ -518,10 +460,12 @@ terminate () {
 }
 
 rm () {
+  # Alias for terminate.
   terminate
 }
 
 instances () {
+  # List instances.
   _get_instance_list
   local header="Name Id Ip Status Type Lifecycle"
   local contents=""
@@ -541,14 +485,18 @@ instances () {
 }
 
 list () {
+  # Alias for instances.
   instances
 }
 
 ls () {
+  # Alias for instances.
   instances
 }
 
 ssh () {
+  # SSH to an instance.
+  # Use `ssh [commands] [options]`.
   cmd="${1:-ssh}"
   _instance_check
   local ssh_option=""
@@ -583,11 +531,15 @@ ssh () {
 }
 
 mosh () {
+  # Mosh to an instance.
+  # Use `mosh [commands] [options]`.
   ssh mosh
   _instance_check
 }
 
 scp () {
+  # SCP to an instance.
+  # Use `scp <file> [options]`.
   _instance_check
   local ssh_option=""
   if [ -n "$__ssh_key" ];then
@@ -620,6 +572,8 @@ _clear_job () {
 }
 
 submit () {
+  # Make a new instance and submit a job.
+  # Use `submit <file or commands> [options].
   if ! type flock >/dev/null 2>&1;then
     echo "flock is required for 'submit'"
     echo "Install flock ('brew install flock' or anything)"
@@ -686,11 +640,13 @@ submit () {
 }
 
 jobs () {
+  # List jobs.
   touch "$__job_list"
   _print_list "PID DATE TIME SCRIPT ID IP STATUS" "$(cat "$__job_list")"
 }
 
 delete_job () {
+  # Delete jobs.
   if [ ! -f "$__job_list" ];then
     echo "No job"
     exit 0
@@ -733,6 +689,7 @@ delete_job () {
 }
 
 images () {
+  # List images.
   _get_image_list
   local header="Name ImageId SnapshotId"
   local contents=""
@@ -746,6 +703,7 @@ images () {
 }
 
 new_image () {
+  # Create a new image from an instance.
   _get_ids $__enum_instance 1
   if [ -z "$__image_name" ];then
     _get_instance_list
@@ -766,6 +724,7 @@ new_image () {
 }
 
 rm_image () {
+  # Delete images.
   if [ -z "$__image_name" ];then
     _select_objs $__enum_image 1
     local id=$(echo "${__list[__enum_image]}"|awk '{print $2}')
@@ -792,6 +751,7 @@ rm_image () {
 }
 
 templates () {
+  # List templates.
   _get_template_list
   local header="Name Id"
   local contents=""
@@ -807,6 +767,7 @@ templates () {
 }
 
 new_template () {
+  # Create a new template from an image.
   _get_ids $__enum_template 1
   _execute_ec2 "describe-launch-templates --launch-template-id ${__ids[__enum_template]} --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
   local default_version="$__execute_result"
@@ -824,6 +785,7 @@ new_template () {
 }
 
 types () {
+  # List instance types.
   _get_type_list
   local header="Type vCPU Core Thread Mem(GiB) Arch GPU"
   local contents=""
@@ -844,6 +806,7 @@ types () {
 }
 
 pricing () {
+  # Show pricing of instance types.
   if [ "$__instance_type" == "select" ] || [ -z "$__instance_type" ];then
     _select_objs $__enum_type 0
     __instance_type=$(echo "${__list[__enum_type]}"|awk '{print $1}')
@@ -873,36 +836,258 @@ pricing () {
 }
 
 price () {
+  # Alias for pricing.
   pricing
 }
 
 commands () {
+  # List commands.
   echo "$__subcommands"
 }
 
 help () {
+  # Show help.
   echo "$HELP"
 }
 
 version () {
+  # Show version.
   echo "ec2 $__version $__date"
 }
 
-_read_config
+_read_config () {
+  local line
+  if [ -f "$__config" ];then
+    while read -r line || [ -n "${line}" ];do
+      line="$(echo "$line"|cut -d '#' -f1)"
+      line="${line#"${line%%[![:space:]]*}"}"
+      line="${line%"${line##*[![:space:]]}"}"
+      if [ -z "$line" ];then
+        continue
+      fi
+      local opt="${line%%=*}"
+      local val="${line#*=}"
+      eval "__${opt//-/_}=${val}"
+    done < "$__config"
+  fi
+}
+
+_read_arg () {
+  __positional=()
+  while [[ $# -gt 0 ]]; do
+    local opt="${1//_/-}"
+    case $opt in
+      -i|--instance-id) __instance_id="$2"; shift; shift;;
+      -f|--name-filter) __name_filter="$2"; shift; shift;;
+      -g|--gpu-filter) __gpu_filter="$2"; shift; shift;;
+      -p|--cpu-filter) __cpu_filter="$2"; shift; shift;;
+      -P|--private-ip) __private_ip="$2"; shift; shift;;
+      -T|--template-id) __template_id="$2"; shift; shift;;
+      -N|--no-template) __no_template="$2"; shift; shift;;
+      -c|--cli-input-json) __cli_input_json="$2"; shift; shift;;
+      -C|--cli-input-json-directory) __cli_input_json_directory="$2"; shift; shift;;
+      -t|--instance-type) __instance_type="$2"; shift; shift;;
+      -n|--n-cpu-core) __n_cpu_core="$2"; shift; shift;;
+      -H|--n-thread) __n_thread="$2"; shift; shift;;
+      -S|--spot-instance) __spot_instance="$2"; shift; shift;;
+      -R|--retry-non-spot) __retry_non_spot="$2"; shift; shift;;
+      -I|--image-name) __image_name="$2"; shift; shift;;
+      -j|--image-name_filter) __image_name_filter="$2"; shift; shift;;
+      -k|--ssh-key) __ssh_key="$2"; shift; shift;;
+      -u|--ssh-user) __ssh_user="$2"; shift; shift;;
+      -m|--mosh-server) __mosh_server="$2"; shift; shift;;
+      -U|--user-data) __user_data="$2"; shift; shift;;
+      -M|--max-jobs) __max_jobs="$2"; shift; shift;;
+      -D|--current-dir) __current_dir="$2"; shift; shift;;
+      -s|--selection-tool) __selection_tool="$2"; shift; shift;;
+      -a|--aws-profile) __aws_profile="$2"; shift; shift;;
+      -A|--all) __all="$2"; shift; shift;;
+      -d|--dry-run) __dry_run="$2"; shift; shift;;
+      -v|--verbose) __verbose="$2"; shift; shift;;
+      -h|--help) echo "$HELP"; exit;;
+      -*)
+        echo "Unknown option: $1" 1>&2
+        exit 1
+        ;;
+      *)
+        if [ "$1" = "help" ];then
+          echo "$HELP"
+          exit
+        fi
+        __positional+=("$1")
+        shift
+        ;;
+    esac
+  done
+}
+
+_opt_comments () {
+  case "$1" in
+    --all) echo "Set 1 to ignore preset filters.";;
+    --aws-profile) echo "Profile name for aws cli (if not specified, the default profile is used.)";;
+    --cli-input-json) echo "A json file which has parameters to launch an instance.";;
+    --cli-input-json-directory) echo "A directory which has json files.
+If cli_input_json is not assigned and cli_input_json_directory is set,
+files are searched and it enters the selection mode.";;
+    --cpu-filter) echo "Filter to pick up instance type by CPU.";;
+    --current-dir) echo "Set 1 to use the current directory as the working directory.";;
+    --dry-run) echo "Set 1 to run as dry run mode (modification commands are not executed.)";;
+    --gpu-filter) echo "Filter to pick up instance type by GPU.";;
+    --help) echo "Show help.";;
+    --image-name) echo "Image name for new_image/rm_image command.";;
+    --image-name-filter) echo "Filter to pick up images (AMI).";;
+    --instance-id) echo "Assign instance id to be managed.
+If '' or 'select' is passed, it is selected interactively.";;
+    --instance-type) echo "Instance type for launch command.
+If '' or 'select' is passed, it is selected interactively.";;
+    --max-jobs) echo "Maximum number of submitted jobs running in parallel.";;
+    --mosh-server) echo "Mosh server path.";;
+    --n-cpu-core) echo "Set number of CPU core of instance to set other than default number.";;
+    --n-thread) echo "Set 1 to disable hyper-threading.";;
+    --name-filter) echo "Only instances which include this value is listed.";;
+    --no-template) echo "Set 1 not to use launch template.";;
+    --private-ip) echo "Set 1 to use private IP addresses instead of public IP addresses.";;
+    --retry-non-spot) echo "Set 0 to disable retry to launch a non-spot instance
+when launching a spot instance failed.";;
+    --selection-tool) echo "Selection tool list, separated by ','.
+The default value is 'sentaku,peco,fzy,fzf'.
+The first one found is used. If nothing, bash's 'select' is used.
+Tools ref:
+  - [sentaku](https://github.com/rcmdnk/sentaku/)
+  - [peco](https://github.com/peco/peco)
+  - [fzy](https://github.com/jhawthorn/fzy)
+  - [fzf](https://github.com/junegunn/fzf)";;
+    --spot-instance) echo "Set 1 to launch a spot instance.";;
+    --ssh-key) echo "Key for ssh.";;
+    --ssh-user) echo "User for ssh.";;
+    --template-id) echo "Assign template id. If '' or 'select' is passed, it is selected interactively.";;
+    --user-data) echo "user data file for luanch (run-instances),
+e.g: file:///path/to/your/user/data/script";;
+    --verbose) echo "Set 1 to run as verbose mode (show executing commands.)";;
+    *)
+      echo "Unknown option: $1" 1>&2
+      exit 1
+      ;;
+  esac
+}
+
+_opt_keys () {
+  case "$1" in
+    --all) echo --all, -A;;
+    --aws-profile) echo --aws-profile, -a;;
+    --cli-input-json) echo --cli-input-json, -c;;
+    --cli-input-json-directory) echo --cli-input-json-directory, -C;;
+    --cpu-filter) echo --cpu-filter, -p;;
+    --current-dir) echo --current-dir, -D;;
+    --dry-run) echo --dry-run, -d;;
+    --gpu-filter) echo --gpu-filter, -g;;
+    --help) echo --help, -h;;
+    --image-name) echo --image-name, -I;;
+    --image-name-filter) echo --image-name-filter, -j;;
+    --instance-id) echo --instance-id, -i;;
+    --instance-type) echo --instance-type, -t;;
+    --max-jobs) echo --max-jobs, -M;;
+    --mosh-server) echo --mosh-server, -m;;
+    --n-cpu-core) echo --n-cpu-core, -n;;
+    --n-thread) echo --n-thread, -H;;
+    --name-filter) echo --name-filter, -f;;
+    --no-template) echo --no-template, -N;;
+    --private-ip) echo --private-ip, -P;;
+    --retry-non-spot) echo --retry-non-spot, -R;;
+    --selection-tool) echo --selection-tool, -s;;
+    --spot-instance) echo --spot-instance, -S;;
+    --ssh-key) echo --ssh-key, -k;;
+    --ssh-user) echo --ssh-user, -u;;
+    --template-id) echo --template-id, -T;;
+    --user-data) echo --user-data, -U;;
+    --verbose) echo --verbose, -v;;
+    *)
+      echo "Unknown option: $1" 1>&2
+      exit 1
+      ;;
+  esac
+}
+
+__options=(--all --aws-profile --cli-input-json --cli-input-json-directory --cpu-filter --current-dir --dry-run --gpu-filter --help --image-name --image-name-filter --instance-id --instance-type --max-jobs --mosh-server --n-cpu-core --n-thread --name-filter --no-template --private-ip --retry-non-spot --selection-tool --spot-instance --ssh-key --ssh-user --template-id --user-data --verbose)
+
+_extract_comments () {
+  local func="$1"
+  awk "/^${func} \(\)/{flag=1;next}/^}/{flag=0}flag" "$0" | awk '/^ *#/{sub(/^ *# ?/, ""); print; next} {exit}'
+}
+
+_print_explain () {
+  local value="$1"
+  local spaces="$2"
+  local name_length="$3"
+  local comments="$4"
+
+  local prefix=$(printf "%${spaces}s%-${name_length}s%s\n" "" "$value ")
+  while IFS= read -r line; do
+    printf "%s%s\n" "$prefix" "$line"
+    prefix="${prefix//?/ }"
+  done <<< "$comments"
+}
+
+_make_command_help () {
+  local func="$1"
+  local spaces="$2"
+  local name_length="$3"
+  printf "Usage: %s %s [options]\n\n" "$__cmd" "$func"
+  _make_option_help "$func"
+}
+
+_print_subcommands () {
+  echo "Subcommands:"
+  for func in $__subcommands;do
+    local comments=$(_extract_comments "$func")
+    _print_explain "$func" 2 35 "$comments"
+  done
+}
+
+_print_options () {
+  echo "Options:"
+  for opt in "${__options[@]}";do
+    local opt_keys=$(_opt_keys "$opt")
+    local comments=$(_opt_comments "$opt")
+    _print_explain "$opt_keys" 2 35 "$comments"
+  done
+}
+
+_make_help () {
+  printf "Usage: %s <subcommand> [options]\n\n" "$__cmd"
+  _print_subcommands
+  echo
+  _print_options
+}
+
+# Main
 
 __subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1 | tr '\n' ' ')
-HELP="Usage: $__cmd $__options_help <subcommand> [options]
 
-Subcommands:
-$__subcommands
-"
+HELP="$(_make_help)"
 
 if [ $# -eq 0 ];then
   echo "$HELP"
   exit
 fi
 
+_read_config
 _read_arg "$@"
+
+__subcommand="${__positional[0]}"
+__positional=("${__positional[@]:1:$((${#__positional[@]}))}")
+
+if [ -z "$__subcommand" ];then
+  echo "$HELP"
+  exit 1
+fi
+
+if ! echo " $__subcommands "|grep -q " $__subcommand ";then
+  echo "$__subcommand is unknown subcommand."
+  echo ""
+  echo "$HELP"
+  exit 1
+fi
 
 if [ "$__all" = "1" ];then
   __name_filter=""
@@ -912,21 +1097,9 @@ fi
 if [ "$__dry_run" = "1" ];then
   __dry_run_mode="--dry-run"
 fi
+
 __ids[__enum_instance]="$__instance_id"
 __ids[__enum_template]="$__template_id"
-
-__subcommand="${__positional[0]}"
-__positional=("${__positional[@]:1:$((${#__positional[@]}))}")
-if [ -z "$__subcommand" ];then
-  echo "$HELP"
-  exit 1
-fi
-if ! echo " $__subcommands "|grep -q " $__subcommand ";then
-  echo "$__subcommand is unknown subcommand."
-  echo ""
-  echo "$HELP"
-  exit 1
-fi
 
 if [ "$__subcommand" == "ssh" ];then
   __execute_command="${__positional[0]}"
