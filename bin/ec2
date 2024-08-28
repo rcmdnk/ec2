@@ -576,7 +576,9 @@ scp () {
 _clear_job () {
   if [ -n "${__ids[__enum_instance]}" ];then
     _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} terminating/" "$__job_list"
-    terminate
+    if [ "$__remain_instance" != "1" ];then
+      terminate
+    fi
   fi
   _sedi "/^${job_id} /d" "$__job_list"
 }
@@ -890,33 +892,34 @@ _read_arg () {
     fi
     local opt="${1//_/-}"
     case $opt in
-      -i|--instance-id) __instance_id="$2"; shift; shift;;
-      -f|--name-filter) __name_filter="$2"; shift; shift;;
-      -g|--gpu-filter) __gpu_filter="$2"; shift; shift;;
-      -p|--cpu-filter) __cpu_filter="$2"; shift; shift;;
-      -P|--private-ip) __private_ip="$2"; shift; shift;;
-      -T|--template-id) __template_id="$2"; shift; shift;;
-      -c|--cli-input-json) __cli_input_json="$2"; shift; shift;;
-      -C|--cli-input-json-directory) __cli_input_json_directory="$2"; shift; shift;;
-      -t|--instance-type) __instance_type="$2"; shift; shift;;
-      -n|--n-cpu-core) __n_cpu_core="$2"; shift; shift;;
-      -H|--n-thread) __n_thread="$2"; shift; shift;;
-      -S|--spot-instance) __spot_instance="$2"; shift; shift;;
-      -R|--retry-non-spot) __retry_non_spot="$2"; shift; shift;;
-      -I|--image-name) __image_name="$2"; shift; shift;;
-      -j|--image-name_filter) __image_name_filter="$2"; shift; shift;;
-      -k|--ssh-key) __ssh_key="$2"; shift; shift;;
-      -u|--ssh-user) __ssh_user="$2"; shift; shift;;
-      -m|--mosh-server) __mosh_server="$2"; shift; shift;;
-      -U|--user-data) __user_data="$2"; shift; shift;;
-      -M|--max-jobs) __max_jobs="$2"; shift; shift;;
-      -D|--current-dir) __current_dir="$2"; shift; shift;;
-      -s|--selection-tool) __selection_tool="$2"; shift; shift;;
-      -a|--aws-profile) __aws_profile="$2"; shift; shift;;
-      -A|--all) __all="$2"; shift; shift;;
-      -d|--dry-run) __dry_run="$2"; shift; shift;;
-      -v|--verbose) __verbose="$2"; shift; shift;;
-      -h|--help) _print_help; exit;;
+      --all|-A) __all="$2"; shift; shift;;
+      --aws-profile|-a) __aws_profile="$2"; shift; shift;;
+      --cli-input-json-directory|-C) __cli_input_json_directory="$2"; shift; shift;;
+      --cli-input-json|-c) __cli_input_json="$2"; shift; shift;;
+      --cpu-filter|-p) __cpu_filter="$2"; shift; shift;;
+      --current-dir|-D) __current_dir="$2"; shift; shift;;
+      --dry-run|-d) __dry_run="$2"; shift; shift;;
+      --gpu-filter|-g) __gpu_filter="$2"; shift; shift;;
+      --help|-h) _print_help; exit;;
+      --image-name_filter|-j) __image_name_filter="$2"; shift; shift;;
+      --image-name|-I) __image_name="$2"; shift; shift;;
+      --instance-id|-i) __instance_id="$2"; shift; shift;;
+      --instance-type|-t) __instance_type="$2"; shift; shift;;
+      --max-jobs|-M) __max_jobs="$2"; shift; shift;;
+      --mosh-server|-m) __mosh_server="$2"; shift; shift;;
+      --n-cpu-core|-n) __n_cpu_core="$2"; shift; shift;;
+      --n-thread|-H) __n_thread="$2"; shift; shift;;
+      --name-filter|-f) __name_filter="$2"; shift; shift;;
+      --private-ip|-P) __private_ip="$2"; shift; shift;;
+      --remain-instance|-r) __remain_instance="$2"; shift; shift;;
+      --retry-non-spot|-R) __retry_non_spot="$2"; shift; shift;;
+      --selection-tool|-s) __selection_tool="$2"; shift; shift;;
+      --spot-instance|-S) __spot_instance="$2"; shift; shift;;
+      --ssh-key|-k) __ssh_key="$2"; shift; shift;;
+      --ssh-user|-u) __ssh_user="$2"; shift; shift;;
+      --template-id|-T) __template_id="$2"; shift; shift;;
+      --user-data|-U) __user_data="$2"; shift; shift;;
+      --verbose|-v) __verbose="$2"; shift; shift;;
       -*)
         echo "Unknown option: $1" 1>&2
         exit 1
@@ -958,6 +961,7 @@ If '' or 'select' is passed, it is selected interactively.";;
     --n-thread) echo "Set 1 to disable hyper-threading.";;
     --name-filter) echo "Only instances which include this value is listed.";;
     --private-ip) echo "Set 1 to use private IP addresses instead of public IP addresses.";;
+    --remain-instance) echo "Set 1 to keep instances after finishing submitted jobs.";;
     --retry-non-spot) echo "Set 0 to disable retry to launch a non-spot instance
 when launching a spot instance failed.";;
     --selection-tool) echo "Selection tool list, separated by ','.
@@ -1004,6 +1008,7 @@ _opt_keys () {
     --n-thread) echo --n-thread, -H;;
     --name-filter) echo --name-filter, -f;;
     --private-ip) echo --private-ip, -P;;
+    --remain-instance) echo --remain-instance;;
     --retry-non-spot) echo --retry-non-spot, -R;;
     --selection-tool) echo --selection-tool, -s;;
     --spot-instance) echo --spot-instance, -S;;
@@ -1013,13 +1018,11 @@ _opt_keys () {
     --user-data) echo --user-data, -U;;
     --verbose) echo --verbose, -v;;
     *)
-      echo "Unknown option: $1" 1>&2
-      exit 1
-      ;;
+      echo "$1";;
   esac
 }
 
-__options=(--all --aws-profile --cli-input-json --cli-input-json-directory --cpu-filter --current-dir --dry-run --gpu-filter --help --image-name --image-name-filter --instance-id --instance-type --max-jobs --mosh-server --n-cpu-core --n-thread --name-filter --private-ip --retry-non-spot --selection-tool --spot-instance --ssh-key --ssh-user --template-id --user-data --verbose)
+__options=(--all --aws-profile --cli-input-json --cli-input-json-directory --cpu-filter --current-dir --dry-run --gpu-filter --help --image-name --image-name-filter --instance-id --instance-type --max-jobs --mosh-server --n-cpu-core --n-thread --name-filter --private-ip --remain-instance --retry-non-spot --selection-tool --spot-instance --ssh-key --ssh-user --template-id --user-data --verbose)
 
 _extract_comments () {
   local func="$1"
