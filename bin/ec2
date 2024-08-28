@@ -361,9 +361,12 @@ launch () {
   fi
 
   if [ -n "$__cli_input_json" ] && [ "$__cli_input_json" != "select" ];then
+    if [[ ! "$__cli_input_json" =~ ^file// ]];then
+      __cli_input_json="file://$__cli_input_json"
+    fi
     local cli_input_json="--cli-input-json $__cli_input_json"
     name="$(basename "${__cli_input_json%.json}")"
-  elif [ -n "$__cli_input_json_directory" ];then
+  elif [ "$__cli_input_json"  = "select" ];then
     _select "$(command ls "$__cli_input_json_directory")"
     if [ -n "$__selected" ];then
       local cli_input_json="--cli-input-json file://$__cli_input_json_directory/$__selected"
@@ -400,7 +403,14 @@ launch () {
   if [ "$__spot_instance" = "1" ];then
     spot_instance="$__opt_spot"
   fi
-  _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${spot_instance} ${__user_data:+--user-data ${__user_data}} $launch_template $cli_input_json $instance_type_opt --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
+  local user_data
+  if [ -n "$__user_data" ];then
+    if [[ ! "$__user_data" =~ ^file// ]];then
+      __user_data="file://$__user_data"
+    fi
+    user_data="--user-data $__user_data"
+  fi
+  _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${spot_instance} ${user_data} $launch_template $cli_input_json $instance_type_opt --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
   if [ "$__dry_run" = "1" ];then
     local id="XXX"
     local ip="XXX"
@@ -613,16 +623,15 @@ submit () {
     _clear_job
     exit $ret
   fi
-  local instance_id=$(echo "$output" |tr ',' $'\n'|grep Id|cut -d '=' -f2)
-  local instance_ip=$(echo "$output" |tr ',' $'\n'|grep "$(_ip_choice)"|cut -d '=' -f2)
+  local instance_id=$(echo "$output" |tr ',' $'\n'|grep " ^Id"|cut -d '=' -f2)
+  local instance_ip=$(echo "$output" |tr ',' $'\n'|grep "^ $(_ip_choice)"|cut -d '=' -f2)
+  local instance_type=$(echo "$output" |tr ',' $'\n'|grep "^ Type"|cut -d '=' -f2)
   __ids[__enum_instance]="$instance_id"
   _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} launching/" "$__job_list"
 
   __execute_command="exit"
   ssh
   _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} running/" "$__job_list"
-  _execute_ec2 "describe-instances --instance-ids ${instance_id} --query \"Reservations[*].Instances[*].InstanceType\" --output text"
-  local instance_type="$__execute_result"
   echo "Running $__file at job_id=$job_id, insatnce_id=$instance_id, instance_ip=$instance_ip, instance_type=$instance_type"
   scp
   __execute_command="bash ~/$(basename "$__file")"
@@ -630,7 +639,8 @@ submit () {
     __execute_command="cd $PWD; $__execute_command"
   fi
   ssh
-  echo "finishing job: $job_id"
+  ret=$?
+  echo "finishing job: $job_id, return code: $ret"
   _execute_ec2 "describe-instances --instance-ids ${instance_id} --query \"Reservations[*].Instances[*].StateTransitionReason\" --output text"
   echo "Instance transition reason: $__execute_result"
   echo "Clear job: $job_id"
