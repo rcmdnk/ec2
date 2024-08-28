@@ -26,6 +26,8 @@ Or put `bin/ec2` and `bin/ec2_submit` anywhere in the PATH.
 Usage: ec2 <subcommand> \[options\]
 
 ```
+Usage: ec2 <subcommand> [options]
+
 Subcommands:
   commands                           List commands.
   delete_job                         Delete jobs.
@@ -65,7 +67,7 @@ Options:
                                      If cli_input_json is not assigned and cli_input_json_directory is set,
                                      files are searched and it enters the selection mode.
   --cpu-filter, -p                   Filter to pick up instance type by CPU.
-  --current-dir, -D                  Set 1 to use the current directory as the working directory.
+  --current-dir, -D                  Set 1 to use the current directory as the working directory by submit.
   --dry-run, -d                      Set 1 to run as dry run mode (modification commands are not executed.)
   --gpu-filter, -g                   Filter to pick up instance type by GPU.
   --help, -h                         Show help.
@@ -81,6 +83,7 @@ Options:
   --n-thread, -H                     Set 1 to disable hyper-threading.
   --name-filter, -f                  Only instances which include this value is listed.
   --private-ip, -P                   Set 1 to use private IP addresses instead of public IP addresses.
+  --remain-instance                  Set 1 to keep instances after finishing submitted jobs.
   --retry-non-spot, -R               Set 0 to disable retry to launch a non-spot instance
                                      when launching a spot instance failed.
   --selection-tool, -s               Selection tool list, separated by ','.
@@ -94,7 +97,8 @@ Options:
   --spot-instance, -S                Set 1 to launch a spot instance.
   --ssh-key, -k                      Key for ssh.
   --ssh-user, -u                     User for ssh.
-  --template-id, -T                  Assign template id. If '' or 'select' is passed, it is selected interactively.
+  --template-id, -T                  Assign template id. If not given, not templated is used.
+                                     If 'select' is passed, it is selected interactively.
   --user-data, -U                    user data file for luanch (run-instances),
                                      e.g: file:///path/to/your/user/data/script
   --verbose, -v                      Set 1 to run as verbose mode (show executing commands.)
