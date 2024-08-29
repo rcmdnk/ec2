@@ -767,7 +767,7 @@ rm_image () {
   _execute_ec2 "deregister-image ${__dry_run_mode} --image-id $id"
   _execute_ec2 "delete-snapshot ${__dry_run_mode} --snapshot-id $snapshot"
   _get_id_name_list $__enum_image
-  echo "${__dry_run_mode:+Dry run: }Deleted: AMI=$__id_name_list, Snapshot=$snapshot"
+  echo "${__dry_run_mode:+Dry run: }Deleted: AMI=$id, Snapshot=$snapshot"
 }
 
 templates () {
