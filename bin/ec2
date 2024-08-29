@@ -274,7 +274,7 @@ _get_id_name_list () {
   __id_name_list=""
   if [ -n "${__list[enum_obj]}" ];then
     for id in ${__ids[enum_obj]};do
-      __id_name_list="${__id_name_list:+${__id_name_list}, }${output:+${output}, }$(echo "${__list[enum_obj]}"|grep "$id"|awk '{print $1}') ($id)"
+      __id_name_list="${__id_name_list:+${__id_name_list}, }$(echo "${__list[enum_obj]}"|grep "$id"|awk '{print $1}') ($id)"
     done
   else
     __id_name_list="$(echo "${__ids[enum_obj]}"|sed -e 's/ /, /g' -e 's/, $//')"
@@ -745,29 +745,12 @@ new_image () {
 
 rm_image () {
   # Delete images.
-  if [ -z "$__image_name" ];then
-    _select_objs $__enum_image 1
-    local id=$(echo "${__list[__enum_image]}"|awk '{print $2}')
-    local snapshot=$(echo "${__list[__enum_image]}"|awk '{print $3}')
-  else
-    _get_image_list
-    while read -r line || [ -n "${line}" ];do
-      local name=$(echo "$line"|awk '{print $1}')
-      if [ "$name" ==  "$__image_name" ];then
-        local id=$(echo "$line"|awk '{print $2}')
-        local snapshot=$(echo "$line"|awk '{print $3}')
-        break
-      fi
-    done < <(echo "${__list[__enum_image]}")
-    if [ -z "$id" ];then
-      echo "$__image_name is not found"
-      exit 1
-    fi
-  fi
-  _execute_ec2 "deregister-image ${__dry_run_mode} --image-id $id"
+  _get_ids $__enum_image 1
+  local snapshot=$(echo "${__list[__enum_image]}"|awk '{print $3}')
+  _execute_ec2 "deregister-image ${__dry_run_mode} --image-id ${__ids[__enum_image]}"
   _execute_ec2 "delete-snapshot ${__dry_run_mode} --snapshot-id $snapshot"
   _get_id_name_list $__enum_image
-  echo "${__dry_run_mode:+Dry run: }Deleted: AMI=$id, Snapshot=$snapshot"
+  echo "${__dry_run_mode:+Dry run: }Deleted: AMI=$__id_name_list, Snapshot=$snapshot"
 }
 
 templates () {
@@ -911,8 +894,9 @@ _read_arg () {
       --dry-run|-d) __dry_run="$2"; shift; shift;;
       --gpu-filter|-g) __gpu_filter="$2"; shift; shift;;
       --help|-h) _print_help; exit;;
-      --image-name_filter|-j) __image_name_filter="$2"; shift; shift;;
+      --image-id) __image_id="$2"; shift; shift;;
       --image-name|-I) __image_name="$2"; shift; shift;;
+      --image-name_filter|-j) __image_name_filter="$2"; shift; shift;;
       --instance-id|-i) __instance_id="$2"; shift; shift;;
       --instance-type|-t) __instance_type="$2"; shift; shift;;
       --max-jobs|-M) __max_jobs="$2"; shift; shift;;
@@ -1008,6 +992,7 @@ _opt_keys () {
     --dry-run) echo --dry-run, -d;;
     --gpu-filter) echo --gpu-filter, -g;;
     --help) echo --help, -h;;
+    --image-id) echo --image-id, -I;;
     --image-name) echo --image-name, -I;;
     --image-name-filter) echo --image-name-filter, -j;;
     --instance-id) echo --instance-id, -i;;
@@ -1032,7 +1017,7 @@ _opt_keys () {
   esac
 }
 
-__options=(--all --aws-profile --cli-input-json --cli-input-json-directory --cpu-filter --current-dir --dry-run --gpu-filter --help --image-name --image-name-filter --instance-id --instance-type --max-jobs --mosh-server --n-cpu-core --n-thread --name-filter --private-ip --remain-instance --retry-non-spot --selection-tool --spot-instance --ssh-key --ssh-user --template-id --user-data --verbose)
+__options=(--all --aws-profile --cli-input-json --cli-input-json-directory --cpu-filter --current-dir --dry-run --gpu-filter --help --image-id --image-name --image-name-filter --instance-id --instance-type --max-jobs --mosh-server --n-cpu-core --n-thread --name-filter --private-ip --remain-instance --retry-non-spot --selection-tool --spot-instance --ssh-key --ssh-user --template-id --user-data --verbose)
 
 _extract_comments () {
   local func="$1"
@@ -1121,6 +1106,7 @@ if [ "$__dry_run" = "1" ];then
 fi
 
 __ids[__enum_instance]="$__instance_id"
+__ids[__enum_image]="$__image_id"
 __ids[__enum_template]="$__template_id"
 
 if [ "$__subcommand" == "ssh" ];then
