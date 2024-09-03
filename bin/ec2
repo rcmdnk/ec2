@@ -682,16 +682,13 @@ submit () {
     eval "exec $__submit_launch_lock_fd>$__submit_launch_lock"
     flock -x $__submit_launch_lock_fd
     _sedi "s/${job_id}.*$/${job_id} - - launching/" "$__job_list"
-    while :;do
-      output=$(launch)
-      ret=$?
-      echo "$output"
-      if [ $ret -eq 0 ];then
-        break
-      fi
+    output=$(launch)
+    ret=$?
+    echo "$output"
+    if [ $ret -ne 0 ];then
       echo "ERR_CODE=$ret: Failed to launch instance for job: $job_id"
       exit $ret
-    done
+    fi
   )
   ret=$?
   if [ $ret -ne 0 ];then
