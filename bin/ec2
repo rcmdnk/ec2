@@ -14,6 +14,7 @@ __submit_launch_lock_fd="201"
 __exit_at_fail=1
 __type_list_file_term=7
 __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
+__n_cli_input_json=0
 __obj_name=(instance image template type)
 __get_list_func=(_get_instance_list _get_image_list _get_template_list _get_type_list)
 __enum_instance=0
@@ -336,50 +337,78 @@ _get_name_number () {
   echo "$name"
 }
 
-launch () {
-  # Launch a new instance.
-  local name=""
-  local instance_type=""
-
+_get_template () {
   if [ -n "${__ids[__enum_template]}" ];then
     _get_ids $__enum_template 1
     _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
     # shellcheck disable=SC2206
     local result=($__execute_result)
-    local template_name="${result[0]}"
-    instance_type="${result[1]}"
-    name="${result[2]}"
+    __template_name="${result[0]}"
+    __tempalte_instance_type="${result[1]}"
+    __template_name_name="${result[2]}"
     if [ -z "$name" ];then
-      name="$template_name"
+      __template_name_name="$template_name"
     fi
-    local launch_template="--launch-template LaunchTemplateId=${__ids[__enum_template]}"
+    __launch_template="--launch-template LaunchTemplateId=${__ids[__enum_template]}"
   fi
+}
 
+_get_cli_input_jsons () {
   if [ "$__cli_input_json"  = "select" ];then
+    if [ -z "$__cli_input_json_directory" ];then
+      echo "Set cli_input_json_directory by: ec2 -C <cli_input_json_directory> <command>"
+      exit 1
+    fi
     _select "$(command ls "$__cli_input_json_directory")"
-    if [ -n "$__selected" ];then
-      __cli_input_json="$__selected"
+    __cli_input_json="$__selected"
+  fi
+  # shellcheck disable=SC2086
+  read -r -a __cli_input_json_list <<< "$(echo $__cli_input_json | tr "," " ")"
+}
+
+_get_cli_input_json_opt () {
+  _get_cli_input_jsons
+  if [ "${#__cli_input_json_list[@]}" -eq 0 ];then
+    __cli_input_json_opt=""
+    return
+  fi
+  if ( $__n_cli_input_json >= ${#__cli_input_json_list[@]} );then
+    echo "No cli_input_json is available @ $__n_cli_input_json"
+    exit 1
+  fi
+  local json=${__cli_input_json_list[__n_cli_input_json]}
+  if [[ ! "$json" =~ ^file:// ]];then
+    if [ -f "$json" ];then
+      json="file://$json"
+    elif [ -f "$__cli_input_json_directory/$json" ];then
+      json="file://$__cli_input_json_directory/$json"
+    else
+      echo "cli_input_json is not found: $json" 1>&2
+      exit 1
     fi
   fi
-  if [ -n "$__cli_input_json" ];then
-    name="$(basename "${__cli_input_json%.json}")"
-    if [[ ! "$__cli_input_json" =~ ^file:// ]];then
-      if [ -f "$__cli_input_json" ];then
-        __cli_input_json="file://$__cli_input_json"
-      elif [ -f "$__cli_input_json_directory/$__cli_input_json" ];then
-        __cli_input_json="file://$__cli_input_json_directory/$__cli_input_json"
-      else
-        echo "cli_input_json is not found: $__cli_input_json" 1>&2
-        exit 1
-      fi
-    fi
-    local cli_input_json="--cli-input-json $__cli_input_json"
-  fi
-  __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
-  _get_instance_list
+  __cli_input_json_opt="--cli-input-json $json"
+}
+
+launch () {
+  # Launch a new instance.
+  local name=""
+  local instance_type=""
+  __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped" _get_instance_list
   local names=$(echo "${__list[__enum_instance]}"|awk '{print $1}')
 
-  name=$(_get_name_number "$name" "$names")
+  _get_template
+  if [ -n "$__template_name" ];then
+    local template_name="$__template_name"
+    instance_type="$__tempalte_instance_type"
+    name="$__template_name_name"
+    local launch_template="$__launch_template"
+  fi
+  _get_cli_input_jsons
+  if [ -z "$__template_name" ] && [ -z "${__cli_input_json_list[*]}" ];then
+    echo "Need at least template_id or cli_input_json" 1>&2
+    exit 1
+  fi
 
   if [ "$__instance_type" == "select" ];then
     _select_objs $__enum_type 1
@@ -401,10 +430,6 @@ launch () {
     fi
     cpu_options="--cpu-options \"CoreCount=${cpu_core},ThreadsPerCore=${n_thread}\""
   fi
-  local spot_instance
-  if [ "$__spot_instance" = "1" ];then
-    spot_instance="$__opt_spot"
-  fi
   local user_data
   if [ -n "$__user_data" ];then
     if [[ ! "$__user_data" =~ ^file:// ]];then
@@ -412,18 +437,54 @@ launch () {
     fi
     user_data="--user-data $__user_data"
   fi
-  __exit_at_fail=0 _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${spot_instance} ${user_data} ${launch_template} ${cli_input_json} ${instance_type_opt} --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
-  ret=$?
-  if [ $ret -ne 0 ];then
-    if [ $ret -eq 254 ] && echo "${__execute_result}"|grep -q "InsufficientInstanceCapacity";then
-      echo "${__execute_result}" 1>&2
-      echo "Trying to launch non-spot instance" 1>&2
-      _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${user_data} ${launch_template} ${cli_input_json} ${instance_type_opt} --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
-    else
-      echo "ERR_CODE=$ret: $__execute_result" 1>&2
-      exit $ret
-    fi
+
+  local spot_instance
+  if [ "$__spot_instance" = 1 ];then
+    spot_instance="$__opt_spot"
+  else
+    __spot_instance=0
   fi
+
+  while [ "$__spot_instance" -ge 0 ];do
+    if [ "${#__cli_input_json_list[@]}" -eq 0 ];then
+      __n_cli_input_json=-1
+    fi
+    while [ "$__n_cli_input_json" -lt "${#__cli_input_json_list[@]}" ];do
+      if [ "$__n_cli_input_json" -gt 0 ];then
+        echo "Try to launch next cli_input_json (${__cli_input_json_list[__n_cli_input_json]})" 1>&2
+      fi
+      _get_cli_input_json_opt
+      if [ -n "$__cli_input_json_opt" ];then
+        name=$(basename "$(echo "${__cli_input_json_opt}"|cut -d ' ' -f 2)")
+        name="${name%.json}"
+      fi
+      name=$(_get_name_number "$name" "$names")
+
+      __exit_at_fail=0 _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${spot_instance} ${user_data} ${launch_template} ${__cli_input_json_opt} ${instance_type_opt} --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
+      ret=$?
+      if [ "$ret" -eq 0 ];then
+        break
+      fi
+      echo "ERR_CODE=$ret: $__execute_result" 1>&2
+      if [ $ret -eq 254 ] && echo "${__execute_result}"|grep -q "InsufficientInstanceCapacity";then
+        ((__n_cli_input_json++))
+        continue
+      fi
+      exit $ret
+    done
+    if [ "$ret" -eq 0 ];then
+      break
+    fi
+    if [ "$__retry_non_spot" = 0 ];then
+      break
+    fi
+    spot_instance=""
+    ((__spot_instance--))
+  done
+  if [ "$ret" -ne 0 ];then
+    exit "$ret"
+  fi
+
   if [ "$__dry_run" = "1" ];then
     local id="XXX"
     local ip="XXX"
@@ -621,13 +682,16 @@ submit () {
     eval "exec $__submit_launch_lock_fd>$__submit_launch_lock"
     flock -x $__submit_launch_lock_fd
     _sedi "s/${job_id}.*$/${job_id} - - launching/" "$__job_list"
-    output=$(launch)
-    ret=$?
-    echo "$output"
-    if [ $ret -ne 0 ];then
+    while :;do
+      output=$(launch)
+      ret=$?
+      echo "$output"
+      if [ $ret -eq 0 ];then
+        break
+      fi
       echo "ERR_CODE=$ret: Failed to launch instance for job: $job_id"
       exit $ret
-    fi
+    done
   )
   ret=$?
   if [ $ret -ne 0 ];then
@@ -934,7 +998,7 @@ _opt_comments () {
   case "$1" in
     --all) echo "Set 1 to ignore preset filters.";;
     --aws-profile) echo "Profile name for aws cli (if not specified, the default profile is used.)";;
-    --cli-input-json) echo "A json file which has parameters to launch an instance.";;
+    --cli-input-json) echo "A json file which has parameters to launch an instance. Multiple files can be assigned by comma separated list. If multiple files are given, secondary files are used if the first one failed by the capacity problem.";;
     --cli-input-json-directory) echo "A directory which has json files.
 If cli_input_json is not assigned and cli_input_json_directory is set,
 files are searched and it enters the selection mode.";;
