@@ -103,9 +103,8 @@ _execute () {
   __execute_result="$(eval "$*" 2>&1)"
   local ret=$?
   if [ $ret != 0 ];then
-    # shellcheck disable=SC2154
     if echo "$__execute_result"|grep -q DryRunOperation;then
-      return
+      return 0
     elif [ "$__exit_at_fail" != "0" ];then
       echo "ERR_CODE=$ret: $__execute_result" 1>&2
       exit $ret
@@ -293,6 +292,7 @@ _instance_check () {
   __instance_ip=$(echo "${__list[__enum_instance]}"|awk '{print $3}')
   local status=$(echo "${__list[__enum_instance]}"|awk '{print $4}')
 
+  wait_incorrect_spot_request_state=0
   while :;do
     if [ "$status" == "running" ];then
       break
@@ -300,7 +300,12 @@ _instance_check () {
     if [ "$status" == "stopped" ];then
       __exit_at_fail=0 start
       ret=$?
-      if [ $ret -ne 0 ] && [ $ret -ne 254 ] || ! echo "${__execute_result}"|grep -q "IncorrectSpotRequestState";then
+      if [ $ret -eq 254 ] && echo "${__execute_result}"|grep -q "IncorrectSpotRequestState";then
+        if [ $wait_incorrect_spot_request_state -eq 0 ];then
+          echo "Waiting for spot request state to be correct after stopping..."
+        fi
+        ((wait_incorrect_spot_request_state++))
+      elif [ $ret -ne 0 ];then
         echo "ERR_CODE=$ret: $__execute_result" 1>&2
         exit $ret
       fi
@@ -507,16 +512,24 @@ start () {
   # Start stopped instances.
   __instance_filter="--filters Name=instance-state-name,Values=stopped" _get_ids $__enum_instance
   _execute_ec2 "$__dry_run_mode start-instances --instance-ids ${__ids[__enum_instance]}"
+  ret=$?
   _get_id_name_list $__enum_instance
-  echo "${__dry_run_mode:+Dry run: }Started: $__id_name_list"
+  if [ $ret -eq 0 ];then
+    echo "${__dry_run_mode:+Dry run: }Started: $__id_name_list"
+  fi
+  return $ret
 }
 
 stop () {
   # Stop running instances.
   __instance_filter="--filters Name=instance-state-name,Values=running" _get_ids $__enum_instance
   _execute_ec2 "$__dry_run_mode stop-instances --instance-ids ${__ids[__enum_instance]}"
+  ret=$?
   _get_id_name_list $__enum_instance
-  echo "${__dry_run_mode:+Dry run: }Stopped: $__id_name_list"
+  if [ $ret -eq 0 ];then
+    echo "${__dry_run_mode:+Dry run: }Stopped: $__id_name_list"
+  fi
+  return $ret
 }
 
 terminate () {
@@ -588,6 +601,7 @@ ssh () {
   if [ -n "$__ssh_user" ];then
     ip="$__ssh_user@$ip"
   fi
+  waiting_for_ready=0
   while :;do
     # shellcheck disable=SC2086
     command ssh $ssh_option $ip "sudo tail -n1 /var/log/cloud-init-output.log |grep 'Cloud-init.*finished at.*seconds$'" >/dev/null 2>&1
@@ -595,7 +609,10 @@ ssh () {
     if [ $ret -eq 0 ];then
       break
     fi
-    echo "Waiting for ready..."
+    if [ $waiting_for_ready -eq 0 ];then
+      echo "Waiting for ready..."
+    fi
+    ((waiting_for_ready++))
     sleep 5
   done
   if [ "$cmd" = "mosh" ];then
