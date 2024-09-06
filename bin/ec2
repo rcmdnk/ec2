@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2155
+# shellcheck disable=SC2154,SC2155
 
 __version="v0.1.3"
 __date="5/Sep/2024"
@@ -953,155 +953,6 @@ _read_config () {
   fi
 }
 
-_read_arg () {
-  __positional=()
-  while [[ $# -gt 0 ]]; do
-    if [ "$1" = "--" ];then
-      shift
-      __positional+=("$@")
-      break
-    fi
-    local opt="${1//_/-}"
-    case $opt in
-      --all|-A) __all="$2"; shift; shift;;
-      --aws-profile|-a) __aws_profile="$2"; shift; shift;;
-      --cli-input-json-directory|-C) __cli_input_json_directory="$2"; shift; shift;;
-      --cli-input-json|-c) __cli_input_json="$2"; shift; shift;;
-      --cpu-filter|-p) __cpu_filter="$2"; shift; shift;;
-      --current-dir|-D) __current_dir="$2"; shift; shift;;
-      --dry-run|-d) __dry_run="$2"; shift; shift;;
-      --gpu-filter|-g) __gpu_filter="$2"; shift; shift;;
-      --help|-h) _print_help; exit;;
-      --image-id) __image_id="$2"; shift; shift;;
-      --image-name|-I) __image_name="$2"; shift; shift;;
-      --image-name_filter|-j) __image_name_filter="$2"; shift; shift;;
-      --instance-id|-i) __instance_id="$2"; shift; shift;;
-      --instance-type|-t) __instance_type="$2"; shift; shift;;
-      --max-jobs|-M) __max_jobs="$2"; shift; shift;;
-      --mosh-server|-m) __mosh_server="$2"; shift; shift;;
-      --n-cpu-core|-n) __n_cpu_core="$2"; shift; shift;;
-      --n-thread|-H) __n_thread="$2"; shift; shift;;
-      --name-filter|-f) __name_filter="$2"; shift; shift;;
-      --private-ip|-P) __private_ip="$2"; shift; shift;;
-      --remain-instance|-r) __remain_instance="$2"; shift; shift;;
-      --retry-non-spot|-R) __retry_non_spot="$2"; shift; shift;;
-      --selection-tool|-s) __selection_tool="$2"; shift; shift;;
-      --spot-instance|-S) __spot_instance="$2"; shift; shift;;
-      --ssh-key|-k) __ssh_key="$2"; shift; shift;;
-      --ssh-user|-u) __ssh_user="$2"; shift; shift;;
-      --template-id|-T) __template_id="$2"; shift; shift;;
-      --user-data|-U) __user_data="$2"; shift; shift;;
-      --verbose|-v) __verbose="$2"; shift; shift;;
-      -*)
-        echo "Unknown option: $1" 1>&2
-        exit 1
-        ;;
-      *)
-        if [ "$1" = "help" ];then
-          _print_help
-          exit
-        fi
-        __positional+=("$1")
-        shift
-        ;;
-    esac
-  done
-}
-
-_opt_comments () {
-  case "$1" in
-    --all) echo "Set 1 to ignore preset filters.";;
-    --aws-profile) echo "Profile name for aws cli (if not specified, the default profile is used.)";;
-    --cli-input-json) echo "A json file which has parameters to launch an instance. Multiple files can be assigned by comma separated list. If multiple files are given, secondary files are used if the first one failed by the capacity problem.";;
-    --cli-input-json-directory) echo "A directory which has json files.
-If cli_input_json is not assigned and cli_input_json_directory is set,
-files are searched and it enters the selection mode.";;
-    --cpu-filter) echo "Filter to pick up instance type by CPU.";;
-    --current-dir) echo "Set 1 to use the current directory as the working directory by submit.";;
-    --dry-run) echo "Set 1 to run as dry run mode (modification commands are not executed.)";;
-    --gpu-filter) echo "Filter to pick up instance type by GPU.";;
-    --help) echo "Show help.";;
-    --image-name) echo "Image name for new_image/rm_image command.";;
-    --image-name-filter) echo "Filter to pick up images (AMI).";;
-    --instance-id) echo "Assign instance id to be managed.
-If '' or 'select' is passed, it is selected interactively.";;
-    --instance-type) echo "Instance type for launch command.
-If '' or 'select' is passed, it is selected interactively.";;
-    --max-jobs) echo "Maximum number of submitted jobs running in parallel.";;
-    --mosh-server) echo "Mosh server path.";;
-    --n-cpu-core) echo "Set number of CPU core of instance to set other than default number.";;
-    --n-thread) echo "Set 1 to disable hyper-threading.";;
-    --name-filter) echo "Only instances which include this value is listed.";;
-    --private-ip) echo "Set 1 to use private IP addresses instead of public IP addresses.";;
-    --remain-instance) echo "Set 1 to keep instances after finishing submitted jobs.";;
-    --retry-non-spot) echo "Set 0 to disable retry to launch a non-spot instance
-when launching a spot instance failed.";;
-    --selection-tool) echo "Selection tool list, separated by ','.
-The default value is 'sentaku,peco,fzy,fzf'.
-The first one found is used. If nothing, bash's 'select' is used.
-Tools ref:
-  - [sentaku](https://github.com/rcmdnk/sentaku/)
-  - [peco](https://github.com/peco/peco)
-  - [fzy](https://github.com/jhawthorn/fzy)
-  - [fzf](https://github.com/junegunn/fzf)";;
-    --spot-instance) echo "Set 1 to launch a spot instance.";;
-    --ssh-key) echo "Key for ssh.";;
-    --ssh-user) echo "User for ssh.";;
-    --template-id) echo "Assign template id. If not given, not templated is used.
-If 'select' is passed, it is selected interactively.";;
-    --user-data) echo "user data file for luanch (run-instances),
-e.g: file:///path/to/your/user/data/script";;
-    --verbose) echo "Set 1 to run as verbose mode (show executing commands.)";;
-    *)
-      echo "Unknown option: $1" 1>&2
-      exit 1
-      ;;
-  esac
-}
-
-_opt_keys () {
-  case "$1" in
-    --all) echo --all, -A;;
-    --aws-profile) echo --aws-profile, -a;;
-    --cli-input-json) echo --cli-input-json, -c;;
-    --cli-input-json-directory) echo --cli-input-json-directory, -C;;
-    --cpu-filter) echo --cpu-filter, -p;;
-    --current-dir) echo --current-dir, -D;;
-    --dry-run) echo --dry-run, -d;;
-    --gpu-filter) echo --gpu-filter, -g;;
-    --help) echo --help, -h;;
-    --image-id) echo --image-id, -I;;
-    --image-name) echo --image-name, -I;;
-    --image-name-filter) echo --image-name-filter, -j;;
-    --instance-id) echo --instance-id, -i;;
-    --instance-type) echo --instance-type, -t;;
-    --max-jobs) echo --max-jobs, -M;;
-    --mosh-server) echo --mosh-server, -m;;
-    --n-cpu-core) echo --n-cpu-core, -n;;
-    --n-thread) echo --n-thread, -H;;
-    --name-filter) echo --name-filter, -f;;
-    --private-ip) echo --private-ip, -P;;
-    --remain-instance) echo --remain-instance;;
-    --retry-non-spot) echo --retry-non-spot, -R;;
-    --selection-tool) echo --selection-tool, -s;;
-    --spot-instance) echo --spot-instance, -S;;
-    --ssh-key) echo --ssh-key, -k;;
-    --ssh-user) echo --ssh-user, -u;;
-    --template-id) echo --template-id, -T;;
-    --user-data) echo --user-data, -U;;
-    --verbose) echo --verbose, -v;;
-    *)
-      echo "$1";;
-  esac
-}
-
-__options=(--all --aws-profile --cli-input-json --cli-input-json-directory --cpu-filter --current-dir --dry-run --gpu-filter --help --image-id --image-name --image-name-filter --instance-id --instance-type --max-jobs --mosh-server --n-cpu-core --n-thread --name-filter --private-ip --remain-instance --retry-non-spot --selection-tool --spot-instance --ssh-key --ssh-user --template-id --user-data --verbose)
-
-_extract_comments () {
-  local func="$1"
-  awk "/^${func} \(\)/{flag=1;next}/^}/{flag=0}flag" "$0" | awk '/^ *#/{sub(/^ *# ?/, ""); print; next} {exit}'
-}
-
 _print_explain () {
   local value="$1"
   local spaces="$2"
@@ -1113,6 +964,94 @@ _print_explain () {
     printf "%s%s\n" "$prefix" "$line"
     prefix="${prefix//?/ }"
   done <<< "$comments"
+}
+
+# Options
+# --all|-A Set 1 to ignore preset filters.
+# --aws-profile|-a Profile name for aws cli (if not\nspecified, the default profile is used.)
+# --cli-input-json-directory|-C A json file which has parameters to launch\nan instance. Multiple files can be\nassigned by comma separated list.\nIf multiple files are given, secondary\nfiles are used if the first one failed by\nthe capacity problem.
+# --cli-input-json|-c A directory which has json files. If\ncli_input_json is not assigned and\ncli_input_json_directory is set, files are\nsearched and it enters the selection mode.
+# --cpu-filter|-p Filter to pick up instance type by CPU.
+# --current-dir|-D Set 1 to use the current directory as the\nworking directory by submit.
+# --dry-run|-d Set 1 to run as dry run mode (modification\ncommands are not executed.)
+# --gpu-filter|-g Filter to pick up instance type by GPU.
+# --image-id Image name for new_image/rm_image command.
+# --image-name|-I Image name for new_image/rm_image command.
+# --image-name-filter Filter to pick up images (AMI).
+# --instance-id|-i Assign instance id to be managed. If '' or\n'select' is passed, it is selected\ninteractively.
+# --instance-type|-t  Instance type for launch command. If ''\nor 'select' is passed, it is selected\n interactively.
+# --max-jobs|-M Maximum number of submitted jobs running\nin parallel.
+# --mosh-server|-m Mosh server path.
+# --n-cpu-core|-n Set number of CPU core of instance to set\nother than default number.
+# --n-thread|-H Set 1 to disable hyper-threading.
+# --name-filter|-f Only instances which include this value\nis listed.
+# --private-ip|-P Set 1 to use private IP addresses instead\nof public IP addresses.
+# --remain-instance|-r Set 1 to keep instances after finishing\nsubmitted jobs.
+# --retry-non-spot|-R Set 0 to disable retry to launch a\nnon-spot instance when launching a spot\ninstance failed.
+# --selection-tool|-s Selection tool list, separated by ','. The\ndefault value is 'sentaku,peco,fzy,fzf'.\nThe first one found is used. If nothing,\nbash's 'select' is used. Tools ref:\n  - [sentaku](https://github.com/rcmdnk/sentaku/)\n  - [peco](https://github.com/peco/peco)\n  - [fzy](https://github.com/jhawthorn/fzy)\n  - [fzf](https://github.com/junegunn/fzf)
+# --spot-instance|-S Set 1 to launch a spot instance.
+# --ssh-key|-k Key for ssh.
+# --ssh-user|-u User for ssh.
+# --template-id|-T Assign template id. If not given, not\ntemplated is used. If 'select' is passed,\nit is selected interactively.
+# --user-data|-U user data file for luanch (run-instances),\ne.g: file:///path/to/your/user/data/script
+# --verbose|-v Set 1 to run as verbose mode (show\nexecuting commands.)
+
+_read_options() {
+  awk '/^# Options/ {flag=1; next} flag && /^#/ {print; next} flag && /^[^#]/ {exit}' "$0" | sed 's/^# *//'
+}
+
+_generate_read_args() {
+  echo "_read_args() {"
+  echo "  __positional=()"
+  echo "  while [[ \$# -gt 0 ]]; do"
+  echo "    if [ \"\$1\" = \"--\" ]; then"
+  echo "      shift"
+  echo "      __positional+=(\"\$@\")"
+  echo "      break"
+  echo "    fi"
+  echo "    local opt=\"\${1//_/-}\""
+  echo "    case \$opt in"
+
+  echo "$__options" | while read -r line; do
+    local opt=$(echo "$line" | awk '{print $1}')
+    local val_name=$(echo "${opt//-/_}" | cut -d '|' -f 1)
+    echo "      $opt) ${val_name}=\"\$2\"; shift; shift;;"
+  done
+
+  echo "      --help|-h) _print_help; exit;;"
+  echo "      -*)
+        echo \"Unknown option: \$1\" 1>&2
+        exit 1
+        ;;
+      *)
+        if [ \"\$1\" = \"help\" ]; then
+          _print_help
+          exit
+        fi
+        __positional+=(\"\$1\")
+        shift
+        ;;
+    esac
+  done
+}
+"
+}
+
+_print_args_help() {
+  echo "Options:"
+  local line
+  echo "$__options" | while read -r line; do
+    # shellcheck disable=SC2001
+    local opt="$(echo "${line%% *}" | sed 's/|/, /g')"
+    local comment="$(echo -e "${line#* }")"
+    _print_explain "$opt" 2 35 "$comment"
+  done
+  _print_explain "--help, -h" 2 35 "Show help."
+}
+
+_extract_comments () {
+  local func="$1"
+  awk "/^${func} \(\)/{flag=1;next}/^}/{flag=0}flag" "$0" | awk '/^ *#/{sub(/^ *# ?/, ""); print; next} {exit}'
 }
 
 _make_command_help () {
@@ -1131,25 +1070,17 @@ _print_subcommands () {
   done
 }
 
-_print_options () {
-  echo "Options:"
-  for opt in "${__options[@]}";do
-    local opt_keys=$(_opt_keys "$opt")
-    local comments=$(_opt_comments "$opt")
-    _print_explain "$opt_keys" 2 35 "$comments"
-  done
-}
-
 _print_help () {
   printf "Usage: %s <subcommand> [options]\n\n" "$__cmd"
   _print_subcommands
   echo
-  _print_options
+  _print_args_help
 }
 
 # Main
 
 __subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1 | tr '\n' ' ')
+__options="$(_read_options)"
 
 if [ $# -eq 0 ];then
   _print_help
@@ -1157,7 +1088,8 @@ if [ $# -eq 0 ];then
 fi
 
 _read_config
-_read_arg "$@"
+eval "$(_generate_read_args)"
+_read_args "$@"
 
 __subcommand="${__positional[0]}"
 __positional=("${__positional[@]:1:$((${#__positional[@]}))}")
