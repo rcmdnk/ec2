@@ -28,6 +28,36 @@ __cmd=$(basename "$0")
 
 __opt_spot="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions\": {\"SpotInstanceType\": \"persistent\", \"InstanceInterruptionBehavior\" : \"stop\"} }'"
 
+# Options
+# --all|-A Set 1 to ignore preset filters.
+# --aws-profile|-a Profile name for aws cli (if not\nspecified, the default profile is used.)
+# --cli-input-json-directory|-C A json file which has parameters to launch\nan instance. Multiple files can be\nassigned by comma separated list.\nIf multiple files are given, secondary\nfiles are used if the first one failed by\nthe capacity problem.
+# --cli-input-json|-c A directory which has json files. If\ncli_input_json is not assigned and\ncli_input_json_directory is set, files are\nsearched and it enters the selection mode.
+# --cpu-filter|-p Filter to pick up instance type by CPU.
+# --current-dir|-D Set 1 to use the current directory as the\nworking directory by submit.
+# --dry-run|-d Set 1 to run as dry run mode (modification\ncommands are not executed.)
+# --gpu-filter|-g Filter to pick up instance type by GPU.
+# --image-id Image name for new_image/rm_image command.
+# --image-name|-I Image name for new_image/rm_image command.
+# --image-name-filter Filter to pick up images (AMI).
+# --instance-id|-i Assign instance id to be managed. If '' or\n'select' is passed, it is selected\ninteractively.
+# --instance-type|-t  Instance type for launch command. If ''\nor 'select' is passed, it is selected\n interactively.
+# --max-jobs|-M Maximum number of submitted jobs running\nin parallel.
+# --mosh-server|-m Mosh server path.
+# --n-cpu-core|-n Set number of CPU core of instance to set\nother than default number.
+# --n-thread|-H Set 1 to disable hyper-threading.
+# --name-filter|-f Only instances which include this value\nis listed.
+# --private-ip|-P Set 1 to use private IP addresses instead\nof public IP addresses.
+# --remain-instance|-r Set 1 to keep instances after finishing\nsubmitted jobs.
+# --retry-non-spot|-R Set 0 to disable retry to launch a\nnon-spot instance when launching a spot\ninstance failed.
+# --selection-tool|-s Selection tool list, separated by ','. The\ndefault value is 'sentaku,peco,fzy,fzf'.\nThe first one found is used. If nothing,\nbash's 'select' is used. Tools ref:\n  - [sentaku](https://github.com/rcmdnk/sentaku/)\n  - [peco](https://github.com/peco/peco)\n  - [fzy](https://github.com/jhawthorn/fzy)\n  - [fzf](https://github.com/junegunn/fzf)
+# --spot-instance|-S Set 1 to launch a spot instance.
+# --ssh-key|-k Key for ssh.
+# --ssh-user|-u User for ssh.
+# --template-id|-T Assign template id. If not given, not\ntemplated is used. If 'select' is passed,\nit is selected interactively.
+# --user-data|-U user data file for luanch (run-instances),\ne.g: file:///path/to/your/user/data/script
+# --verbose|-v Set 1 to run as verbose mode (show\nexecuting commands.)
+
 _print_list () {
   # shellcheck disable=SC2206
   local headers=($1)
@@ -965,36 +995,6 @@ _print_explain () {
     prefix="${prefix//?/ }"
   done <<< "$comments"
 }
-
-# Options
-# --all|-A Set 1 to ignore preset filters.
-# --aws-profile|-a Profile name for aws cli (if not\nspecified, the default profile is used.)
-# --cli-input-json-directory|-C A json file which has parameters to launch\nan instance. Multiple files can be\nassigned by comma separated list.\nIf multiple files are given, secondary\nfiles are used if the first one failed by\nthe capacity problem.
-# --cli-input-json|-c A directory which has json files. If\ncli_input_json is not assigned and\ncli_input_json_directory is set, files are\nsearched and it enters the selection mode.
-# --cpu-filter|-p Filter to pick up instance type by CPU.
-# --current-dir|-D Set 1 to use the current directory as the\nworking directory by submit.
-# --dry-run|-d Set 1 to run as dry run mode (modification\ncommands are not executed.)
-# --gpu-filter|-g Filter to pick up instance type by GPU.
-# --image-id Image name for new_image/rm_image command.
-# --image-name|-I Image name for new_image/rm_image command.
-# --image-name-filter Filter to pick up images (AMI).
-# --instance-id|-i Assign instance id to be managed. If '' or\n'select' is passed, it is selected\ninteractively.
-# --instance-type|-t  Instance type for launch command. If ''\nor 'select' is passed, it is selected\n interactively.
-# --max-jobs|-M Maximum number of submitted jobs running\nin parallel.
-# --mosh-server|-m Mosh server path.
-# --n-cpu-core|-n Set number of CPU core of instance to set\nother than default number.
-# --n-thread|-H Set 1 to disable hyper-threading.
-# --name-filter|-f Only instances which include this value\nis listed.
-# --private-ip|-P Set 1 to use private IP addresses instead\nof public IP addresses.
-# --remain-instance|-r Set 1 to keep instances after finishing\nsubmitted jobs.
-# --retry-non-spot|-R Set 0 to disable retry to launch a\nnon-spot instance when launching a spot\ninstance failed.
-# --selection-tool|-s Selection tool list, separated by ','. The\ndefault value is 'sentaku,peco,fzy,fzf'.\nThe first one found is used. If nothing,\nbash's 'select' is used. Tools ref:\n  - [sentaku](https://github.com/rcmdnk/sentaku/)\n  - [peco](https://github.com/peco/peco)\n  - [fzy](https://github.com/jhawthorn/fzy)\n  - [fzf](https://github.com/junegunn/fzf)
-# --spot-instance|-S Set 1 to launch a spot instance.
-# --ssh-key|-k Key for ssh.
-# --ssh-user|-u User for ssh.
-# --template-id|-T Assign template id. If not given, not\ntemplated is used. If 'select' is passed,\nit is selected interactively.
-# --user-data|-U user data file for luanch (run-instances),\ne.g: file:///path/to/your/user/data/script
-# --verbose|-v Set 1 to run as verbose mode (show\nexecuting commands.)
 
 _read_options() {
   awk '/^# Options/ {flag=1; next} flag && /^#/ {print; next} flag && /^[^#]/ {exit}' "$0" | sed 's/^# *//'
