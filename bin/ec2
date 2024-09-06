@@ -717,7 +717,7 @@ submit () {
     exit 1
   fi
 
-  local job_id="$$_$(date +"%Y%m%d%H%M%S")_$(basename "${__positional[0]}" | tr ' ' '_')"
+  local job_id="$$_$(date +"%Y%m%d%H%M%S")_$(basename "$(echo "${__positional[0]}" | cut -d ';' -f1 | cut -d ' ' -f1)")"
 
   trap "_clear_job;exit 1" HUP INT QUIT ABRT SEGV TERM
 
