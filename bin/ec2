@@ -54,6 +54,7 @@ __opt_spot="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions
 # --submit-command Submit command instead of script file.
 # --submit-current-dir Set 1 to use the current directory as the\nworking directory by submit.
 # --submit-max-jobs Maximum number of submitted jobs running\nin parallel.
+# --submit-measure-time Set 1 to measure time of the command.
 # --submit-remain-instance Set 1 to keep instances after finishing\nsubmitted jobs.
 # --template-id|-T Assign template id. If not given, not\ntemplated is used. If 'select' is passed,\nit is selected interactively.
 # --user-data|-U user data file for luanch (run-instances),\ne.g: file:///path/to/your/user/data/script
@@ -731,6 +732,7 @@ submit () {
   done
 
   _sedi "s/${job_id}.*$/${job_id} - - starting/" "$__job_list"
+  echo "Launching an instance for job: $job_id"
   output=$(
     eval "exec $__submit_launch_lock_fd>$__submit_launch_lock"
     flock -x $__submit_launch_lock_fd
