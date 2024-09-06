@@ -23,8 +23,6 @@ Or put `bin/ec2` and `bin/ec2_submit` anywhere in the PATH.
 
 ### Usage
 
-Usage: ec2 <subcommand> \[options\]
-
 ```
 Usage: ec2 <subcommand> [options]
 
@@ -54,42 +52,58 @@ Subcommands:
   stop                               Stop running instances.
   submit                             Make a new instance and submit a job.
                                      Use `submit <file or commands> [options].
+                                     If __submit_command is not set, need one bash file.
+                                     If __submit_command is set, given options are recognized as command.
+                                     Use `--` to separate options for ec2 and options  for the command.
+                                     If `__curent_dir` is set, the command is executed in the current directory.
+                                     (Need same directory structure in the instance.)
   templates                          List templates.
   terminate                          Terminate instances.
   types                              List instance types.
   version                            Show version.
 
 Options:
-  --all, -A                          Set 1 to ignore preset filters.
-  --aws-profile, -a                  Profile name for aws cli (if not specified, the default profile is used.)
-  --cli-input-json, -c               A json file which has parameters to launch an instance.
-  --cli-input-json-directory, -C     A directory which has json files.
-                                     If cli_input_json is not assigned and cli_input_json_directory is set,
-                                     files are searched and it enters the selection mode.
-  --cpu-filter, -p                   Filter to pick up instance type by CPU.
-  --current-dir, -D                  Set 1 to use the current directory as the working directory by submit.
-  --dry-run, -d                      Set 1 to run as dry run mode (modification commands are not executed.)
-  --gpu-filter, -g                   Filter to pick up instance type by GPU.
-  --help, -h                         Show help.
+  --all, -a                          Set 1 to ignore preset filters.
+  --aws-profile                      Profile name for aws cli (if not
+                                     specified, the default profile is used.)
+  --cli-input-json-directory         A json file which has parameters to launch
+                                     an instance. Multiple files can be
+                                     assigned by comma separated list.
+                                     If multiple files are given, secondary
+                                     files are used if the first one failed by
+                                     the capacity problem.
+  --cli-input-json, -c               A directory which has json files. If
+                                     cli_input_json is not assigned and
+                                     cli_input_json_directory is set, files are
+                                     searched and it enters the selection mode.
+  --cpu-filter                       Filter to pick up instance type by CPU.
+  --dry-run, -d                      Set 1 to run as dry run mode (modification
+                                     commands are not executed.)
+  --gpu-filter                       Filter to pick up instance type by GPU.
+  --image-id                         Image name for new_image/rm_image command.
   --image-name, -I                   Image name for new_image/rm_image command.
-  --image-name-filter, -j            Filter to pick up images (AMI).
-  --instance-id, -i                  Assign instance id to be managed.
-                                     If '' or 'select' is passed, it is selected interactively.
-  --instance-type, -t                Instance type for launch command.
-                                     If '' or 'select' is passed, it is selected interactively.
-  --max-jobs, -M                     Maximum number of submitted jobs running in parallel.
+  --image-name-filter                Filter to pick up images (AMI).
+  --instance-id, -i                  Assign instance id to be managed. If '' or
+                                     'select' is passed, it is selected
+                                     interactively.
+  --instance-type, -t                 Instance type for launch command. If ''
+                                     or 'select' is passed, it is selected
+                                      interactively.
   --mosh-server, -m                  Mosh server path.
-  --n-cpu-core, -n                   Set number of CPU core of instance to set other than default number.
-  --n-thread, -H                     Set 1 to disable hyper-threading.
-  --name-filter, -f                  Only instances which include this value is listed.
-  --private-ip, -P                   Set 1 to use private IP addresses instead of public IP addresses.
-  --remain-instance                  Set 1 to keep instances after finishing submitted jobs.
-  --retry-non-spot, -R               Set 0 to disable retry to launch a non-spot instance
-                                     when launching a spot instance failed.
-  --selection-tool, -s               Selection tool list, separated by ','.
-                                     The default value is 'sentaku,peco,fzy,fzf'.
-                                     The first one found is used. If nothing, bash's 'select' is used.
-                                     Tools ref:
+  --n-cpu-core, -n                   Set number of CPU core of instance to set
+                                     other than default number.
+  --n-thread                         Set 1 to disable hyper-threading.
+  --name-filter, -f                  Only instances which include this value
+                                     is listed.
+  --private-ip, -P                   Set 1 to use private IP addresses instead
+                                     of public IP addresses.
+  --retry-non-spot                   Set 0 to disable retry to launch a
+                                     non-spot instance when launching a spot
+                                     instance failed.
+  --selection-tool, -s               Selection tool list, separated by ','. The
+                                     default value is 'sentaku,peco,fzy,fzf'.
+                                     The first one found is used. If nothing,
+                                     bash's 'select' is used. Tools ref:
                                        - [sentaku](https://github.com/rcmdnk/sentaku/)
                                        - [peco](https://github.com/peco/peco)
                                        - [fzy](https://github.com/jhawthorn/fzy)
@@ -97,11 +111,22 @@ Options:
   --spot-instance, -S                Set 1 to launch a spot instance.
   --ssh-key, -k                      Key for ssh.
   --ssh-user, -u                     User for ssh.
-  --template-id, -T                  Assign template id. If not given, not templated is used.
-                                     If 'select' is passed, it is selected interactively.
+  --submit-command                   Submit command instead of script file.
+  --submit-current-dir               Set 1 to use the current directory as the
+                                     working directory by submit.
+  --submit-max-jobs                  Maximum number of submitted jobs running
+                                     in parallel.
+  --submit-measure-time              Set 1 to measure time of the command.
+  --submit-remain-instance           Set 1 to keep instances after finishing
+                                     submitted jobs.
+  --template-id, -T                  Assign template id. If not given, not
+                                     templated is used. If 'select' is passed,
+                                     it is selected interactively.
   --user-data, -U                    user data file for luanch (run-instances),
                                      e.g: file:///path/to/your/user/data/script
-  --verbose, -v                      Set 1 to run as verbose mode (show executing commands.)
+  --verbose, -v                      Set 1 to run as verbose mode (show
+                                     executing commands.)
+  --help, -h                         Show help.
 ```
 
 ### AWS CLI Profile
