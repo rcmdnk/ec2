@@ -29,31 +29,32 @@ __cmd=$(basename "$0")
 __opt_spot="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions\": {\"SpotInstanceType\": \"persistent\", \"InstanceInterruptionBehavior\" : \"stop\"} }'"
 
 # Options
-# --all|-A Set 1 to ignore preset filters.
-# --aws-profile|-a Profile name for aws cli (if not\nspecified, the default profile is used.)
-# --cli-input-json-directory|-C A json file which has parameters to launch\nan instance. Multiple files can be\nassigned by comma separated list.\nIf multiple files are given, secondary\nfiles are used if the first one failed by\nthe capacity problem.
+# --all|-a Set 1 to ignore preset filters.
+# --aws-profile Profile name for aws cli (if not\nspecified, the default profile is used.)
+# --cli-input-json-directory A json file which has parameters to launch\nan instance. Multiple files can be\nassigned by comma separated list.\nIf multiple files are given, secondary\nfiles are used if the first one failed by\nthe capacity problem.
 # --cli-input-json|-c A directory which has json files. If\ncli_input_json is not assigned and\ncli_input_json_directory is set, files are\nsearched and it enters the selection mode.
-# --cpu-filter|-p Filter to pick up instance type by CPU.
-# --current-dir|-D Set 1 to use the current directory as the\nworking directory by submit.
+# --cpu-filter Filter to pick up instance type by CPU.
 # --dry-run|-d Set 1 to run as dry run mode (modification\ncommands are not executed.)
-# --gpu-filter|-g Filter to pick up instance type by GPU.
+# --gpu-filter Filter to pick up instance type by GPU.
 # --image-id Image name for new_image/rm_image command.
 # --image-name|-I Image name for new_image/rm_image command.
 # --image-name-filter Filter to pick up images (AMI).
 # --instance-id|-i Assign instance id to be managed. If '' or\n'select' is passed, it is selected\ninteractively.
 # --instance-type|-t  Instance type for launch command. If ''\nor 'select' is passed, it is selected\n interactively.
-# --max-jobs|-M Maximum number of submitted jobs running\nin parallel.
 # --mosh-server|-m Mosh server path.
 # --n-cpu-core|-n Set number of CPU core of instance to set\nother than default number.
-# --n-thread|-H Set 1 to disable hyper-threading.
+# --n-thread Set 1 to disable hyper-threading.
 # --name-filter|-f Only instances which include this value\nis listed.
 # --private-ip|-P Set 1 to use private IP addresses instead\nof public IP addresses.
-# --remain-instance|-r Set 1 to keep instances after finishing\nsubmitted jobs.
-# --retry-non-spot|-R Set 0 to disable retry to launch a\nnon-spot instance when launching a spot\ninstance failed.
+# --retry-non-spot Set 0 to disable retry to launch a\nnon-spot instance when launching a spot\ninstance failed.
 # --selection-tool|-s Selection tool list, separated by ','. The\ndefault value is 'sentaku,peco,fzy,fzf'.\nThe first one found is used. If nothing,\nbash's 'select' is used. Tools ref:\n  - [sentaku](https://github.com/rcmdnk/sentaku/)\n  - [peco](https://github.com/peco/peco)\n  - [fzy](https://github.com/jhawthorn/fzy)\n  - [fzf](https://github.com/junegunn/fzf)
 # --spot-instance|-S Set 1 to launch a spot instance.
 # --ssh-key|-k Key for ssh.
 # --ssh-user|-u User for ssh.
+# --submit-command Submit command instead of script file.
+# --submit-current-dir Set 1 to use the current directory as the\nworking directory by submit.
+# --submit-max-jobs Maximum number of submitted jobs running\nin parallel.
+# --submit-remain-instance Set 1 to keep instances after finishing\nsubmitted jobs.
 # --template-id|-T Assign template id. If not given, not\ntemplated is used. If 'select' is passed,\nit is selected interactively.
 # --user-data|-U user data file for luanch (run-instances),\ne.g: file:///path/to/your/user/data/script
 # --verbose|-v Set 1 to run as verbose mode (show\nexecuting commands.)
@@ -118,7 +119,7 @@ _check_job_instances () {
   (
     eval "exec $__submit_sedi_lock_fd>$__submit_sedi_lock"
     flock -x $__submit_sedi_lock_fd
-    if [ -n "$__max_jobs" ] && (( __max_jobs > 0 )) && (( $(grep -c -e running -e starting -e launching -e terminating "$__job_list") > __max_jobs ));then
+    if [ -n "$__submit_max_jobs" ] && (( __submit_max_jobs > 0 )) && (( $(grep -c -e running -e starting -e launching -e terminating "$__job_list") > __submit_max_jobs ));then
       echo 1
     else
       echo 0
@@ -694,7 +695,7 @@ scp () {
 _clear_job () {
   if [ -n "${__ids[__enum_instance]}" ];then
     _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} terminating/" "$__job_list"
-    if [ "$__remain_instance" != "1" ];then
+    if [ "$__submit_remain_instance" != "1" ];then
       terminate
     fi
   fi
@@ -704,6 +705,11 @@ _clear_job () {
 submit () {
   # Make a new instance and submit a job.
   # Use `submit <file or commands> [options].
+  # If __submit_command is not set, need one bash file.
+  # If __submit_command is set, given options are recognized as command.
+  # Use `--` to separate options for ec2 and options  for the command.
+  # If `__curent_dir` is set, the command is executed in the current directory.
+  # (Need same directory structure in the instance.)
   if ! type flock >/dev/null 2>&1;then
     echo "flock is required for 'submit'"
     echo "Install flock ('brew install flock' or anything)"
@@ -749,15 +755,26 @@ submit () {
   __ids[__enum_instance]="$instance_id"
   _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} launching/" "$__job_list"
 
+  # Wait the instance be ready
   __execute_command="exit"
   ssh
   _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} running/" "$__job_list"
-  scp
-  __execute_command="bash ~/$(basename "$__file")"
-  if [ "$__current_dir" = 1 ];then
+
+  if [ "$__submit_command" != "1" ];then
+    __execute_command="bash ~/$(basename "$__file")"
+  else
+    __execute_command="${__positional[*]}"
+  fi
+  if [ "$__submit_measure_time" = "1" ];then
+    __execute_command="time $__execute_command"
+  fi
+  __execute_command="echo RUN STARTED;echo Execute \"$__execute_command\" at job_id=$job_id, insatnce_id=$instance_id, instance_ip=$instance_ip, instance_type=$instance_type; $__execute_command; echo RUN FINISHED"
+  if [ "$__submit_command" != "1" ];then
+    scp
+  fi
+  if [ "$__submit_current_dir" = 1 ];then
     __execute_command="cd $PWD; $__execute_command"
   fi
-  echo "Running $__file at job_id=$job_id, insatnce_id=$instance_id, instance_ip=$instance_ip, instance_type=$instance_type"
   ssh
   ret=$?
   echo "finishing job: $job_id, return code: $ret"
@@ -1002,16 +1019,16 @@ _read_options() {
 
 _generate_read_args() {
   cat << EOF
-_read_args() {"
-  __positional=()"
-  while [[ \$# -gt 0 ]]; do"
-    if [ \"\$1\" = \"--\" ]; then"
-      shift"
-      __positional+=(\"\$@\")"
-      break"
-    fi"
-    local opt=\"\${1//_/-}\""
-    case \$opt in"
+_read_args() {
+  __positional=()
+  while [[ \$# -gt 0 ]]; do
+    if [ \$1 = "--" ]; then
+      shift
+      __positional+=("\$@")
+      break
+    fi
+    local opt="\${1//_/-}"
+    case \$opt in
 EOF
 
   echo "$__options" | while read -r line; do
@@ -1021,17 +1038,17 @@ EOF
   done
 
 cat << EOF
-      --help|-h) _print_help; exit;;"
+      --help|-h) _print_help; exit;;
       -*)
-        echo \"Unknown option: \$1\" 1>&2
+        echo "Unknown option: \$1" 1>&2
         exit 1
         ;;
       *)
-        if [ \"\$1\" = \"help\" ]; then
+        if [ "\$1" = "help" ]; then
           _print_help
           exit
         fi
-        __positional+=(\"\$1\")
+        __positional+=("\$1")
         shift
         ;;
     esac
@@ -1126,7 +1143,7 @@ if [ "$__subcommand" == "ssh" ];then
   __execute_command="${__positional[0]}"
 fi
 
-if [ "$__subcommand" = "scp" ] || [ "$__subcommand" = "submit" ];then
+if [ "$__subcommand" = "scp" ] || { [ "$__subcommand" = "submit" ] && [ "$__submit_command" != "1" ]; };then
   __file="${__positional[0]}"
   if [ -z "$__file" ];then
     echo "Usage: $__cmd [options] $__subcommand <file>"
