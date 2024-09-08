@@ -1101,7 +1101,8 @@ _print_help () {
 
 # Main
 
-__subcommands=$(set | grep -v "^_" | grep " () " | cut -d' ' -f1 | tr '\n' ' ')
+__subcommands=$(set | grep -v "^_" | grep -v "^ " | grep " () $" | cut -d' ' -f1 | tr '\n' ' ')
+
 __options="$(_read_options)"
 
 if [ $# -eq 0 ];then
