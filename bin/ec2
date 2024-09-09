@@ -488,7 +488,7 @@ launch () {
     fi
     while [ "$__n_cli_input_json" -lt "${#__cli_input_json_list[@]}" ];do
       if [ "$__n_cli_input_json" -gt 0 ];then
-        echo "Try to launch next cli_input_json (${__cli_input_json_list[__n_cli_input_json]})" 1>&2
+        echo "Try launching next cli_input_json (${__cli_input_json_list[__n_cli_input_json]})" 1>&2
       fi
       _get_cli_input_json_opt
       if [ -n "$__cli_input_json_opt" ];then
@@ -517,7 +517,10 @@ launch () {
     fi
     spot_instance=""
     ((__spot_instance--))
-    __n_cli_input_json=0
+    if [ "$__spot_instance" -eq 0 ];then
+      echo "Try launching non spot instance" 1>&2
+      __n_cli_input_json=0
+    fi
   done
   if [ "$ret" -ne 0 ];then
     exit "$ret"
