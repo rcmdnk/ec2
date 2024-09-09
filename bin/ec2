@@ -517,6 +517,7 @@ launch () {
     fi
     spot_instance=""
     ((__spot_instance--))
+    __n_cli_input_json=0
   done
   if [ "$ret" -ne 0 ];then
     exit "$ret"
