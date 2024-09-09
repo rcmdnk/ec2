@@ -499,7 +499,7 @@ launch () {
       fi
 
       local msg="Launching a new instance: name=$name"
-      msg="$msg${instance_type:+, type=${innstance_type}}"
+      msg="$msg${instance_type:+, type=${instance_type}}"
       if [ "$__n_cli_input_json" -ge 0 ];then
         msg="$msg, cli_input_json=${__cli_input_json_list[__n_cli_input_json]}"
       fi
@@ -507,7 +507,7 @@ launch () {
       if [ "$__spot_instance" -eq 1 ];then
         msg="$msg, lifecycle=spot"
       fi
-      echo "$msg"
+      echo "$msg" 1>&2
 
       __exit_at_fail=0 _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${spot_instance} ${user_data} ${launch_template} ${__cli_input_json_opt} ${instance_type_opt} --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
       ret=$?
