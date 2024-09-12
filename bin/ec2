@@ -662,6 +662,8 @@ ssh () {
     fi
     ((waiting_for_ready++))
     sleep 5
+    # Soemtime instance is stopped during waiting, restart it if needed.
+    _instance_check
   done
   if [ "$cmd" = "mosh" ];then
     ssh_option=""
@@ -704,6 +706,8 @@ scp () {
     fi
     echo "Waiting for ready..."
     sleep 5
+    # Soemtime instance is stopped during waiting, restart it if needed.
+    _instance_check
   done
   # shellcheck disable=SC2086
   command scp $ssh_option $__file $ip:
