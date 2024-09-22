@@ -1092,8 +1092,7 @@ _print_args_help() {
 }
 
 _extract_comments () {
-  local func="$1"
-  awk "/^${func} \(\)/{flag=1;next}/^}/{flag=0}flag" "$0" | awk '/^ *#/{sub(/^ *# ?/, ""); print; next} {exit}'
+  awk "/^${1} *\(\) *{/{flag=1;next}/^}/{flag=0}flag" "$0" | awk '/^ *#/{sub(/^ *# ?/, ""); print; next} {exit}'
 }
 
 _print_subcommands () {
