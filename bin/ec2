@@ -1096,14 +1096,6 @@ _extract_comments () {
   awk "/^${func} \(\)/{flag=1;next}/^}/{flag=0}flag" "$0" | awk '/^ *#/{sub(/^ *# ?/, ""); print; next} {exit}'
 }
 
-_make_command_help () {
-  local func="$1"
-  local spaces="$2"
-  local name_length="$3"
-  printf "Usage: %s %s [options]\n\n" "$__cmd" "$func"
-  _make_option_help "$func"
-}
-
 _print_subcommands () {
   echo "Subcommands:"
   for func in $__subcommands;do
