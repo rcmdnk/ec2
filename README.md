@@ -117,6 +117,8 @@ Options:
   --submit-max-jobs                  Maximum number of submitted jobs running
                                      in parallel.
   --submit-measure-time              Set 1 to measure time of the command.
+  --submit-name                      Name of submitted job. If not given, the
+                                     command name is used.
   --submit-remain-instance           Set 1 to keep instances after finishing
                                      submitted jobs.
   --template-id, -T                  Assign template id. If not given, not

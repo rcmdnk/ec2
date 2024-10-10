@@ -53,6 +53,7 @@ __options="
 --ssh-user|-u User for ssh.
 --submit-command Submit command instead of script file.
 --submit-current-dir Set 1 to use the current directory as the\nworking directory by submit.
+--submit-name Name of submitted job. If not given, the\ncommand name is used.
 --submit-max-jobs Maximum number of submitted jobs running\nin parallel.
 --submit-measure-time Set 1 to measure time of the command.
 --submit-remain-instance Set 1 to keep instances after finishing\nsubmitted jobs.
@@ -738,7 +739,10 @@ submit () {
     exit 1
   fi
 
-  local job_id="$$ $(date +"%Y-%m-%d %H:%M:%S") $(basename "$(echo "${__positional[0]}" | cut -d ';' -f1 | cut -d ' ' -f1)")"
+  if [ -z "$__submit_name" ];then
+    __submit_name=$(basename "$(echo "${__positional[0]}" | cut -d ';' -f1 | cut -d ' ' -f1)")
+  fi
+  local job_id="$$ $(date +"%Y-%m-%d %H:%M:%S") $__submit_name"
 
   trap "_clear_job;exit 1" HUP INT QUIT ABRT SEGV TERM
 
@@ -810,7 +814,7 @@ submit () {
 jobs () {
   # List jobs.
   touch "$__job_list"
-  _print_list "PID DATE TIME CMD ID IP STATUS" "$(cat "$__job_list")"
+  _print_list "PID DATE TIME NAME INSTANCE_ID IP STATUS" "$(cat "$__job_list")"
 }
 
 delete_job () {
