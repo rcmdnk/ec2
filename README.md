@@ -114,11 +114,20 @@ Options:
   --submit-command                   Submit command instead of script file.
   --submit-current-dir               Set 1 to use the current directory as the
                                      working directory by submit.
+  --submit-n-retry-launch            Number of retries to launch an instance by
+                                     submit. Default is 0.
+  --submit-retry-launch-interval     Interval of retry to launch an instance by
+                                     submit (sec) when all combinations of
+                                     cli_input_json failed. Default is 60.
+  --submit-n-retry-ssh               Number of retries after ssh connection
+                                     failed. Default is 0.
+  --submit-retry-ssh-interval        Interval of retry after ssh connection
+                                     failed (sec). Default is 10.
+  --submit-name                      Name of submitted job. If not given, the
+                                     command name is used.
   --submit-max-jobs                  Maximum number of submitted jobs running
                                      in parallel.
   --submit-measure-time              Set 1 to measure time of the command.
-  --submit-name                      Name of submitted job. If not given, the
-                                     command name is used.
   --submit-remain-instance           Set 1 to keep instances after finishing
                                      submitted jobs.
   --template-id, -T                  Assign template id. If not given, not
