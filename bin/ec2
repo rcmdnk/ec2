@@ -733,13 +733,16 @@ scp () {
 }
 
 _clear_job () {
+  local clear_lsit=${1:-1}
   if [ -n "${__ids[__enum_instance]}" ];then
     _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} terminating/" "$__job_list"
     if [ "$__submit_remain_instance" != "1" ];then
       terminate
     fi
   fi
-  _sedi "/^${job_id} /d" "$__job_list"
+  if [ "$clear_lsit" = 1 ];then
+    _sedi "/^${job_id} /d" "$__job_list"
+  fi
 }
 
 submit () {
@@ -797,7 +800,7 @@ submit () {
       if [ $ret -eq 0 ];then
         break
       fi
-      if [ $ret -ne 244 ] || ! echo "$output" | grep -q "InsufficientInstanceCapacity";then
+      if [ $ret -ne 254 ] || ! echo "$output" | grep -q "InsufficientInstanceCapacity";then
         break
       fi
       ((n_retry++))
@@ -845,6 +848,8 @@ submit () {
       echo "SSH connection was closed by the remote host"
       ((n_retry_ssh++))
       if [ $n_retry_ssh -lt "${__submit_n_retry_ssh}" ];then
+        _clear_job 0
+        _sedi "s/${job_id}.*$/${job_id} - - retrying/" "$__job_list"
         echo "Retry after ${__submit_retry_ssh_interval} seconds..."
         sleep "${__submit_retry_ssh_interval}"
         continue
