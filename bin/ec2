@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2154,SC2155
 
-__version="v0.2.4"
+__version="v0.2.5"
 __date="11/Oct/2024"
 __config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
@@ -28,6 +28,13 @@ __cmd=$(basename "$0")
 
 __opt_spot="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions\": {\"SpotInstanceType\": \"persistent\", \"InstanceInterruptionBehavior\" : \"stop\"} }'"
 
+__selection_tool="sentaku,peco,fzy,fzf"
+__selection_tool_ref="  - [sentaku](https://github.com/rcmdnk/sentaku/)\n  - [peco](https://github.com/peco/peco)\n  - [fzy](https://github.com/jhawthorn/fzy)\n  - [fzf](https://github.com/junegunn/fzf)"
+__submit_n_retry_launch=0
+__submit_retry_launch_interval=60
+__submit_n_retry_ssh=0
+__submit_retry_ssh_interval=10
+
 __options="
 --all|-a Set 1 to ignore preset filters.
 --aws-profile Profile name for aws cli (if not\nspecified, the default profile is used.)
@@ -47,12 +54,16 @@ __options="
 --name-filter|-f Only instances which include this value\nis listed.
 --private-ip|-P Set 1 to use private IP addresses instead\nof public IP addresses.
 --retry-non-spot Set 0 to disable retry to launch a\nnon-spot instance when launching a spot\ninstance failed.
---selection-tool|-s Selection tool list, separated by ','. The\ndefault value is 'sentaku,peco,fzy,fzf'.\nThe first one found is used. If nothing,\nbash's 'select' is used. Tools ref:\n  - [sentaku](https://github.com/rcmdnk/sentaku/)\n  - [peco](https://github.com/peco/peco)\n  - [fzy](https://github.com/jhawthorn/fzy)\n  - [fzf](https://github.com/junegunn/fzf)
+--selection-tool|-s Selection tool list, separated by ','. The\ndefault value is '$__selection_tool'.\nThe first one found is used. If nothing,\nbash's 'select' is used. Tools ref:\n$__selection_tool_ref
 --spot-instance|-S Set 1 to launch a spot instance.
 --ssh-key|-k Key for ssh.
 --ssh-user|-u User for ssh.
 --submit-command Submit command instead of script file.
 --submit-current-dir Set 1 to use the current directory as the\nworking directory by submit.
+--submit-n-retry-launch Number of retries to launch an instance by\nsubmit. Default is $__submit_n_retry_launch.
+--submit-retry-launch-interval Interval of retry to launch an instance by\nsubmit (sec) when all combinations of\ncli_input_json failed. Default is $__submit_retry_launch_interval.
+--submit-n-retry-ssh Number of retries after ssh connection\nfailed. Default is $__submit_n_retry_ssh.
+--submit-retry-ssh-interval Interval of retry after ssh connection\nfailed (sec). Default is $__submit_retry_ssh_interval.
 --submit-name Name of submitted job. If not given, the\ncommand name is used.
 --submit-max-jobs Maximum number of submitted jobs running\nin parallel.
 --submit-measure-time Set 1 to measure time of the command.
@@ -158,7 +169,7 @@ _execute_aws () {
     fi
     if [ "$ret" -eq 255 ];then
       aws sso login ${__aws_profile:+--profile ${__aws_profile}} 1>&2
-      ret=$?
+      local ret=$?
       if [ "$ret" -eq 0 ];then
         continue
       else
@@ -334,15 +345,15 @@ _instance_check () {
     fi
     if [ "$status" == "stopped" ];then
       __exit_at_fail=0 start
-      ret=$?
-      if [ $ret -eq 254 ] && echo "${__execute_result}"|grep -q "IncorrectSpotRequestState";then
+      local ret=$?
+      if [ "$ret" -eq 254 ] && echo "${__execute_result}"|grep -q "IncorrectSpotRequestState";then
         if [ $wait_incorrect_spot_request_state -eq 0 ];then
           echo "Waiting for spot request state to be correct after stopping..."
         fi
         ((wait_incorrect_spot_request_state++))
-      elif [ $ret -ne 0 ];then
+      elif [ "$ret" -ne 0 ];then
         echo "ERR_CODE=$ret: $__execute_result" 1>&2
-        exit $ret
+        exit "$ret"
       fi
       sleep 5
     elif [ "$status" == "" ];then
@@ -485,6 +496,7 @@ launch () {
     __spot_instance=0
   fi
 
+  local fail_reason=""
   while [ "$__spot_instance" -ge 0 ];do
     if [ "${#__cli_input_json_list[@]}" -eq 0 ];then
       __n_cli_input_json=-1
@@ -513,16 +525,17 @@ launch () {
       echo "$msg" 1>&2
 
       __exit_at_fail=0 _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${spot_instance} ${user_data} ${launch_template} ${__cli_input_json_opt} ${instance_type_opt} --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
-      ret=$?
+      local ret=$?
       if [ "$ret" -eq 0 ];then
         break
       fi
       echo "ERR_CODE=$ret: $__execute_result" 1>&2
-      if [ $ret -eq 254 ] && echo "${__execute_result}"|grep -q "InsufficientInstanceCapacity";then
+      if [ "$ret" -eq 254 ] && echo "${__execute_result}"|grep -q "InsufficientInstanceCapacity";then
+        fail_reason="InsufficientInstanceCapacity"
         ((__n_cli_input_json++))
         continue
       fi
-      exit $ret
+      exit "$ret"
     done
     if [ "$ret" -eq 0 ];then
       break
@@ -538,6 +551,9 @@ launch () {
     fi
   done
   if [ "$ret" -ne 0 ];then
+    if [ -n "$fail_reason" ];then
+      echo "Failed to launch instance by $fail_reason"
+    fi
     exit "$ret"
   fi
 
@@ -563,19 +579,19 @@ start () {
   # Start stopped instances.
   __instance_filter="--filters Name=instance-state-name,Values=stopped" _get_ids $__enum_instance
   _execute_ec2 "$__dry_run_mode start-instances --instance-ids ${__ids[__enum_instance]}"
-  ret=$?
+  local ret=$?
   _get_id_name_list $__enum_instance
-  if [ $ret -eq 0 ];then
+  if [ "$ret" -eq 0 ];then
     echo "${__dry_run_mode:+Dry run: }Started: $__id_name_list"
   fi
-  return $ret
+  return "$ret"
 }
 
 stop () {
   # Stop running instances.
   __instance_filter="--filters Name=instance-state-name,Values=running" _get_ids $__enum_instance
   _execute_ec2 "$__dry_run_mode stop-instances --instance-ids ${__ids[__enum_instance]}"
-  ret=$?
+  local ret=$?
   _get_id_name_list $__enum_instance
   if [ $ret -eq 0 ];then
     echo "${__dry_run_mode:+Dry run: }Stopped: $__id_name_list"
@@ -656,8 +672,8 @@ ssh () {
   while :;do
     # shellcheck disable=SC2086
     command ssh $ssh_option $ip "sudo tail -n1 /var/log/cloud-init-output.log |grep 'Cloud-init.*finished at.*seconds$'" >/dev/null 2>&1
-    ret=$?
-    if [ $ret -eq 0 ];then
+    local ret=$?
+    if [ "$ret" -eq 0 ];then
       break
     fi
     if [ $waiting_for_ready -eq 0 ];then
@@ -703,7 +719,7 @@ scp () {
   while :;do
     # shellcheck disable=SC2086
     command ssh $ssh_option $ip "exit"
-    ret=$?
+    local ret=$?
     if [ $ret -eq 0 ];then
       break
     fi
@@ -759,52 +775,84 @@ submit () {
 
   _sedi "s/${job_id}.*$/${job_id} - - starting/" "$__job_list"
   echo "Launching an instance for job: $job_id"
-  output=$(
-    eval "exec $__submit_launch_lock_fd>$__submit_launch_lock"
-    flock -x $__submit_launch_lock_fd
-    _sedi "s/${job_id}.*$/${job_id} - - launching/" "$__job_list"
-    output=$(launch)
-    ret=$?
-    echo "$output"
+  local n_retry_ssh=0
+  while :;do
+    local n_retry=0
+    local ret=0
+    local output=""
+    while :;do
+      output=$(
+        eval "exec $__submit_launch_lock_fd>$__submit_launch_lock"
+        flock -x $__submit_launch_lock_fd
+        _sedi "s/${job_id}.*$/${job_id} - - launching/" "$__job_list"
+        output=$(launch)
+        ret=$?
+        echo "$output"
+        if [ $ret -ne 0 ];then
+          echo "ERR_CODE=$ret: Failed to launch instance for job: $job_id"
+          exit $ret
+        fi
+      )
+      local ret=$?
+      if [ $ret -eq 0 ];then
+        break
+      fi
+      if [ $ret -ne 244 ] || ! echo "$output" | grep -q "InsufficientInstanceCapacity";then
+        break
+      fi
+      ((n_retry++))
+      if [ $n_retry -le "${__submit_n_retry_launch}" ];then
+        echo "Failed to launch instance by capacity, retry after ${__submit_retry_launch_interval} seconds..."
+        sleep "${__submit_retry_launch_interval}"
+        continue
+      fi
+      break
+    done
     if [ $ret -ne 0 ];then
-      echo "ERR_CODE=$ret: Failed to launch instance for job: $job_id"
+      echo "$output" 1>&2
+      _clear_job
       exit $ret
     fi
-  )
-  ret=$?
-  if [ $ret -ne 0 ];then
-    echo "$output" 1>&2
-    _clear_job
-    exit $ret
-  fi
-  local instance_id=$(echo "$output" |tr ',' $'\n'|grep "^ Id"|cut -d '=' -f2)
-  local instance_ip=$(echo "$output" |tr ',' $'\n'|grep "^ $(_ip_choice)"|cut -d '=' -f2)
-  local instance_type=$(echo "$output" |tr ',' $'\n'|grep "^ Type"|cut -d '=' -f2)
-  __ids[__enum_instance]="$instance_id"
-  _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} launching/" "$__job_list"
+    local instance_id=$(echo "$output" |tr ',' $'\n'|grep "^ Id"|cut -d '=' -f2)
+    local instance_ip=$(echo "$output" |tr ',' $'\n'|grep "^ $(_ip_choice)"|cut -d '=' -f2)
+    local instance_type=$(echo "$output" |tr ',' $'\n'|grep "^ Type"|cut -d '=' -f2)
+    __ids[__enum_instance]="$instance_id"
+    _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} launching/" "$__job_list"
 
-  # Wait the instance be ready
-  __execute_command="exit"
-  ssh
-  _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} running/" "$__job_list"
+    # Wait the instance be ready
+    __execute_command="exit"
+    ssh
+    _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} running/" "$__job_list"
 
-  if [ "$__submit_command" != "1" ];then
-    __execute_command="bash ~/$(basename "$__file")"
-  else
-    __execute_command="${__positional[*]}"
-  fi
-  if [ "$__submit_measure_time" = "1" ];then
-    __execute_command="time $__execute_command"
-  fi
-  __execute_command="echo RUN STARTED;echo Execute \"$__execute_command\" at job_id=$job_id, insatnce_id=$instance_id, instance_ip=$instance_ip, instance_type=$instance_type; $__execute_command; echo RUN FINISHED"
-  if [ "$__submit_command" != "1" ];then
-    scp
-  fi
-  if [ "$__submit_current_dir" = 1 ];then
-    __execute_command="cd $PWD; $__execute_command"
-  fi
-  ssh
-  ret=$?
+    if [ "$__submit_command" != "1" ];then
+      __execute_command="bash ~/$(basename "$__file")"
+    else
+      __execute_command="${__positional[*]}"
+    fi
+    if [ "$__submit_measure_time" = "1" ];then
+      __execute_command="time $__execute_command"
+    fi
+    __execute_command="echo RUN STARTED;echo Execute \"$__execute_command\" at job_id=$job_id, insatnce_id=$instance_id, instance_ip=$instance_ip, instance_type=$instance_type; $__execute_command; echo RUN FINISHED"
+    if [ "$__submit_command" != "1" ];then
+      scp
+    fi
+    if [ "$__submit_current_dir" = 1 ];then
+      __execute_command="cd $PWD; $__execute_command"
+    fi
+    ssh
+    local ret=$?
+    if [ $ret -eq 255 ];then
+      echo "SSH connection was closed by the remote host"
+      ((n_retry_ssh++))
+      if [ $n_retry_ssh -lt "${__submit_n_retry_ssh}" ];then
+        echo "Retry after ${__submit_retry_ssh_interval} seconds..."
+        sleep "${__submit_retry_ssh_interval}"
+        continue
+      fi
+    fi
+    break
+  done
+
   echo "finishing job: $job_id, return code: $ret"
   _execute_ec2 "describe-instances --instance-ids ${instance_id} --query \"Reservations[*].Instances[*].{a:State.Name,b:StateTransitionReason}\" --output text"
   echo "Instance state: $__execute_result"
