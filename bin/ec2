@@ -136,7 +136,7 @@ _execute () {
   fi
   __execute_result="$(eval "$*" 2>&1)"
   local ret=$?
-  __execute_result="$(echo "$__execute_result"|sed '{/^$/d}')"
+  __execute_result="$(echo "$__execute_result"|awk 'NR==1 && /^$/ {next} {print}')"
   if [ $ret != 0 ];then
     if echo "$__execute_result"|grep -q DryRunOperation;then
       return 0
