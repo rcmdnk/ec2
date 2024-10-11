@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2154,SC2155
 
-__version="v0.2.2"
-__date="10/Oct/2024"
+__version="v0.2.3"
+__date="11/Oct/2024"
 __config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
 __job_list="${__config_dir}/job_list"
@@ -136,6 +136,7 @@ _execute () {
   fi
   __execute_result="$(eval "$*" 2>&1)"
   local ret=$?
+  __execute_result="$(echo "$__execute_result"|sed '{/^$/d}')"
   if [ $ret != 0 ];then
     if echo "$__execute_result"|grep -q DryRunOperation;then
       return 0
@@ -772,7 +773,7 @@ submit () {
   )
   ret=$?
   if [ $ret -ne 0 ];then
-    echo "ERR_CODE=$ret: $output" 1>&2
+    echo "$output" 1>&2
     _clear_job
     exit $ret
   fi
