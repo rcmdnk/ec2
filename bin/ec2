@@ -39,6 +39,7 @@ __options="
 --all|-a Set 1 to ignore preset filters.
 --aws-profile Profile name for aws cli (if not\nspecified, the default profile is used.)
 --cli-input-json-directory A json file which has parameters to launch\nan instance. Multiple files can be\nassigned by comma separated list.\nIf multiple files are given, secondary\nfiles are used if the first one failed by\nthe capacity problem.
+--cli-input-json-group|-G JSON group name for launch\nan instance. Multiple groups can be\nassigned by comma separated list.\nIf multiple groups are given, secondary\ngroups are used if the first one failed by\nthe capacity problem.
 --cli-input-json|-c A directory which has json files. If\ncli_input_json is not assigned and\ncli_input_json_directory is set, files are\nsearched and it enters the selection mode.
 --cpu-filter Filter to pick up instance type by CPU.
 --dry-run|-d Set 1 to run as dry run mode (modification\ncommands are not executed.)
@@ -404,15 +405,64 @@ _get_template () {
   fi
 }
 
+_get_json_group () {
+  local group_name="$1"
+  local group_var="cli_input_json_group_${group_name}"
+  local group_value
+  eval "group_value=\${__${group_var}}"
+  if [ -z "$group_value" ]; then
+    echo "JSON group '${group_name}' not found in config" >&2
+    return 1
+  fi
+  echo "$group_value"
+}
+
+list_json_groups () {
+  # List available JSON groups
+  local header="Group Files"
+  local contents=""
+  local group
+  for group in "${__cli_input_json_groups[@]}";do
+    local var_name=__cli_input_json_group_$group
+    local files=${!var_name}
+    contents="$contents$group $files"$'\n'
+  done
+
+  if [ -z "$contents" ]; then
+    echo "No JSON groups defined in config"
+    return 0
+  fi
+
+  echo "JSON directory: $__cli_input_json_directory"
+  echo ""
+  _print_list "$header" "$contents"
+}
+
 _get_cli_input_jsons () {
-  if [ "$__cli_input_json"  = "select" ];then
-    if [ -z "$__cli_input_json_directory" ];then
+  if [ -n "$__cli_input_json_group" ]; then
+    if [ "$__cli_input_json_group" = "select" ]; then
+      if [ "${#__cli_input_json_groups[@]}" -eq 0 ];then
+        echo "No cli_input_json_group is defined"
+        exit 1
+      fi
+      _select "${__cli_input_json_groups[@]}"
+      __cli_input_json_group=$__selected
+      if [ -z "$__cli_input_json_group" ];then
+        echo "No cli_input_json_group is selected"
+        exit 1
+      fi
+    fi
+    local var_name=__cli_input_json_group_${__cli_input_json_group}
+    __cli_input_json=${!var_name}
+  elif [ "$__cli_input_json" = "select" ]; then
+    if [ -z "$__cli_input_json_directory" ]; then
       echo "Set cli_input_json_directory by: ec2 -C <cli_input_json_directory> <command>"
       exit 1
     fi
     _select "$(command ls "$__cli_input_json_directory")"
     __cli_input_json="$__selected"
   fi
+
   # shellcheck disable=SC2086
   read -r -a __cli_input_json_list <<< "$(echo $__cli_input_json | tr "," " ")"
 }
@@ -434,7 +484,7 @@ _get_cli_input_json_opt () {
     elif [ -f "$__cli_input_json_directory/$json" ];then
       json="file://$__cli_input_json_directory/$json"
     else
-      echo "cli_input_json is not found: $json" 1>&2
+      echo "cli_input_json is not found: $json"
       exit 1
     fi
   fi
@@ -519,7 +569,7 @@ launch () {
         msg="$msg, cli_input_json=${__cli_input_json_list[__n_cli_input_json]}"
       fi
       msg="$msg${template_name:+, template=$template_name}"
-      if [ "$__spot_instance" -eq 1 ];then
+      if [ "$__spot_instance" = 1 ];then
         msg="$msg, lifecycle=spot"
       fi
       echo "$msg" 1>&2
@@ -1102,6 +1152,7 @@ version () {
 
 _read_config () {
   local line
+  __cli_input_json_groups=()
   if [ -f "$__config" ];then
     while read -r line || [ -n "${line}" ];do
       line="$(echo "$line"|cut -d '#' -f1)"
@@ -1113,6 +1164,9 @@ _read_config () {
       local opt="${line%%=*}"
       local val="${line#*=}"
       eval "__${opt//-/_}=${val}"
+      if [[ "${opt//-/_}" =~ ^cli_input_json_group_.*$ ]];then
+        __cli_input_json_groups=("${__cli_input_json_groups[@]}" "${opt//cli_input_json_group_/}")
+      fi
     done < "$__config"
   fi
 }

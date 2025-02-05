@@ -36,6 +36,7 @@ Subcommands:
   jobs                               List jobs.
   launch                             Launch a new instance.
   list                               Alias for instances.
+  list_json_groups                   List available JSON groups
   ls                                 Alias for instances.
   mosh                               Mosh to an instance.
                                      Use `mosh [commands] [options]`.
@@ -78,6 +79,12 @@ Options:
                                      assigned by comma separated list.
                                      If multiple files are given, secondary
                                      files are used if the first one failed by
+                                     the capacity problem.
+  --cli-input-json-group, -G         JSON group name for launch
+                                     an instance. Multiple groups can be
+                                     assigned by comma separated list.
+                                     If multiple groups are given, secondary
+                                     groups are used if the first one failed by
                                      the capacity problem.
   --cli-input-json, -c               A directory which has json files. If
                                      cli_input_json is not assigned and
