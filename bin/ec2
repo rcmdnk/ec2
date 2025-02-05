@@ -1014,6 +1014,15 @@ types () {
   _print_list "$header" "$contents" "s d d d d s s"
 }
 
+update_types () {
+  # Force update instance type list cache
+  if [ -f "$__type_list_file" ]; then
+     command rm -f "$__type_list_file"
+  fi
+  _get_type_list
+  echo "Instance type list cache has been updated"
+}
+
 pricing () {
   # Show pricing of instance types.
   if [ "$__instance_type" == "select" ] || [ -z "$__instance_type" ];then

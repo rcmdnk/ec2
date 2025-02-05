@@ -60,6 +60,7 @@ Subcommands:
   templates                          List templates.
   terminate                          Terminate instances.
   types                              List instance types.
+  update_types                       Force update instance type list cache
   version                            Show version.
 
 Options:
@@ -111,7 +112,7 @@ Options:
   --spot-instance, -S                Set 1 to launch a spot instance.
   --ssh-key, -k                      Key for ssh.
   --ssh-user, -u                     User for ssh.
-  --submit-command                   Submit command instead of script file.
+  --submit-command                   Set 1 to submit command instead of submitting script file.
   --submit-current-dir               Set 1 to use the current directory as the
                                      working directory by submit.
   --submit-n-retry-launch            Number of retries to launch an instance by
