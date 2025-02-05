@@ -29,6 +29,7 @@ Usage: ec2 <subcommand> [options]
 Subcommands:
   commands                           List commands.
   delete_job                         Delete jobs.
+  describe                           Show detailed information about instances
   help                               Show help.
   images                             List images.
   instances                          List instances.
@@ -52,11 +53,16 @@ Subcommands:
   stop                               Stop running instances.
   submit                             Make a new instance and submit a job.
                                      Use `submit <file or commands> [options].
-                                     If __submit_command is not set, need one bash file.
-                                     If __submit_command is set, given options are recognized as command.
-                                     Use `--` to separate options for ec2 and options  for the command.
-                                     If `__curent_dir` is set, the command is executed in the current directory.
-                                     (Need same directory structure in the instance.)
+                                     If __submit_command is not set, need one
+                                     bash file.
+                                     If __submit_command is set, given options
+                                     are recognized as command. Use `--` to
+                                     separate options for ec2 and options  for
+                                     the command.
+                                     If `__curent_dir` is set, the command is
+                                     executed in the current directory.
+                                     (Need same directory structure in the
+                                     instance.)
   templates                          List templates.
   terminate                          Terminate instances.
   types                              List instance types.
@@ -112,7 +118,8 @@ Options:
   --spot-instance, -S                Set 1 to launch a spot instance.
   --ssh-key, -k                      Key for ssh.
   --ssh-user, -u                     User for ssh.
-  --submit-command                   Set 1 to submit command instead of submitting script file.
+  --submit-command                   Set 1 to submit command instead of
+                                     submitting script file.
   --submit-current-dir               Set 1 to use the current directory as the
                                      working directory by submit.
   --submit-n-retry-launch            Number of retries to launch an instance by

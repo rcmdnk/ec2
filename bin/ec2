@@ -58,7 +58,7 @@ __options="
 --spot-instance|-S Set 1 to launch a spot instance.
 --ssh-key|-k Key for ssh.
 --ssh-user|-u User for ssh.
---submit-command Set 1 to submit command instead of submitting script file.
+--submit-command Set 1 to submit command instead of\nsubmitting script file.
 --submit-current-dir Set 1 to use the current directory as the\nworking directory by submit.
 --submit-n-retry-launch Number of retries to launch an instance by\nsubmit. Default is $__submit_n_retry_launch.
 --submit-retry-launch-interval Interval of retry to launch an instance by\nsubmit (sec) when all combinations of\ncli_input_json failed. Default is $__submit_retry_launch_interval.
@@ -655,6 +655,28 @@ ls () {
   instances
 }
 
+describe () {
+  # Show detailed information about instances
+  _get_ids $__enum_instance
+
+  _execute_ec2 "describe-instances --instance-ids ${__ids[__enum_instance]} \
+    --query 'Reservations[*].Instances[*].{
+      Name:Tags[?Key==\`Name\`].Value|[0],
+      InstanceId:InstanceId,
+      InstanceType:InstanceType,
+      State:State.Name,
+      LaunchTime:LaunchTime,
+      Platform:Platform,
+      PrivateIP:PrivateIpAddress,
+      PublicIP:PublicIpAddress,
+      KeyName:KeyName,
+      SecurityGroups:SecurityGroups[*].GroupName
+    }' \
+    --output table"
+
+  echo "$__execute_result"
+}
+
 ssh () {
   # SSH to an instance.
   # Use `ssh [commands] [options]`.
@@ -748,11 +770,16 @@ _clear_job () {
 submit () {
   # Make a new instance and submit a job.
   # Use `submit <file or commands> [options].
-  # If __submit_command is not set, need one bash file.
-  # If __submit_command is set, given options are recognized as command.
-  # Use `--` to separate options for ec2 and options  for the command.
-  # If `__curent_dir` is set, the command is executed in the current directory.
-  # (Need same directory structure in the instance.)
+  # If __submit_command is not set, need one
+  # bash file.
+  # If __submit_command is set, given options
+  # are recognized as command. Use `--` to
+  # separate options for ec2 and options  for
+  # the command.
+  # If `__curent_dir` is set, the command is
+  # executed in the current directory.
+  # (Need same directory structure in the
+  # instance.)
   if ! type flock >/dev/null 2>&1;then
     echo "flock is required for 'submit'"
     echo "Install flock ('brew install flock' or anything)"
