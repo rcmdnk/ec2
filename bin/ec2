@@ -58,7 +58,7 @@ __options="
 --spot-instance|-S Set 1 to launch a spot instance.
 --ssh-key|-k Key for ssh.
 --ssh-user|-u User for ssh.
---submit-command Submit command instead of script file.
+--submit-command Set 1 to submit command instead of submitting script file.
 --submit-current-dir Set 1 to use the current directory as the\nworking directory by submit.
 --submit-n-retry-launch Number of retries to launch an instance by\nsubmit. Default is $__submit_n_retry_launch.
 --submit-retry-launch-interval Interval of retry to launch an instance by\nsubmit (sec) when all combinations of\ncli_input_json failed. Default is $__submit_retry_launch_interval.
