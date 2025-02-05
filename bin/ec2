@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2154,SC2155
 
-__version="v0.2.6"
-__date="11/Oct/2024"
+__version="v0.2.7"
+__date="5/Feb/2025"
 __config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
 __job_list="${__config_dir}/job_list"
