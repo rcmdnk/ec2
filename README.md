@@ -124,6 +124,7 @@ Options:
                                        - [fzf](https://github.com/junegunn/fzf)
   --spot-instance, -S                Set 1 to launch a spot instance.
   --ssh-key, -k                      Key for ssh.
+  --ssh-option                       Additional ssh options.
   --ssh-user, -u                     User for ssh.
   --submit-command                   Set 1 to submit command instead of
                                      submitting script file.
