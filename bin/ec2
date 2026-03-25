@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2154,SC2155
 
-__version="v0.2.8"
-__date="3/Sep/2025"
+__version="v0.2.9"
+__date="25/Mar/2026"
 __config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
 __job_list="${__config_dir}/job_list"
@@ -38,9 +38,9 @@ __submit_retry_ssh_interval=10
 __options="
 --all|-a Set 1 to ignore preset filters.
 --aws-profile Profile name for aws cli (if not\nspecified, the default profile is used.)
---cli-input-json-directory A json file which has parameters to launch\nan instance. Multiple files can be\nassigned by comma separated list.\nIf multiple files are given, secondary\nfiles are used if the first one failed by\nthe capacity problem.
+--cli-input-json|-c A json file which has parameters to launch\nan instance. Multiple files can be\nassigned by comma separated list.\nIf multiple files are given, secondary\nfiles are used if the first one failed by\nthe capacity problem.
 --cli-input-json-group|-G JSON group name for launch\nan instance. Multiple groups can be\nassigned by comma separated list.\nIf multiple groups are given, secondary\ngroups are used if the first one failed by\nthe capacity problem.
---cli-input-json|-c A directory which has json files. If\ncli_input_json is not assigned and\ncli_input_json_directory is set, files are\nsearched and it enters the selection mode.
+--cli-input-json-directory|-C A directory which has json files. If\ncli_input_json is not assigned and\ncli_input_json_directory is set, files are\nsearched and it enters the selection mode.
 --cpu-filter Filter to pick up instance type by CPU.
 --dry-run|-d Set 1 to run as dry run mode (modification\ncommands are not executed.)
 --gpu-filter Filter to pick up instance type by GPU.
@@ -440,7 +440,9 @@ list_json_groups () {
 }
 
 _get_cli_input_jsons () {
-  if [ -n "$__cli_input_json_group" ]; then
+  if [ -n "$__cli_input_json" ] && [ "$__cli_input_json" != "select" ]; then
+    :
+  elif [ -n "$__cli_input_json_group" ]; then
     if [ "$__cli_input_json_group" = "select" ]; then
       if [ "${#__cli_input_json_groups[@]}" -eq 0 ];then
         echo "No cli_input_json_group is defined"

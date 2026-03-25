@@ -74,7 +74,7 @@ Options:
   --all, -a                          Set 1 to ignore preset filters.
   --aws-profile                      Profile name for aws cli (if not
                                      specified, the default profile is used.)
-  --cli-input-json-directory         A json file which has parameters to launch
+  --cli-input-json, -c               A json file which has parameters to launch
                                      an instance. Multiple files can be
                                      assigned by comma separated list.
                                      If multiple files are given, secondary
@@ -86,7 +86,7 @@ Options:
                                      If multiple groups are given, secondary
                                      groups are used if the first one failed by
                                      the capacity problem.
-  --cli-input-json, -c               A directory which has json files. If
+  --cli-input-json-directory, -C     A directory which has json files. If
                                      cli_input_json is not assigned and
                                      cli_input_json_directory is set, files are
                                      searched and it enters the selection mode.
