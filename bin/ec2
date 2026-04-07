@@ -537,7 +537,7 @@ launch () {
   local user_data
   if [ -n "$__user_data" ];then
     if [[ ! "$__user_data" =~ ^file ]];then
-      if file --mime "$path" | grep -q 'charset=binary'; then
+      if file --mime "$__user_data" | grep -q 'charset=binary'; then
         __user_data="fileb://$__user_data"
       else
         __user_data="file://$__user_data"
