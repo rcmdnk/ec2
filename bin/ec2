@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2154,SC2155
 
-__version="v0.2.9"
-__date="25/Mar/2026"
+__version="v0.2.10"
+__date="8/Apr/2026"
 __config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
 __job_list="${__config_dir}/job_list"
@@ -71,7 +71,7 @@ __options="
 --submit-measure-time Set 1 to measure time of the command.
 --submit-remain-instance Set 1 to keep instances after finishing\nsubmitted jobs.
 --template-id|-T Assign template id. If not given, not\ntemplated is used. If 'select' is passed,\nit is selected interactively.
---user-data|-U user data file for luanch (run-instances),\ne.g: file:///path/to/your/user/data/script
+--user-data|-U user data file for luanch (run-instances),\ne.g: file:///path/to/your/user/data/script or fileb:///path/to/your/user/data/script.gz
 --verbose|-v Set 1 to run as verbose mode (show\nexecuting commands.)
 "
 
@@ -536,8 +536,12 @@ launch () {
   fi
   local user_data
   if [ -n "$__user_data" ];then
-    if [[ ! "$__user_data" =~ ^file:// ]];then
-      __user_data="file://$__user_data"
+    if [[ ! "$__user_data" =~ ^file ]];then
+      if file --mime "$path" | grep -q 'charset=binary'; then
+        __user_data="fileb://$__user_data"
+      else
+        __user_data="file://$__user_data"
+      fi
     fi
     user_data="--user-data $__user_data"
   fi
