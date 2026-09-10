@@ -270,6 +270,10 @@ $ ec2 make_ami
 $ ec2 setup
 ```
 
+AWS prerequisites, IAM permissions, network requirements, file-system setup,
+security notes, and resource cleanup are documented in the
+[environment setup guide](docs/environment-setup.md).
+
 The default working directory is `~/.config/ec2/work`, independent of the
 directory where the command is run. Override the defaults when needed:
 
