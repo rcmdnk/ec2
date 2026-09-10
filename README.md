@@ -208,6 +208,47 @@ name_filter=my-instance
 Available options are same as the command line options starting with `--`, but without `--` and `-` is replaced by `_`,
 i.e., `aws_profile` for `--aws-profile`.
 
+### Manage configuration manually
+
+If you already have an AMI and the required AWS resources, create
+`~/.config/ec2/config` directly. For example:
+
+```
+name_filter=my-instances
+image_name_filter=my-ami
+ssh_key=~/.ssh/my_ssh.pem
+ssh_user=ec2-user
+aws_profile=my-profile
+cli_input_json=~/.config/ec2/cli_input_json/my-instance.json
+```
+
+This limits instance listings to names containing `my-instances`, uses the
+configured SSH key and user for `ec2 ssh` and `ec2 mosh`, and selects the AWS
+CLI profile. Omit `aws_profile` to use the default AWS credential chain.
+
+To launch your prepared AMI without `ec2 setup`, create the referenced launch
+JSON yourself:
+
+```
+{
+  "ImageId": "ami-0123456789abcdef0",
+  "InstanceType": "t3.medium",
+  "KeyName": "my-key",
+  "SecurityGroupIds": ["sg-0123456789abcdef0"],
+  "SubnetId": "subnet-0123456789abcdef0"
+}
+```
+
+The launch JSON is unnecessary when you only want to manage existing
+instances. After creating the configuration, normal commands can be used
+immediately:
+
+```
+$ ec2 instances
+$ ec2 launch
+$ ec2 ssh
+```
+
 ### AMI builds and environment setup
 
 Environment commands use a separate Bash configuration file so that their
@@ -250,23 +291,6 @@ They are extracted to a temporary directory when an environment command runs,
 so a copied `bin/ec2` has no runtime dependency on this source tree.
 
 ### Examples
-
-#### Manage my instances with the prefix "my-instances"
-
-Make ~/.config/ec2/config file as follows:
-
-```
-name_filter=my-instances
-ssh_key=~/.ssh/my_ssh.pem
-ssh_user=ec2-user
-aws_profile=my-profile
-```
-
-This will show only instances which include `my-instances` in the Name.
-
-It uses the key **~/.ssh/my_ssh.pem** at `ec2 ssh` or `ec2 mosh`, with the user name `ec2-user`.
-
-Set `aws_profile` if you want to use other than the default profile.
 
 #### Launch new instance
 
