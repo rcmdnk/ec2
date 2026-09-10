@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC1090,SC1091
+set -euo pipefail
+
+if ! type aws >/dev/null 2>&1; then
+  echo "AWS CLI is not installed. Please install AWS CLI to continue." >&2
+  exit 1
+fi
+
+requested_workdir=${1:-${WORKDIR:-my_work}}
+requested_config=${2:-${CONFIG:-./config}}
+WORKDIR=$requested_workdir
+CONFIG=$requested_config
+export WORKDIR CONFIG
+
+if [[ ! -f "$CONFIG" ]]; then
+  echo "Configuration file not found: $CONFIG (copy config.example to config)" >&2
+  exit 1
+fi
+source "$CONFIG"
+WORKDIR=$requested_workdir
+CONFIG=$requested_config
+export WORKDIR CONFIG
+unset requested_workdir requested_config
+source "$(dirname "$0")/variables"
+source "$(dirname "$0")/lib.sh"
+mkdir -p "$WORKDIR"
+
+if ! aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
+  aws sso login --profile "$PROFILE" || true
+  if ! aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
+    echo "AWS authentication failed for profile '$PROFILE' in region '$REGION'" >&2
+    echo "Please login using 'aws sso login --profile $PROFILE' or check your AWS credentials." >&2
+    exit 1
+  fi
+fi
+
+# Names have to be resolved after the credentials are checked, because every one
+# of these costs a describe call. Setting the <X>_IDS form skips the lookup.
+resolve_ids VPC_ID VPC_NAME 'ec2 describe-vpcs' tag:Name 'Vpcs[].VpcId'
+resolve_ids SUBNET_IDS SUBNET_NAMES 'ec2 describe-subnets' tag:Name 'Subnets[].SubnetId'
+# Security group names are unique per VPC, so scope the lookup when we know it.
+security_group_filters=()
+[[ -n "$VPC_ID" ]] && security_group_filters=("Name=vpc-id,Values=$VPC_ID")
+for prefix in '' EFS_ FSX_; do
+  resolve_ids "${prefix}SECURITY_GROUP_IDS" "${prefix}SECURITY_GROUP_NAMES" \
+    'ec2 describe-security-groups' group-name 'SecurityGroups[].GroupId' \
+    ${security_group_filters[@]+"${security_group_filters[@]}"}
+done
+unset prefix security_group_filters
+resolve_ids FSX_ROUTE_TABLE_IDS FSX_ROUTE_TABLE_NAMES 'ec2 describe-route-tables' \
+  tag:Name 'RouteTables[].RouteTableId'
+# Derived here rather than in scripts/variables, which runs before SUBNET_NAMES
+# can be resolved. Unset means "use the first subnet"; an explicit empty value
+# means "let Packer choose", so this must not use the :- form.
+SUBNET_ID=${SUBNET_ID-${SUBNET_IDS%%,*}}

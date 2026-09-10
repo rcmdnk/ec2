@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Settings with no sensible default. config.example ships them uncommented and
+# empty, so that a fresh copy names all of them at once instead of failing on
+# whichever one happens to be read first.
+#   REQUIRED_SETTINGS      needed by every entry point
+#   REQUIRED_SETTINGS_EC2  needed on top of those by scripts/setup_ec2, which
+#                          writes the launch JSON and the `ec2` configuration.
+#                          Building an AMI or a file system does not need them.
+REQUIRED_SETTINGS=(REGION)
+REQUIRED_SETTINGS_EC2=(SUBNET_IDS KEY_NAME EC2_SSH_KEY)
+required_settings=("${REQUIRED_SETTINGS[@]}")
+[[ "${REQUIRE_EC2_SETTINGS:-0}" == 1 ]] && required_settings+=("${REQUIRED_SETTINGS_EC2[@]}")
+missing=()
+for required in "${required_settings[@]}"; do
+  [[ -n "${!required-}" ]] && continue
+  # A required <X>_IDS can instead be given as <X>_NAMES, which base_setup
+  # resolves once the credentials are known to work.
+  alternative=''
+  [[ "$required" == *_IDS ]] && alternative="${required%_IDS}_NAMES"
+  [[ -n "$alternative" && -n "${!alternative-}" ]] && continue
+  missing+=("${required}${alternative:+ (or $alternative)}")
+done
+if ((${#missing[@]} > 0)); then
+  printf 'Required setting(s) not set in %s:\n' "${CONFIG:-config}" >&2
+  printf '  %s\n' "${missing[@]}" >&2
+  echo 'See config.example for what each one means.' >&2
+  exit 1
+fi
+unset missing required required_settings alternative
+
+PROFILE="${PROFILE-default}"
+declare -p AWS_ARGS &>/dev/null || AWS_ARGS=(--profile "$PROFILE" --region "$REGION")
+EC2_USER="${EC2_USER-ec2-user}"
+
+AWS_POLL_DELAY_SECONDS=${AWS_POLL_DELAY_SECONDS-10}
+AWS_MAX_ATTEMPTS=${AWS_MAX_ATTEMPTS-400}
+FS_MOUNT_MAX_ATTEMPTS=${FS_MOUNT_MAX_ATTEMPTS-60}
+FS_MOUNT_RETRY_INTERVAL=${FS_MOUNT_RETRY_INTERVAL-2}
+PACKER_VALIDATE_ONLY=${PACKER_VALIDATE_ONLY-0}
+
+SSH_INTERFACE=${SSH_INTERFACE-private_ip}
+SSH_USERNAME=${SSH_USERNAME-${EC2_USER}}
+# Optional: Packer builds a temporary security group when this is empty, and the
+# generated launch JSON leaves "Groups" out so EC2 applies the VPC default.
+SECURITY_GROUP_IDS=${SECURITY_GROUP_IDS-}
+SECURITY_GROUP_NAMES=${SECURITY_GROUP_NAMES-}
+# Optional for make_ami, which lets Packer pick a subnet. Required by setup_ec2
+# through REQUIRED_SETTINGS_EC2, and by the file system scripts when they create
+# something.
+SUBNET_IDS=${SUBNET_IDS-}
+SUBNET_NAMES=${SUBNET_NAMES-}
+SUBNET_LABELS=${SUBNET_LABELS-}
+VPC_ID=${VPC_ID-}
+VPC_NAME=${VPC_NAME-}
+# Optional: Packer resolves the VPC from SUBNET_ID when this is empty, and only
+# ever needs it to build a temporary security group, which SECURITY_GROUP_IDS
+# already makes unnecessary.
+IAM_INSTANCE_PROFILE=${IAM_INSTANCE_PROFILE-}
+DEVICE_NAME=${DEVICE_NAME-/dev/xvda}
+DELETE_ON_TERMINATION=${DELETE_ON_TERMINATION-true}
+VOLUME_SIZE=${VOLUME_SIZE-60}
+VOLUME_TYPE=${VOLUME_TYPE-gp3}
+ENCRYPTED=${ENCRYPTED-true}
+SCRIPTS=${SCRIPTS-./scripts/make_swap.sh,./scripts/enable_multi_processing.sh,./scripts/install_packages.sh,./scripts/set_time_zone.sh,./scripts/setup_shutdown.sh}
+SWAP_BS=${SWAP_BS-128M}
+SWAP_COUNT=${SWAP_COUNT-64}
+TIME_ZONE=${TIME_ZONE-UTC}
+SHUTDOWN=${SHUTDOWN-systemd}
+SHUTDOWN_DURATION=${SHUTDOWN_DURATION-hourly}
+SHUTDOWN_CHECK_PROCESS=${SHUTDOWN_CHECK_PROCESS-sshd|screen|tmux|mosh-server}
+PACKAGES=${PACKAGES-}
+FLATPAK_PACKAGES=${FLATPAK_PACKAGES-}
+UPDATE_PACKAGES=${UPDATE_PACKAGES-1}
+MULTI_PROCESSING=${MULTI_PROCESSING-1}
+
+# CPU instance configuration.
+CPU_INSTANCE=${CPU_INSTANCE-1}
+CPU_AMI_NAME=${CPU_AMI_NAME-}
+CPU_AMI_FILTER=${CPU_AMI_FILTER-al2023-ami-*-x86_64} # Amazon Linux 2023
+CPU_AMI_OWNER=${CPU_AMI_OWNER=amazon}
+CPU_SOURCE_AMI_ID=${CPU_SOURCE_AMI_ID-}
+CPU_INSTANCE_TYPE=${CPU_INSTANCE_TYPE-c8i.2xlarge}
+CPU_ADDITIONAL_PACKAGES=${CPU_ADDITIONAL_PACKAGES-}
+
+# GPU instance configuration.
+GPU_INSTANCE=${GPU_INSTANCE-0}
+GPU_AMI_NAME=${GPU_AMI_NAME-}
+GPU_AMI_FILTER="${GPU_AMI_FILTER-Deep Learning OSS Nvidia Driver AMI GPU PyTorch * (Amazon Linux 2023)*}" # suffix contains release date
+GPU_AMI_OWNER=${GPU_AMI_OWNER-amazon}
+GPU_SOURCE_AMI_ID=${GPU_SOURCE_AMI_ID-}
+GPU_INSTANCE_TYPE=${GPU_INSTANCE_TYPE-"g4dn.xlarge"}
+GPU_ADDITIONAL_PACKAGES=${GPU_ADDITIONAL_PACKAGES-}
+
+# An enabled family needs a name: Packer builds under it and setup_ec2 looks the
+# image up by it.
+for family in CPU GPU; do
+  enabled_var="${family}_INSTANCE" name_var="${family}_AMI_NAME"
+  if [[ "${!enabled_var}" == 1 && -z "${!name_var}" ]]; then
+    echo "${name_var} must be set in ${CONFIG:-config} while ${enabled_var} is 1" >&2
+    exit 1
+  fi
+done
+unset family enabled_var name_var
+
+# File system configuration.
+CREATE_FILE_SYSTEMS=${CREATE_FILE_SYSTEMS-0}
+RESOURCE_DRY_RUN=${RESOURCE_DRY_RUN-0}
+RESOURCE_MANAGED_BY=${RESOURCE_MANAGED_BY-ec2-environment}
+RESOURCE_PROJECT=${RESOURCE_PROJECT-}
+RESOURCE_OWNER=${RESOURCE_OWNER-}
+RESOURCE_EXPIRES_AT=${RESOURCE_EXPIRES_AT-}
+if [[ "$WORKDIR" == /* ]];then
+  resource_manifest_default="$WORKDIR/resources.tsv"
+else
+  resource_manifest_default="$PWD/$WORKDIR/resources.tsv"
+fi
+RESOURCE_MANIFEST=${RESOURCE_MANIFEST-$resource_manifest_default}
+unset resource_manifest_default
+S3FILES_IDS=${S3FILES_IDS-}
+S3FILES_NAMES=${S3FILES_NAMES-}
+S3FILES_MOUNT_POINTS=${S3FILES_MOUNT_POINTS-/mnt/s3files}
+EFS_IDS=${EFS_IDS-}
+EFS_NAMES=${EFS_NAMES-}
+EFS_MOUNT_POINTS=${EFS_MOUNT_POINTS-/mnt/efs}
+EFS_SECURITY_GROUP_IDS="${EFS_SECURITY_GROUP_IDS-}"
+EFS_SECURITY_GROUP_NAMES=${EFS_SECURITY_GROUP_NAMES-}
+EFS_PERFORMANCE_MODES=${EFS_PERFORMANCE_MODES-generalPurpose}
+EFS_THROUGHPUT_MODES=${EFS_THROUGHPUT_MODES-bursting}
+FSX_NAMES=${FSX_NAMES-}
+FSX_IDS=${FSX_IDS-}
+FSX_MOUNT_POINTS=${FSX_MOUNT_POINTS-/mnt/fsx}
+FSX_SECURITY_GROUP_IDS=${FSX_SECURITY_GROUP_IDS-}
+FSX_SECURITY_GROUP_NAMES=${FSX_SECURITY_GROUP_NAMES-}
+FSX_STORAGE_TYPES=${FSX_STORAGE_TYPES-SSD}
+FSX_STORAGE_CAPACITIES=${FSX_STORAGE_CAPACITIES-100}
+FSX_THROUGHPUT_CAPACITIES=${FSX_THROUGHPUT_CAPACITIES-160}
+FSX_AUTOMATIC_BACKUP_RETENTION_DAYS=${FSX_AUTOMATIC_BACKUP_RETENTION_DAYS-30}
+FSX_ROUTE_TABLE_IDS=${FSX_ROUTE_TABLE_IDS-}
+FSX_ROUTE_TABLE_NAMES=${FSX_ROUTE_TABLE_NAMES-}
+FSX_DEPLOYMENT_TYPE=${FSX_DEPLOYMENT_TYPE-SINGLE_AZ_1}
+IO2_NAMES=${IO2_NAMES-}
+IO2_IDS=${IO2_IDS-}
+IO2_MOUNT_POINTS=${IO2_MOUNT_POINTS-/mnt/io2}
+IO2_FSTYPES=${IO2_FSTYPES-xfs}
+IO2_SIZES=${IO2_SIZES-100}
+IO2_IOPSS=${IO2_IOPSS-3000}
+IO2_DEVICES=${IO2_DEVICES-/dev/sdf}
+
+EC2_NAME_FILTER=${EC2_NAME_FILTER-}
+EC2_IMAGE_NAME_FILTER=${EC2_IMAGE_NAME_FILTER-}
+EC2_SSH_USER=${EC2_SSH_USER-${EC2_USER}}
+EC2_PUBLIC_IP=${EC2_PUBLIC_IP-false}
+EC2_PRIVATE_IP=${EC2_PRIVATE_IP-1}
+EC2_INSTANCE_TYPE=${EC2_INSTANCE_TYPE-t3.medium}
+EC2_SPOT_INSTANCE=${EC2_SPOT_INSTANCE-0}
+EC2_SUBMIT_COMMAND=${EC2_SUBMIT_COMMAND-1}
+EC2_SUBMIT_N_RETRY_LAUNCH=${EC2_SUBMIT_N_RETRY_LAUNCH-120}
+EC2_SUBMIT_N_RETRY_SSH=${EC2_SUBMIT_N_RETRY_SSH-10}
+EC2_SUBMIT_RETRY_LAUNCH_INTERVAL=${EC2_SUBMIT_RETRY_LAUNCH_INTERVAL-60}
+EC2_SUBMIT_RETRY_SSH_INTERVAL=${EC2_SUBMIT_RETRY_SSH_INTERVAL-10}
+EC2_CLI_INPUT_JSON_GROUP=${EC2_CLI_INPUT_JSON_GROUP-cpu}
+if [[ "$WORKDIR" == /* ]];then
+  ec2_user_data_default="fileb://$WORKDIR/ec2/user_data.sh.gz"
+else
+  ec2_user_data_default="fileb://$PWD/$WORKDIR/ec2/user_data.sh.gz"
+fi
+EC2_USER_DATA=${EC2_USER_DATA-$ec2_user_data_default}
+unset ec2_user_data_default
+EC2_MOSH_SERVER=${EC2_MOSH_SERVER-/usr/bin/mosh-server}
+
+FS_DIR=${FS_DIR-}
+FS_USR=${FS_USR-1}
+FS_OPT_SCRIPTS=${FS_OPT_SCRIPTS-}
+FS_DOTFILES_FILE=${FS_DOTFILES_FILE-}
+FS_DOTFILES_DIR=${FS_DOTFILES_DIR-}
+FS_DOTFILES_CONFIG_FILE=${FS_DOTFILES_CONFIG_FILE-}
+FS_DOTFILES_CONFIG_DIR=${FS_DOTFILES_CONFIG_DIR-}
+
+ENABLE_DOCKER=${ENABLE_DOCKER-0}
+AWS_CONFIG=${AWS_CONFIG-}
+SSH_KNOWN_HOSTS=${SSH_KNOWN_HOSTS-}
+SSH_CONFIG=${SSH_CONFIG-}
+SSH_RC=${SSH_RC-}
+USER_SCRIPT_PATH=${USER_SCRIPT_PATH-}

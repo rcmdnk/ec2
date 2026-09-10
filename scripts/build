@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2016
+set -euo pipefail
+
+repo_root=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
+template="$repo_root/src/ec2"
+commands="$repo_root/environment/commands.sh"
+manifest="$repo_root/environment/assets.manifest"
+output="$repo_root/bin/ec2"
+temporary=$(mktemp "${TMPDIR:-/tmp}/ec2-build.XXXXXX")
+block=$(mktemp "${TMPDIR:-/tmp}/ec2-environment-block.XXXXXX")
+trap 'rm -f "$temporary" "$block"' EXIT
+
+emit_extract_function() {
+  printf '%s\n' '_environment_extract() {'
+  printf '%s\n' '  local root=$1'
+  printf '%s\n' '  mkdir -p "$root"'
+
+  while read -r mode relative || [ -n "${relative:-}" ];do
+    [ -n "${relative:-}" ] || continue
+    source_file="$repo_root/environment/$relative"
+    [ -f "$source_file" ] || {
+      echo "Missing environment asset: $source_file" >&2
+      return 1
+    }
+    delimiter="__EC2_ASSET_$(printf '%s' "$relative" | tr -c '[:alnum:]' '_')__"
+    if grep -Fxq "$delimiter" "$source_file";then
+      echo "Asset contains its generated delimiter: $relative" >&2
+      return 1
+    fi
+    printf '  mkdir -p "$(dirname "$root/%s")"\n' "$relative"
+    printf '  cat >"$root/%s" <<'"'"'%s'"'"'\n' "$relative" "$delimiter"
+    cat "$source_file"
+    printf '%s\n' "$delimiter"
+    printf '  chmod %s "$root/%s"\n' "$mode" "$relative"
+  done < "$manifest"
+
+  printf '%s\n' '}'
+}
+
+{
+  printf '%s\n' '# BEGIN GENERATED ENVIRONMENT COMMANDS'
+  emit_extract_function
+  printf '\n'
+  cat "$commands"
+  printf '%s\n' '# END GENERATED ENVIRONMENT COMMANDS'
+} > "$block"
+
+awk -v block="$block" '
+  /^# BEGIN GENERATED ENVIRONMENT COMMANDS$/ {
+    while ((getline line < block) > 0) print line
+    close(block)
+    generated = 1
+    skip = 1
+    next
+  }
+  /^# END GENERATED ENVIRONMENT COMMANDS$/ && skip { skip = 0; next }
+  !skip { print }
+  END { if (!generated) exit 42 }
+' "$template" > "$temporary" || {
+  status=$?
+  [ "$status" -ne 42 ] || echo 'Generated environment marker not found in src/ec2.' >&2
+  exit "$status"
+}
+
+chmod 755 "$temporary"
+mkdir -p "$(dirname "$output")"
+mv "$temporary" "$output"
+trap 'rm -f "$block"' EXIT

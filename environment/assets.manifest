@@ -1,0 +1,17 @@
+600 config.example
+755 scripts/base_setup
+755 scripts/cleanup_resources
+755 scripts/lib.sh
+755 scripts/make_ami
+755 scripts/setup_ec2
+755 scripts/setup_efs
+755 scripts/setup_fsx
+755 scripts/setup_io2
+755 scripts/setup_s3files
+755 scripts/variables
+644 packer/plugins.pkr.hcl
+755 packer/scripts/enable_multi_processing.sh
+755 packer/scripts/install_packages.sh
+755 packer/scripts/make_swap.sh
+755 packer/scripts/set_time_zone.sh
+755 packer/scripts/setup_shutdown.sh

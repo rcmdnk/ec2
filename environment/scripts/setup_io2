@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck disable=SC1091
+source "$(dirname "$0")/base_setup"
+
+if [[ "$SUBNET_IDS" == *,* ]]; then
+  echo "io2 requires exactly one subnet ID" >&2
+  exit 1
+fi
+
+get_io2_id() {
+  local name=$1
+  aws "${AWS_ARGS[@]}" ec2 describe-volumes \
+  --filters "Name=tag:Name,Values=$name" \
+  --query 'Volumes[].VolumeId' --output text
+}
+
+prepare_io2_creation() {
+  local n_names=$1
+  if [[ -z "$SUBNET_IDS" ]];then
+    echo "SUBNET_IDS must be set to create an io2 volume" >&2
+    return 1
+  fi
+  IO2_SIZES=$(make_array "$n_names" "$IO2_SIZES") || return 1
+  IO2_IOPSS=$(make_array "$n_names" "$IO2_IOPSS") || return 1
+}
+
+create_io2() {
+  local i=$1 name=$2 id size iops availability_zone tags tag_specification
+  size=$(csv_items "$IO2_SIZES" "$i")
+  iops=$(csv_items "$IO2_IOPSS" "$i")
+
+  availability_zone=$(subnet_az "$SUBNET_IDS") || return 1
+  tags=$(resource_tags_json "$name") || return 1
+  tag_specification=$(printf '[{"ResourceType":"volume","Tags":%s}]' "$tags")
+  id=$(aws "${AWS_ARGS[@]}" ec2 create-volume --availability-zone "$availability_zone" \
+    --size "$size" --volume-type io2 --iops "$iops" --encrypted \
+    --tag-specifications "$tag_specification" \
+    --query VolumeId --output text) || return 1
+  [[ -n "$id" && "$id" != None ]] || return 1
+  record_resource io2 "$id" "$name" || return 1
+  echo "Created io2 volume '$name': $id" >&2
+  echo 'They are attached and formatted by user-data at the next launch.' >&2
+  echo "$id"
+}
+
+setup_filesystem_ids io2 create_io2 prepare_io2_creation
+echo "$IO2_IDS"

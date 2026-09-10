@@ -1,0 +1,1365 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2154,SC2155
+
+__version="v0.3.0"
+__date="11/Sep/2026"
+__config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ec2"
+__default_config="$__config_dir/config"
+__config="$__default_config"
+__environment_config="${EC2_ENVIRONMENT_CONFIG:-$__config_dir/environment}"
+__workdir="${EC2_ENVIRONMENT_WORKDIR:-$__config_dir/work}"
+__install_config=1
+__replace_config=0
+__manifest=""
+__execute=0
+__job_list="${__config_dir}/job_list"
+__type_list_file="$__config_dir/type_list"
+__submit_sedi_lock="${__config_dir}/submit_sedi.lock"
+__submit_sedi_lock_fd="200"
+__submit_launch_lock="${__config_dir}/submit_launch.lock"
+__submit_launch_lock_fd="201"
+__exit_at_fail=1
+__type_list_file_term=7
+__instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped"
+__n_cli_input_json=0
+__obj_name=(instance image template type)
+__get_list_func=(_get_instance_list _get_image_list _get_template_list _get_type_list)
+__enum_instance=0
+__enum_image=1
+__enum_template=2
+__enum_type=3
+__list=()
+__ids=()
+
+__cmd=$(basename "$0")
+
+__opt_spot="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions\": {\"SpotInstanceType\": \"persistent\", \"InstanceInterruptionBehavior\" : \"stop\"} }'"
+
+__selection_tool="sentaku,peco,fzy,fzf"
+__selection_tool_ref="  - [sentaku](https://github.com/rcmdnk/sentaku/)\n  - [peco](https://github.com/peco/peco)\n  - [fzy](https://github.com/jhawthorn/fzy)\n  - [fzf](https://github.com/junegunn/fzf)"
+__submit_n_retry_launch=0
+__submit_retry_launch_interval=60
+__submit_n_retry_ssh=0
+__submit_retry_ssh_interval=10
+
+__options="
+--all|-a Set 1 to ignore preset filters.
+ --config Configuration file to read instead of the default config file.
+ --environment-config|-E Configuration file for make_ami/setup.
+ --workdir|-W Working directory for environment commands.
+ --install-config Set 1 to install setup output as the default ec2 config.
+ --replace-config Set 1 to back up and replace an unmanaged ec2 config.
+ --manifest Resource manifest used by cleanup_resources.
+ --execute Set 1 to execute cleanup_resources instead of showing its plan.
+--aws-profile Profile name for aws cli (if not\nspecified, the default profile is used.)
+--cli-input-json|-c A json file which has parameters to launch\nan instance. Multiple files can be\nassigned by comma separated list.\nIf multiple files are given, secondary\nfiles are used if the first one failed by\nthe capacity problem.
+--cli-input-json-group|-G JSON group name for launch\nan instance. Multiple groups can be\nassigned by comma separated list.\nIf multiple groups are given, secondary\ngroups are used if the first one failed by\nthe capacity problem.
+--cli-input-json-directory|-C A directory which has json files. If\ncli_input_json is not assigned and\ncli_input_json_directory is set, files are\nsearched and it enters the selection mode.
+--cpu-filter Filter to pick up instance type by CPU.
+--dry-run|-d Set 1 to run as dry run mode (modification\ncommands are not executed.)
+--gpu-filter Filter to pick up instance type by GPU.
+--image-id Image name for new_image/rm_image command.
+--image-name|-I Image name for new_image/rm_image command.
+--image-name-filter Filter to pick up images (AMI).
+--instance-id|-i Assign instance id to be managed. If '' or\n'select' is passed, it is selected\ninteractively.
+--instance-type|-t  Instance type for launch command. If ''\nor 'select' is passed, it is selected\n interactively.
+--mosh-server|-m Mosh server path.
+--n-cpu-core|-n Set number of CPU core of instance to set\nother than default number.
+--n-thread Set 1 to disable hyper-threading.
+--name-filter|-f Only instances which include this value\nis listed.
+--private-ip|-P Set 1 to use private IP addresses instead\nof public IP addresses.
+--retry-non-spot Set 0 to disable retry to launch a\nnon-spot instance when launching a spot\ninstance failed.
+--selection-tool|-s Selection tool list, separated by ','. The\ndefault value is '$__selection_tool'.\nThe first one found is used. If nothing,\nbash's 'select' is used. Tools ref:\n$__selection_tool_ref
+--spot-instance|-S Set 1 to launch a spot instance.
+--ssh-key|-k Key for ssh.
+--ssh-option Additional ssh options.
+--ssh-user|-u User for ssh.
+--submit-command Set 1 to submit command instead of\nsubmitting script file.
+--submit-current-dir Set 1 to use the current directory as the\nworking directory by submit.
+--submit-n-retry-launch Number of retries to launch an instance by\nsubmit. Default is $__submit_n_retry_launch.
+--submit-retry-launch-interval Interval of retry to launch an instance by\nsubmit (sec) when all combinations of\ncli_input_json failed. Default is $__submit_retry_launch_interval.
+--submit-n-retry-ssh Number of retries after ssh connection\nfailed. Default is $__submit_n_retry_ssh.
+--submit-retry-ssh-interval Interval of retry after ssh connection\nfailed (sec). Default is $__submit_retry_ssh_interval.
+--submit-name Name of submitted job. If not given, the\ncommand name is used.
+--submit-max-jobs Maximum number of submitted jobs running\nin parallel.
+--submit-measure-time Set 1 to measure time of the command.
+--submit-remain-instance Set 1 to keep instances after finishing\nsubmitted jobs.
+--template-id|-T Assign template id. If not given, not\ntemplated is used. If 'select' is passed,\nit is selected interactively.
+--user-data|-U user data file for luanch (run-instances),\ne.g: file:///path/to/your/user/data/script or fileb:///path/to/your/user/data/script.gz
+--verbose|-v Set 1 to run as verbose mode (show\nexecuting commands.)
+"
+
+_print_list () {
+  # shellcheck disable=SC2206
+  local headers=($1)
+  local contents="$2"
+  # shellcheck disable=SC2206
+  local types=($3)
+  local n_cols=${#headers[@]}
+  local width=()
+  local i
+  for ((i=0; i<n_cols; i++));do
+    width[i]=${#headers[i]}
+  done
+  local line
+  while read -r line || [ -n "${line}" ];do
+    # shellcheck disable=SC2206
+    local columns=($line)
+    for ((i=0; i<n_cols; i++));do
+      if (( width[i] < ${#columns[i]} ));then
+        width[i]=${#columns[i]}
+      fi
+    done
+  done < <(echo -n "$contents")
+  local format_header=""
+  local format=""
+  for ((i=0; i<n_cols; i++));do
+    format_header="${format_header:+${format_header} }%-${width[i]}s"
+    if [ "${types[i]}" == "d" ];then
+      format="${format:+${format} }%${width[i]}d"
+    else
+      format="${format:+${format} }%-${width[i]}s"
+    fi
+  done
+  # shellcheck disable=SC2059
+  printf "$format_header\n" "${headers[@]}"
+  # shellcheck disable=SC2059
+  printf "%0$(printf "$format_header" "${headers[@]}"|wc -c|xargs)d\n"|tr 0 -
+  while read -r line || [ -n "${line}" ];do
+    # shellcheck disable=SC2059,SC2086
+    printf "$format\n" $line
+  done < <(echo -n "$contents")
+}
+
+_sedi () {
+  (
+    eval "exec $__submit_sedi_lock_fd>$__submit_sedi_lock"
+    flock -x $__submit_sedi_lock_fd
+    tmpfile=$(mktemp)
+    sed "$1" "$2" > "$tmpfile"
+    mv "$tmpfile" "$2"
+  )
+}
+
+_tac () {
+  echo "$@" | sed -n '1!G;h;$p'
+}
+
+_check_job_instances () {
+  (
+    eval "exec $__submit_sedi_lock_fd>$__submit_sedi_lock"
+    flock -x $__submit_sedi_lock_fd
+    if [ -n "$__submit_max_jobs" ] && (( __submit_max_jobs > 0 )) && (( $(grep -c -e running -e starting -e launching -e terminating "$__job_list") > __submit_max_jobs ));then
+      echo 1
+    else
+      echo 0
+    fi
+  )
+}
+
+_execute () {
+  if [ "$__verbose" = "1" ];then
+    echo "$*"
+  fi
+  __execute_result="$(eval "$*" 2>&1)"
+  local ret=$?
+  __execute_result="$(echo "$__execute_result"|awk 'NR==1 && /^$/ {next} {print}')"
+  if [ $ret != 0 ];then
+    if echo "$__execute_result"|grep -q DryRunOperation;then
+      return 0
+    elif [ "$__exit_at_fail" != "0" ];then
+      echo "ERR_CODE=$ret: $__execute_result" 1>&2
+      exit $ret
+    fi
+  fi
+  return $ret
+}
+
+_execute_aws () {
+  local cmd="aws $* ${__aws_profile:+--profile ${__aws_profile}}"
+  while :;do
+    __exit_at_fail=0 _execute "$cmd"
+    local ret=$?
+    if [ "$ret" -eq 0 ];then
+      return 0
+    fi
+    if [ "$ret" -eq 255 ];then
+      aws sso login ${__aws_profile:+--profile ${__aws_profile}} 1>&2
+      local ret=$?
+      if [ "$ret" -eq 0 ];then
+        continue
+      else
+        echo "ERR_CODE=$ret: $__execute_result" 1>&2
+        exit $ret
+      fi
+    fi
+    if [ "$__exit_at_fail" = "0" ];then
+      return $ret
+    fi
+    echo "ERR_CODE=$ret: $__execute_result" 1>&2
+    exit $ret
+  done
+}
+
+_execute_ec2 () {
+  _execute_aws ec2 "$*"
+}
+
+_select () {
+  local input=("$@")
+  local tool
+  local t
+  for t in $(echo "${__selection_tool:-sentaku,peco,fzy,fzf}"|tr , ' ');do
+    if type "$t" >& /dev/null ;then
+      tool=$t
+      break
+    fi
+  done
+  if [[ "$tool" = "sentaku" ]];then
+    tool="sentaku -s line"
+  fi
+  if [ -n "$tool" ];then
+    __selected=$(echo "${input[*]}"|$tool)
+  else
+    while IFS=$'\n' read -r line; do values+=("$line"); done < <(echo "${input[*]}")
+    select value in "${values[@]}";do
+      __selected=$value
+      break
+    done
+  fi
+}
+
+_ip_choice () {
+  local ip_choice="PublicIpAddress"
+  if [ "$__private_ip" = "1" ];then
+    ip_choice="PrivateIpAddress"
+  fi
+  echo "$ip_choice"
+}
+_get_instance_list () {
+  # shellcheck disable=SC2089
+  local cmd="describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:State.Name,e:InstanceType,f:InstanceLifecycle}\" --output text $__instance_filter"
+  if [ -n "${__ids[__enum_instance]}" ];then
+    local cmd="$cmd --instance-ids ${__ids[__enum_instance]}"
+  fi
+  _execute_ec2 "$cmd"
+  # Tab replace is needed, otherwise grep fails to filter
+  __list[__enum_instance]="$(echo "$__execute_result"|tr "\t" " "|sort -k 1,3 -V)"
+  if [ -n "$__name_filter" ];then
+    __list[__enum_instance]="$(echo "${__list[__enum_instance]}"|grep "$__name_filter")"
+  fi
+}
+
+_get_image_list () {
+  _execute_aws sts get-caller-identity --query "Account" --output text
+  local account="$__execute_result"
+  _execute_ec2 "describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
+  # Sometime Name includes space prefix (?)
+  __list[__enum_image]="$(echo "$__execute_result"|tr "\t" " "|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
+  if [ -n "$__image_name_filter" ];then
+    __list[__enum_image]="$(echo "${__list[__enum_image]}"|grep "$__image_name_filter")"
+  fi
+}
+
+_get_template_list () {
+  _execute_ec2 "describe-launch-templates --query 'LaunchTemplates[*].{a:LaunchTemplateName,b:LaunchTemplateId}' --output text"
+  __list[__enum_template]="$(echo "$__execute_result"|tr "\t" " "|sort -k 1 -V)"
+}
+
+_get_type_list () {
+  if [ -f "$__type_list_file" ];then
+    find "$__type_list_file" -mtime +"$__type_list_file_term" -exec command rm -f {} +
+  fi
+  if [ ! -f "$__type_list_file" ];then
+    # shellcheck disable=SC2089
+    local cmd="describe-instance-types --query \"InstanceTypes[*].{a:InstanceType,b:VCpuInfo.DefaultVCpus,c:VCpuInfo.DefaultCores,d:VCpuInfo.DefaultThreadsPerCore,e:MemoryInfo.SizeInMiB,f:ProcessorInfo.SupportedArchitectures[0],g:GpuInfo.Gpus[0].Name}\" --output text"
+    if [ -n "$filters" ];then
+      cmd="$cmd $filters"
+    fi
+    _execute_ec2 "$cmd"
+    __list[__enum_type]="$(echo "$__execute_result"|tr "\t" " "|sort -V)"
+    echo "${__list[__enum_type]}" > "$__type_list_file"
+  else
+    __list[__enum_type]="$(cat "$__type_list_file")"
+  fi
+
+  if [ -n "$__cpu_filter" ];then
+    __list[__enum_type]="$(echo "${__list[__enum_type]}"|grep "$__cpu_filter")"
+  fi
+  if [ -n "$__gpu_filter" ];then
+    if [ "$__gpu_filter" == 0 ];then
+      __list[__enum_type]="$(echo "${__list[__enum_type]}"|grep None)"
+    elif [ "$__gpu_filter" == 1 ];then
+      __list[__enum_type]="$(echo "${__list[__enum_type]}"|grep -v None)"
+    else
+      __list[__enum_type]="$(echo "${__list[__enum_type]}"|grep "$__gpu_filter")"
+    fi
+  fi
+}
+
+_select_objs () {
+  local enum_obj=$1
+  local only=$2
+  ${__get_list_func[enum_obj]}
+  if [ -z "${__list[enum_obj]}" ];then
+    echo "No ${__obj_name[enum_obj]} is available"
+    exit 1
+  fi
+  _select "${__list[enum_obj]}"
+  if [ -z "$__selected" ];then
+    echo "No ${__obj_name[enum_obj]} was selected"
+    exit 1
+  fi
+  if [ "$only" = "1" ];then
+    if [ "$(echo "$__selected"|wc -l|xargs)" != 1 ];then
+      echo "More than 1 ${__obj_name[enum_obj]}s were selected"
+      exit 1
+    fi
+  fi
+  __list[enum_obj]="$__selected"
+}
+
+_get_ids () {
+  local enum_obj=$1
+  local only=$2
+  if [ "${__ids[enum_obj]}" == "select" ] || [ -z "${__ids[enum_obj]}" ];then
+    _select_objs "$enum_obj" "$only"
+    __ids[enum_obj]="$(echo "${__list[enum_obj]}"|awk '{print $2}'|tr '\n' ' ')"
+  fi
+  if [ -z "${__ids[enum_obj]}" ];then
+    exit
+  fi
+}
+
+_get_id_name_list () {
+  local enum_obj=$1
+  __id_name_list=""
+  if [ -n "${__list[enum_obj]}" ];then
+    for id in ${__ids[enum_obj]};do
+      __id_name_list="${__id_name_list:+${__id_name_list}, }$(echo "${__list[enum_obj]}"|grep "$id"|awk '{print $1}') ($id)"
+    done
+  else
+    __id_name_list="$(echo "${__ids[enum_obj]}"|sed -e 's/ /, /g' -e 's/, $//')"
+  fi
+}
+
+_instance_check () {
+  if [ -z "${__ids[__enum_instance]}" ];then
+    _select_objs $__enum_instance 1
+  else
+    _get_instance_list
+  fi
+  # shellcheck disable=SC2206
+  __ids[__enum_instance]=$(echo "${__list[__enum_instance]}"|awk '{print $2}')
+  __instance_ip=$(echo "${__list[__enum_instance]}"|awk '{print $3}')
+  local status=$(echo "${__list[__enum_instance]}"|awk '{print $4}')
+
+  wait_incorrect_spot_request_state=0
+  while :;do
+    if [ "$status" == "running" ];then
+      break
+    fi
+    if [ "$status" == "stopped" ];then
+      __exit_at_fail=0 start
+      local ret=$?
+      if [ "$ret" -eq 254 ] && echo "${__execute_result}"|grep -q "IncorrectSpotRequestState";then
+        if [ $wait_incorrect_spot_request_state -eq 0 ];then
+          echo "Waiting for spot request state to be correct after stopping..."
+        fi
+        ((wait_incorrect_spot_request_state++))
+      elif [ "$ret" -ne 0 ];then
+        echo "ERR_CODE=$ret: $__execute_result" 1>&2
+        exit "$ret"
+      fi
+      sleep 5
+    elif [ "$status" == "" ];then
+      echo "${__ids[__enum_instance]} does not exist."
+      exit 1
+    else
+      sleep 1
+    fi
+    _get_instance_list
+    status=$(echo "${__list[__enum_instance]}"|awk '{print $4}')
+  done
+}
+
+_get_name_number () {
+  local name="$1"
+  local names="$2"
+  local suffix=$(basename "${name//-//}")
+  if [[ "$suffix" =~ ^[0-9]+$ ]];then
+    name_base="${name%-"${suffix}"}"
+  else
+    name_base="${name}"
+  fi
+  suffix=1
+  name="${name_base}-$(printf "%02d" "$suffix")"
+  while :;do
+    if ! echo "$names"|grep -q "^${name}$";then
+      break
+    fi
+    ((suffix++))
+    name="${name_base}-$(printf "%02d" "$suffix")"
+  done
+  echo "$name"
+}
+
+_get_template () {
+  if [ -n "${__ids[__enum_template]}" ];then
+    _get_ids $__enum_template 1
+    _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
+    # shellcheck disable=SC2206
+    local result=($__execute_result)
+    __template_name="${result[0]}"
+    __tempalte_instance_type="${result[1]}"
+    __template_name_name="${result[2]}"
+    if [ -z "$name" ];then
+      __template_name_name="$template_name"
+    fi
+    __launch_template="--launch-template LaunchTemplateId=${__ids[__enum_template]}"
+  fi
+}
+
+_get_json_group () {
+  local group_name="$1"
+  local group_var="cli_input_json_group_${group_name}"
+  local group_value
+  eval "group_value=\${__${group_var}}"
+  if [ -z "$group_value" ]; then
+    echo "JSON group '${group_name}' not found in config" >&2
+    return 1
+  fi
+  echo "$group_value"
+}
+
+list_json_groups () {
+  # List available JSON groups
+  local header="Group Files"
+  local contents=""
+  local group
+  for group in "${__cli_input_json_groups[@]}";do
+    local var_name=__cli_input_json_group_$group
+    local files=${!var_name}
+    contents="$contents$group $files"$'\n'
+  done
+
+  if [ -z "$contents" ]; then
+    echo "No JSON groups defined in config"
+    return 0
+  fi
+
+  echo "JSON directory: $__cli_input_json_directory"
+  echo ""
+  _print_list "$header" "$contents"
+}
+
+_get_cli_input_jsons () {
+  if [ -n "$__cli_input_json" ] && [ "$__cli_input_json" != "select" ]; then
+    :
+  elif [ -n "$__cli_input_json_group" ]; then
+    if [ "$__cli_input_json_group" = "select" ]; then
+      if [ "${#__cli_input_json_groups[@]}" -eq 0 ];then
+        echo "No cli_input_json_group is defined"
+        exit 1
+      fi
+      _select "${__cli_input_json_groups[@]}"
+      __cli_input_json_group=$__selected
+      if [ -z "$__cli_input_json_group" ];then
+        echo "No cli_input_json_group is selected"
+        exit 1
+      fi
+    fi
+    local var_name=__cli_input_json_group_${__cli_input_json_group}
+    __cli_input_json=${!var_name}
+  elif [ "$__cli_input_json" = "select" ]; then
+    if [ -z "$__cli_input_json_directory" ]; then
+      echo "Set cli_input_json_directory by: ec2 -C <cli_input_json_directory> <command>"
+      exit 1
+    fi
+    _select "$(command ls "$__cli_input_json_directory")"
+    __cli_input_json="$__selected"
+  fi
+
+  # shellcheck disable=SC2086
+  read -r -a __cli_input_json_list <<< "$(echo $__cli_input_json | tr "," " ")"
+}
+
+_get_cli_input_json_opt () {
+  _get_cli_input_jsons
+  if [ "${#__cli_input_json_list[@]}" -eq 0 ];then
+    __cli_input_json_opt=""
+    return
+  fi
+  if [ $__n_cli_input_json -ge ${#__cli_input_json_list[@]} ];then
+    echo "No cli_input_json is available @ $__n_cli_input_json"
+    exit 1
+  fi
+  local json=${__cli_input_json_list[__n_cli_input_json]}
+  if [[ ! "$json" =~ ^file:// ]];then
+    if [ -f "$json" ];then
+      json="file://$json"
+    elif [ -f "$__cli_input_json_directory/$json" ];then
+      json="file://$__cli_input_json_directory/$json"
+    else
+      echo "cli_input_json is not found: $json"
+      exit 1
+    fi
+  fi
+  __cli_input_json_opt="--cli-input-json $json"
+}
+
+launch () {
+  # Launch a new instance.
+  local name=""
+  local instance_type=""
+  __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped" _get_instance_list
+  local names=$(echo "${__list[__enum_instance]}"|awk '{print $1}')
+
+  _get_template
+  if [ -n "$__template_name" ];then
+    local template_name="$__template_name"
+    instance_type="$__tempalte_instance_type"
+    name="$__template_name_name"
+    local launch_template="$__launch_template"
+  fi
+  _get_cli_input_jsons
+  if [ -z "$__template_name" ] && [ -z "${__cli_input_json_list[*]}" ];then
+    echo "Need at least template_id or cli_input_json" 1>&2
+    exit 1
+  fi
+
+  if [ "$__instance_type" == "select" ];then
+    _select_objs $__enum_type 1
+    __instance_type=$(echo "${__list[__enum_type]}"|awk '{print $1}')
+  fi
+  if [ -n "${__instance_type}" ];then
+    instance_type="${__instance_type}"
+  fi
+  if [ -n "${instance_type}" ];then
+    instance_type_opt="--instance-type ${instance_type}"
+  fi
+  local cpu_options
+  if [ -n "$__n_cpu_core" ] || [ -n "$__n_thread" ];then
+    if [ -z "$__n_cpu_core" ] || [ -z "$__n_thread" ];then
+      _get_type_list
+      read -r -a type_info <<< "${__list[__enum_type]}"
+      cpu_core=${__n_cpu_core:-${type_info[2]}}
+      n_thread=${__n_thread:-${type_info[3]}}
+    fi
+    cpu_options="--cpu-options \"CoreCount=${cpu_core},ThreadsPerCore=${n_thread}\""
+  fi
+  local user_data
+  if [ -n "$__user_data" ];then
+    if [[ ! "$__user_data" =~ ^file ]];then
+      if file --mime "$__user_data" | grep -q 'charset=binary'; then
+        __user_data="fileb://$__user_data"
+      else
+        __user_data="file://$__user_data"
+      fi
+    fi
+    user_data="--user-data $__user_data"
+  fi
+
+  local spot_instance
+  if [ "$__spot_instance" = 1 ];then
+    spot_instance="$__opt_spot"
+  else
+    __spot_instance=0
+  fi
+
+  local fail_reason=""
+  while [ "$__spot_instance" -ge 0 ];do
+    if [ "${#__cli_input_json_list[@]}" -eq 0 ];then
+      __n_cli_input_json=-1
+    fi
+    while [ "$__n_cli_input_json" -lt "${#__cli_input_json_list[@]}" ];do
+      _get_cli_input_json_opt
+      if [ -n "$__cli_input_json_opt" ];then
+        name=$(basename "$(echo "${__cli_input_json_opt}"|cut -d ' ' -f 2)")
+        name="${name%.json}"
+      fi
+      name=$(_get_name_number "$name" "$names")
+
+      if [ "$__n_cli_input_json" -gt 0 ];then
+        echo "Try launching next cli_input_json (${__cli_input_json_list[__n_cli_input_json]})" 1>&2
+      fi
+
+      local msg="Launching a new instance: name=$name"
+      msg="$msg${instance_type:+, type=${instance_type}}"
+      if [ "$__n_cli_input_json" -ge 0 ];then
+        msg="$msg, cli_input_json=${__cli_input_json_list[__n_cli_input_json]}"
+      fi
+      msg="$msg${template_name:+, template=$template_name}"
+      if [ "$__spot_instance" = 1 ];then
+        msg="$msg, lifecycle=spot"
+      fi
+      echo "$msg" 1>&2
+
+      __exit_at_fail=0 _execute_ec2 "run-instances ${__dry_run_mode} ${cpu_options} ${spot_instance} ${user_data} ${launch_template} ${__cli_input_json_opt} ${instance_type_opt} --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=$name}]' --query \"Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:InstanceType}\" --output text"
+      local ret=$?
+      if [ "$ret" -eq 0 ];then
+        break
+      fi
+      echo "ERR_CODE=$ret: $__execute_result" 1>&2
+      if [ "$ret" -eq 254 ] && echo "${__execute_result}"|grep -q "InsufficientInstanceCapacity";then
+        fail_reason="InsufficientInstanceCapacity"
+        ((__n_cli_input_json++))
+        continue
+      fi
+      exit "$ret"
+    done
+    if [ "$ret" -eq 0 ];then
+      break
+    fi
+    if [ "$__retry_non_spot" = 0 ];then
+      break
+    fi
+    spot_instance=""
+    ((__spot_instance--))
+    if [ "$__spot_instance" -eq 0 ];then
+      echo "Try launching non spot instance" 1>&2
+      __n_cli_input_json=0
+    fi
+  done
+  if [ "$ret" -ne 0 ];then
+    if [ -n "$fail_reason" ];then
+      echo "Failed to launch instance by $fail_reason"
+    fi
+    exit "$ret"
+  fi
+
+  if [ "$__dry_run" = "1" ];then
+    local id="XXX"
+    local ip="XXX"
+  else
+    # shellcheck disable=SC2206
+    local result=(${__execute_result})
+    name=${result[0]}
+    local id=${result[1]}
+    local ip=${result[2]}
+    instance_type=${result[3]}
+  fi
+  local spot_instance_msg
+  if [ "$__spot_instance" = "1" ];then
+    spot_instance_msg=", Lifecycle=spot"
+  fi
+  echo "${__dry_run_mode:+Dry run: }A new instance was launched: Name=$name, Id=$id, $(_ip_choice)=$ip, Type=${instance_type}${spot_instance_msg}"
+}
+
+start () {
+  # Start stopped instances.
+  __instance_filter="--filters Name=instance-state-name,Values=stopped" _get_ids $__enum_instance
+  _execute_ec2 "$__dry_run_mode start-instances --instance-ids ${__ids[__enum_instance]}"
+  local ret=$?
+  _get_id_name_list $__enum_instance
+  if [ "$ret" -eq 0 ];then
+    echo "${__dry_run_mode:+Dry run: }Started: $__id_name_list"
+  fi
+  return "$ret"
+}
+
+stop () {
+  # Stop running instances.
+  __instance_filter="--filters Name=instance-state-name,Values=running" _get_ids $__enum_instance
+  _execute_ec2 "$__dry_run_mode stop-instances --instance-ids ${__ids[__enum_instance]}"
+  local ret=$?
+  _get_id_name_list $__enum_instance
+  if [ $ret -eq 0 ];then
+    echo "${__dry_run_mode:+Dry run: }Stopped: $__id_name_list"
+  fi
+  return $ret
+}
+
+terminate () {
+  # Terminate instances.
+  __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped" _get_ids ${__enum_instance}
+  _execute_ec2 "describe-instances --instance-ids ${__ids[__enum_instance]} --query \"Reservations[*].Instances[*].SpotInstanceRequestId\" --output text"
+  local spot_instances="${__execute_result}"
+  local spot_instance_msg
+  if [ -n "${spot_instances}" ];then
+    spot_instance_msg=""
+    for spot_request in ${spot_instances};do
+      if [ -n "${spot_request}" ];then
+        _execute_ec2 "${__dry_run_mode} cancel-spot-instance-requests --spot-instance-request-ids ${spot_request}"
+        spot_instance_msg="${spot_instance_msg:+${spot_instance_msg}, }$spot_request"
+      fi
+    done
+    spot_instance_msg=", cancel Spot Instance Request: $spot_instance_msg"
+  fi
+  _execute_ec2 "${__dry_run_mode} terminate-instances --instance-ids ${__ids[__enum_instance]}"
+  _get_id_name_list ${__enum_instance}
+  echo "${__dry_run_mode:+Dry run: }Terminated: ${__id_name_list}${spot_instance_msg}"
+}
+
+rm () {
+  # Alias for terminate.
+  terminate
+}
+
+instances () {
+  # List instances.
+  _get_instance_list
+  local header="Name Id Ip Status Type Lifecycle"
+  local contents=""
+  local line
+  while read -r line || [ -n "${line}" ];do
+    # shellcheck disable=SC2206
+    line=($line)
+    local name=${line[0]}
+    local id=${line[1]}
+    local ip=${line[2]}
+    local st=${line[3]}
+    local ty=${line[4]}
+    local sp=${line[5]}
+    contents=${contents}"$name $id $ip $st $ty $sp"$'\n'
+  done < <(echo "${__list[__enum_instance]}")
+  _print_list "$header" "$contents"
+}
+
+list () {
+  # Alias for instances.
+  instances
+}
+
+ls () {
+  # Alias for instances.
+  instances
+}
+
+describe () {
+  # Show detailed information about instances
+  _get_ids $__enum_instance
+
+  _execute_ec2 "describe-instances --instance-ids ${__ids[__enum_instance]} \
+    --query 'Reservations[*].Instances[*].{
+      Name:Tags[?Key==\`Name\`].Value|[0],
+      InstanceId:InstanceId,
+      InstanceType:InstanceType,
+      State:State.Name,
+      LaunchTime:LaunchTime,
+      Platform:Platform,
+      PrivateIP:PrivateIpAddress,
+      PublicIP:PublicIpAddress,
+      KeyName:KeyName,
+      SecurityGroups:SecurityGroups[*].GroupName
+    }' \
+    --output table"
+
+  echo "$__execute_result"
+}
+
+ssh () {
+  # SSH to an instance.
+  # Use `ssh [commands] [options]`.
+  cmd="${1:-ssh}"
+  _instance_check
+  local ssh_option="$__ssh_option"
+  if [ -n "$__ssh_key" ];then
+    ssh_option="$ssh_option -i $__ssh_key"
+  fi
+  local ip=$__instance_ip
+  if [ -n "$__ssh_user" ];then
+    ip="$__ssh_user@$ip"
+  fi
+  waiting_for_ready=0
+  while :;do
+    # shellcheck disable=SC2086
+    command ssh $ssh_option $ip "sudo tail -n1 /var/log/cloud-init-output.log |grep 'Cloud-init.*finished at.*seconds$'" >/dev/null 2>&1
+    local ret=$?
+    if [ "$ret" -eq 0 ];then
+      break
+    fi
+    if [ $waiting_for_ready -eq 0 ];then
+      echo "Waiting for ready..."
+    fi
+    ((waiting_for_ready++))
+    sleep 5
+    # Soemtime instance is stopped during waiting, restart it if needed.
+    _instance_check
+  done
+  if [ "$cmd" = "mosh" ];then
+    ssh_option=""
+    if [ -n "$__ssh_key" ];then
+      ssh_option="--ssh=ssh -i $__ssh_key"
+    fi
+    if [ -n "$__mosh_server" ];then
+    ssh_option="$ssh_option --server=$__mosh_server"
+    fi
+  fi
+  # shellcheck disable=SC2086
+  command $cmd $ssh_option $ip $__execute_command
+}
+
+mosh () {
+  # Mosh to an instance.
+  # Use `mosh [commands] [options]`.
+  ssh mosh
+  _instance_check
+}
+
+scp () {
+  # SCP to an instance.
+  # Use `scp <file> [options]`.
+  _instance_check
+  local ssh_option=""
+  if [ -n "$__ssh_key" ];then
+    ssh_option="$ssh_option -i $__ssh_key"
+  fi
+  local ip=$__instance_ip
+  if [ -n "$__ssh_user" ];then
+    ip="$__ssh_user@$ip"
+  fi
+  while :;do
+    # shellcheck disable=SC2086
+    command ssh $ssh_option $ip "exit"
+    local ret=$?
+    if [ $ret -eq 0 ];then
+      break
+    fi
+    echo "Waiting for ready..."
+    sleep 5
+    # Soemtime instance is stopped during waiting, restart it if needed.
+    _instance_check
+  done
+  # shellcheck disable=SC2086
+  command scp $ssh_option $__file $ip:
+}
+
+_clear_job () {
+  local clear_lsit=${1:-1}
+  if [ -n "${__ids[__enum_instance]}" ];then
+    _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} terminating/" "$__job_list"
+    if [ "$__submit_remain_instance" != "1" ];then
+      terminate
+    fi
+  fi
+  if [ "$clear_lsit" = 1 ];then
+    _sedi "/^${job_id} /d" "$__job_list"
+  fi
+}
+
+submit () {
+  # Make a new instance and submit a job.
+  # Use `submit <file or commands> [options].
+  # If __submit_command is not set, need one
+  # bash file.
+  # If __submit_command is set, given options
+  # are recognized as command. Use `--` to
+  # separate options for ec2 and options  for
+  # the command.
+  # If `__curent_dir` is set, the command is
+  # executed in the current directory.
+  # (Need same directory structure in the
+  # instance.)
+  if ! type flock >/dev/null 2>&1;then
+    echo "flock is required for 'submit'"
+    echo "Install flock ('brew install flock' or anything)"
+    exit 1
+  fi
+
+  if [ -z "$__submit_name" ];then
+    __submit_name=$(basename "$(echo "${__positional[0]}" | cut -d ';' -f1 | cut -d ' ' -f1)")
+  fi
+  local job_id="$$ $(date +"%Y-%m-%d %H:%M:%S") $__submit_name"
+
+  trap "_clear_job;exit 1" HUP INT QUIT ABRT SEGV TERM
+
+  echo "$job_id - - waiting" >> "$__job_list"
+
+  while :;do
+    if [ "$(_check_job_instances)" = 1 ];then
+      sleep 5
+    else
+      break
+    fi
+  done
+
+  _sedi "s/${job_id}.*$/${job_id} - - starting/" "$__job_list"
+  echo "Launching an instance for job: $job_id"
+  local n_retry_ssh=0
+  while :;do
+    local n_retry=0
+    local ret=0
+    local output=""
+    while :;do
+      output=$(
+        eval "exec $__submit_launch_lock_fd>$__submit_launch_lock"
+        flock -x $__submit_launch_lock_fd
+        _sedi "s/${job_id}.*$/${job_id} - - launching/" "$__job_list"
+        output=$(launch)
+        ret=$?
+        echo "$output"
+        if [ $ret -ne 0 ];then
+          echo "ERR_CODE=$ret: Failed to launch instance for job: $job_id"
+          exit $ret
+        fi
+      )
+      local ret=$?
+      if [ $ret -eq 0 ];then
+        break
+      fi
+      if [ $ret -ne 254 ] || ! echo "$output" | grep -q "InsufficientInstanceCapacity";then
+        break
+      fi
+      ((n_retry++))
+      if [ $n_retry -le "${__submit_n_retry_launch}" ];then
+        echo "Failed to launch instance by capacity, retry after ${__submit_retry_launch_interval} seconds..."
+        sleep "${__submit_retry_launch_interval}"
+        continue
+      fi
+      break
+    done
+    if [ $ret -ne 0 ];then
+      echo "$output" 1>&2
+      _clear_job
+      exit $ret
+    fi
+    local instance_id=$(echo "$output" |tr ',' $'\n'|grep "^ Id"|cut -d '=' -f2)
+    local instance_ip=$(echo "$output" |tr ',' $'\n'|grep "^ $(_ip_choice)"|cut -d '=' -f2)
+    local instance_type=$(echo "$output" |tr ',' $'\n'|grep "^ Type"|cut -d '=' -f2)
+    __ids[__enum_instance]="$instance_id"
+    _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} launching/" "$__job_list"
+
+    # Wait the instance be ready
+    __execute_command="exit"
+    ssh
+    _sedi "s/${job_id}.*$/${job_id} ${instance_id} ${instance_ip} running/" "$__job_list"
+
+    if [ "$__submit_command" != "1" ];then
+      __execute_command="bash ~/$(basename "$__file")"
+    else
+      __execute_command="${__positional[*]}"
+    fi
+    if [ "$__submit_measure_time" = "1" ];then
+      __execute_command="time $__execute_command"
+    fi
+    __execute_command="echo RUN STARTED;echo Execute \"$__execute_command\" at job_id=$job_id, insatnce_id=$instance_id, instance_ip=$instance_ip, instance_type=$instance_type; $__execute_command; echo RUN FINISHED"
+    if [ "$__submit_command" != "1" ];then
+      scp
+    fi
+    if [ "$__submit_current_dir" = 1 ];then
+      __execute_command="cd $PWD; $__execute_command"
+    fi
+    ssh
+    local ret=$?
+    if [ $ret -eq 255 ];then
+      echo "SSH connection was closed by the remote host"
+      ((n_retry_ssh++))
+      if [ $n_retry_ssh -lt "${__submit_n_retry_ssh}" ];then
+        _clear_job 0
+        _sedi "s/${job_id}.*$/${job_id} - - retrying/" "$__job_list"
+        echo "Retry after ${__submit_retry_ssh_interval} seconds..."
+        sleep "${__submit_retry_ssh_interval}"
+        continue
+      fi
+    fi
+    break
+  done
+
+  echo "finishing job: $job_id, return code: $ret"
+  _execute_ec2 "describe-instances --instance-ids ${instance_id} --query \"Reservations[*].Instances[*].{a:State.Name,b:StateTransitionReason}\" --output text"
+  echo "Instance state: $__execute_result"
+  echo "Clear job: $job_id"
+  _clear_job
+}
+
+jobs () {
+  # List jobs.
+  touch "$__job_list"
+  _print_list "PID DATE TIME NAME INSTANCE_ID IP STATUS" "$(cat "$__job_list")"
+}
+
+delete_job () {
+  # Delete jobs.
+  if [ ! -f "$__job_list" ];then
+    echo "No job"
+    exit 0
+  fi
+  local job_list=$(cat "$__job_list")
+  if [ -z "$job_list" ];then
+    echo "No job"
+    exit 0
+  fi
+
+  local job jobs
+  if [ -z "${__positional[0]}" ];then
+    _select "$(cat "$__job_list")"
+    jobs=$(_tac "$__selected")
+  else
+    for pid in "${__positional[@]}";do
+      job=$(echo "$job_list"|grep "^$pid ")
+      if [ -z "$job" ];then
+        echo "No job for PID: $pid"
+        continue
+      fi
+      if [ -n "$jobs" ];then
+        jobs="$jobs"$'\n'"$job"
+      else
+        jobs="$job"
+      fi
+    done
+  fi
+  local pid date time script instance_id instance_ip status
+  while read -r pid date time script instance_id instance_ip status; do
+    echo "Deleting job: $pid $date $time $script $instance_id $instance_ip $status"
+    _sedi "s/$pid $date ${time}.*$/${pid} ${date} ${time} ${script} ${instance_id} ${instance_ip} deleting/" "$__job_list"
+    kill -kill "$pid"
+    if [ "$instance_id" != "-" ];then
+      __ids[__enum_instance]="$instance_id"
+      __exit_at_fail=0 terminate
+    fi
+    _sedi "/$pid /d" "$__job_list"
+  done < <(echo "$jobs")
+}
+
+images () {
+  # List images.
+  _get_image_list
+  local header="Name ImageId SnapshotId"
+  local contents=""
+  while read -r line || [ -n "${line}" ];do
+    name=$(echo "$line"|awk '{print $1}')
+    id=$(echo "$line"|awk '{print $2}')
+    snapshot=$(echo "$line"|awk '{print $3}')
+    contents=${contents}"$name $id $snapshot"$'\n'
+  done < <(echo "${__list[__enum_image]}")
+  _print_list "$header" "$contents"
+}
+
+new_image () {
+  # Create a new image from an instance.
+  _get_ids $__enum_instance 1
+  if [ -z "$__image_name" ];then
+    _get_instance_list
+    __image_name="$(echo "${__list[__enum_instance]}"|tr '\t' ' '|grep "${__ids[__enum_instance]}"|awk '{print $1}')"
+  fi
+  if [ -z "$__image_name" ];then
+    echo "Set image_name by: ec2 -I <image_name> new_images"
+    exit 1
+  fi
+
+  _get_image_list
+  local image_names="$(echo "${__list[__enum_image]}"|awk '{print $1}')"
+
+  __image_name=$(_get_name_number "$__image_name" "$image_names")
+
+  _execute_ec2 "${__dry_run_mode} create-image  --instance-id ${__ids[__enum_instance]} --name $__image_name"
+  echo "${__dry_run_mode:+Dry run: }Created a new AMI $__image_name from ${__ids[__enum_instance]}"
+}
+
+rm_image () {
+  # Delete images.
+  _get_ids $__enum_image 1
+  local snapshot=$(echo "${__list[__enum_image]}"|awk '{print $3}')
+  _execute_ec2 "deregister-image ${__dry_run_mode} --image-id ${__ids[__enum_image]}"
+  _execute_ec2 "delete-snapshot ${__dry_run_mode} --snapshot-id $snapshot"
+  _get_id_name_list $__enum_image
+  echo "${__dry_run_mode:+Dry run: }Deleted: AMI=$__id_name_list, Snapshot=$snapshot"
+}
+
+templates () {
+  # List templates.
+  _get_template_list
+  local header="Name Id"
+  local contents=""
+  local line
+  while read -r line || [ -n "${line}" ];do
+    # shellcheck disable=SC2206
+    line=($line)
+    name=${line[0]}
+    id=${line[1]}
+    contents=${contents}"$name $id"$'\n'
+  done < <(echo "${__list[__enum_template]}")
+  _print_list "$header" "$contents"
+}
+
+new_template () {
+  # Create a new template from an image.
+  _get_ids $__enum_template 1
+  _execute_ec2 "describe-launch-templates --launch-template-id ${__ids[__enum_template]} --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
+  local default_version="$__execute_result"
+  _select_objs $__enum_image 1
+  local ami=$(echo "${__list[__enum_image]}"|awk '{print $2}')
+  local snapshot=$(echo "${__list[__enum_image]}"|awk '{print $3}')
+  _execute_ec2 "create-launch-template-version ${__dry_run_mode} --launch-template-id ${__ids[__enum_template]} --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
+  local new_version=XXX
+  if [ "${__dry_run}" != "1" ];then
+    new_version="${__execute_result}"
+    _execute_ec2 "modify-launch-template --launch-template-id ${__ids[__enum_template]} --default-version $new_version"
+  fi
+  _get_id_name_list $__enum_template
+  echo "${__dry_run_mode:+Dry run: }Created a new template version $new_version for $__id_name_list"
+}
+
+types () {
+  # List instance types.
+  _get_type_list
+  local header="Type vCPU Core Thread Mem(GiB) Arch GPU"
+  local contents=""
+  local line
+  while read -r line || [ -n "${line}" ];do
+    # shellcheck disable=SC2206
+    line=($line)
+    ty=${line[0]}
+    vcpu=${line[1]}
+    core=${line[2]}
+    thread=${line[3]}
+    mem=$((line[4] / 1024))
+    arch=${line[5]}
+    gpu=$(echo "${line[*]}"|cut -d' ' -f 7-|tr ' ' _)
+    contents=${contents}"$ty $vcpu $core $thread $mem $arch $gpu"$'\n'
+  done < <(echo "${__list[__enum_type]}")
+  _print_list "$header" "$contents" "s d d d d s s"
+}
+
+update_types () {
+  # Force update instance type list cache
+  if [ -f "$__type_list_file" ]; then
+     command rm -f "$__type_list_file"
+  fi
+  _get_type_list
+  echo "Instance type list cache has been updated"
+}
+
+pricing () {
+  # Show pricing of instance types.
+  if [ "$__instance_type" == "select" ] || [ -z "$__instance_type" ];then
+    _select_objs $__enum_type 0
+    __instance_type=$(echo "${__list[__enum_type]}"|awk '{print $1}')
+  fi
+  # shellcheck disable=SC2206
+  local types=(${__instance_type//,/ })
+  _execute_aws configure get region
+  local region="${__execute_result}"
+  echo "Type USD"
+  local t
+  for t in "${types[@]}";do
+    _execute_aws pricing get-products \
+      --region us-east-1 \
+      --service-code AmazonEC2 \
+      --filters \
+                'Type=TERM_MATCH,Field=instanceType,Value='"${t}" \
+                'Type=TERM_MATCH,Field=regionCode,Value='"${region}" \
+                'Type=TERM_MATCH,Field=preInstalledSw,Value=NA' \
+                'Type=TERM_MATCH,Field=operatingSystem,Value=Linux' \
+                'Type=TERM_MATCH,Field=tenancy,Value=Shared' \
+                'Type=TERM_MATCH,Field=capacitystatus,Value=UnusedCapacityReservation' \
+      --output text \
+      --query 'PriceList[0]'
+    local usd=$(echo "${__execute_result#*USD\":\"}"|cut -d'"' -f 1)
+    echo "${t} ${usd}"
+  done
+}
+
+price () {
+  # Alias for pricing.
+  pricing
+}
+
+commands () {
+  # List commands.
+  echo "$__subcommands"
+}
+
+help () {
+  # Show help.
+  _print_help
+}
+
+version () {
+  # Show version.
+  echo "ec2 $__version $__date"
+}
+
+_read_config () {
+  local line
+  __cli_input_json_groups=()
+  if [ -f "$__config" ];then
+    while read -r line || [ -n "${line}" ];do
+      line="$(echo "$line"|cut -d '#' -f1)"
+      line="${line#"${line%%[![:space:]]*}"}"
+      line="${line%"${line##*[![:space:]]}"}"
+      if [ -z "$line" ];then
+        continue
+      fi
+      local opt="${line%%=*}"
+      local val="${line#*=}"
+      eval "__${opt//-/_}=${val}"
+      if [[ "${opt//-/_}" =~ ^cli_input_json_group_.*$ ]];then
+        __cli_input_json_groups=("${__cli_input_json_groups[@]}" "${opt//cli_input_json_group_/}")
+      fi
+    done < "$__config"
+  fi
+}
+
+_read_config_path () {
+  while [[ $# -gt 0 ]]; do
+    if [ "$1" = "--" ];then
+      break
+    fi
+    if [ "$1" = "--config" ];then
+      if [ $# -lt 2 ];then
+        echo "Option --config requires an argument" 1>&2
+        exit 1
+      fi
+      __config="$2"
+      shift 2
+    else
+      shift
+    fi
+  done
+}
+
+_print_explain () {
+  local value="$1"
+  local spaces="$2"
+  local name_length="$3"
+  local comments="$4"
+
+  local prefix=$(printf "%${spaces}s%-${name_length}s%s\n" "" "$value ")
+  while IFS= read -r line; do
+    printf "%s%s\n" "$prefix" "$line"
+    prefix="${prefix//?/ }"
+  done <<< "$comments"
+}
+
+_generate_read_args() {
+  cat << EOF
+_read_args() {
+  __positional=()
+  while [[ \$# -gt 0 ]]; do
+    if [ \$1 = "--" ]; then
+      shift
+      __positional+=("\$@")
+      break
+    fi
+    local opt="\${1//_/-}"
+    case \$opt in
+EOF
+
+  echo "$__options" | while read -r line; do
+    if [ -z "$line" ];then
+      continue
+    fi
+    local opt=$(echo "$line" | awk '{print $1}')
+    local val_name=$(echo "${opt//-/_}" | cut -d '|' -f 1)
+    echo "      $opt) ${val_name}=\"\$2\"; shift; shift;;"
+  done
+
+cat << EOF
+      --help|-h) _print_help; exit;;
+      -*)
+        echo "Unknown option: \$1" 1>&2
+        exit 1
+        ;;
+      *)
+        if [ "\$1" = "help" ]; then
+          _print_help
+          exit
+        fi
+        __positional+=("\$1")
+        shift
+        ;;
+    esac
+  done
+}
+EOF
+}
+
+_print_args_help() {
+  echo "Options:"
+  local line
+  echo "$__options" | while read -r line; do
+    if [ -z "$line" ];then
+      continue
+    fi
+    # shellcheck disable=SC2001
+    local opt="$(echo "${line%% *}" | sed 's/|/, /g')"
+    local comment="$(echo -e "${line#* }")"
+    _print_explain "$opt" 2 35 "$comment"
+  done
+  _print_explain "--help, -h" 2 35 "Show help."
+}
+
+_extract_comments () {
+  awk "/^${1} *\(\) *{/{flag=1;next}/^}/{flag=0}flag" "$0" | awk '/^ *#/{sub(/^ *# ?/, ""); print; next} {exit}'
+}
+
+_print_subcommands () {
+  echo "Subcommands:"
+  for func in $__subcommands;do
+    local comments=$(_extract_comments "$func")
+    _print_explain "$func" 2 35 "$comments"
+  done
+}
+
+_print_help () {
+  printf "Usage: %s <subcommand> [options]\n\n" "$__cmd"
+  _print_subcommands
+  echo
+  _print_args_help
+}
+
+# BEGIN GENERATED ENVIRONMENT COMMANDS
+# Run scripts/build to replace this block.
+# END GENERATED ENVIRONMENT COMMANDS
+
+# Main
+
+__subcommands=$(set | grep -v "^_" | grep -v "^ " | grep " () $" | cut -d' ' -f1 | tr '\n' ' ')
+
+if [ $# -eq 0 ];then
+  _print_help
+  exit
+fi
+
+_read_config_path "$@"
+_read_config
+eval "$(_generate_read_args)"
+_read_args "$@"
+
+__subcommand="${__positional[0]}"
+__positional=("${__positional[@]:1:$((${#__positional[@]}))}")
+
+if [ -z "$__subcommand" ];then
+  _print_help
+  exit 1
+fi
+
+if ! echo " $__subcommands "|grep -q " $__subcommand ";then
+  echo "$__subcommand is unknown subcommand."
+  echo ""
+  _print_help
+  exit 1
+fi
+
+if [ "$__all" = "1" ];then
+  __name_filter=""
+  __image_name_filter=""
+fi
+
+if [ "$__dry_run" = "1" ];then
+  __dry_run_mode="--dry-run"
+fi
+
+__ids[__enum_instance]="$__instance_id"
+__ids[__enum_image]="$__image_id"
+__ids[__enum_template]="$__template_id"
+
+if [ "$__subcommand" == "ssh" ];then
+  __execute_command="${__positional[0]}"
+fi
+
+if [ "$__subcommand" = "scp" ] || { [ "$__subcommand" = "submit" ] && [ "$__submit_command" != "1" ]; };then
+  __file="${__positional[0]}"
+  if [ -z "$__file" ];then
+    echo "Usage: $__cmd [options] $__subcommand <file>"
+    exit 1
+  fi
+  if [ ! -f "$__file" ];then
+    echo "$__file does not exist"
+    exit 1
+  fi
+fi
+
+$__subcommand
