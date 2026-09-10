@@ -317,28 +317,28 @@ $ scripts/build
 $ bash tests/test_shell.sh
 ```
 
-#### pre-commit
+#### prek or pre-commit
 
-Install pre-commit by pip:
+Install prek or pre-commit by pip like:
 
 ```
-$ pip3 install pre-commit
+$ pip3 install prek
 ```
 
 or by Homebrew
 
 ```
-$ brew install pre-commit
+$ brew install prek
 ```
 
-Install pre-commit environment:
+Install prek (pre-commit) environment:
 
 ```
-$ pre-commit install
+$ prek install
 ```
 
 Then, automatically checked at `git commit` or run checks manually:
 
 ```
-$ pre-commit run -a
+$ prek run -a
 ```
