@@ -12,3 +12,10 @@ repos:
       - mdformat-gfm
       - mdformat-frontmatter
       - mdformat-footnote
+  - repo: local
+    hooks:
+    - id: shell-tests
+      name: shell and generated-artifact tests
+      entry: bash tests/test_shell.sh
+      language: system
+      pass_filenames: false

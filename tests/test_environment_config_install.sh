@@ -3,7 +3,8 @@ set -euo pipefail
 
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
-runtime_dir=$(mktemp -d "${TMPDIR:-/tmp}/ec2-environment-install.XXXXXX")
+tmp_dir=${TMPDIR:-/tmp}
+runtime_dir=$(mktemp -d "${tmp_dir%/}/ec2-environment-install.XXXXXX")
 trap 'rm -rf "$runtime_dir"' EXIT
 mock_bin="$runtime_dir/bin"
 xdg_config="$runtime_dir/config"

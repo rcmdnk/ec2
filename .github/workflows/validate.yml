@@ -18,10 +18,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
-      - name: Show ShellCheck version
-        run: shellcheck --version
-      - name: Run shell and generated-artifact tests
-        run: bash tests/test_shell.sh
+      - name: Run repository checks
+        uses: j178/prek-action@v3
 
   packer:
     runs-on: ubuntu-24.04

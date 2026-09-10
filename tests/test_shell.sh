@@ -7,7 +7,6 @@ work_dir=${TMPDIR:-/tmp}/ec2-environment-config-test
 
 mapfile -t shell_files < <(find bin environment/scripts environment/packer/scripts scripts tests -type f -not -name '*.json' -not -name '*.bak' -not -name '*.orig' -not -name '*~' -print)
 for file in "${shell_files[@]}"; do bash -n "$file"; done
-shellcheck -x "${shell_files[@]}"
 
 # An untouched config.example must be rejected for its unset required settings.
 if CONFIG=environment/config.example WORKDIR="$work_dir" bash -c '
