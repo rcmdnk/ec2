@@ -336,37 +336,37 @@ make it with the Web interface or aws cli command directly.
 
 ### Development
 
-`bin/ec2` is generated from `src/ec2`, `environment/commands.sh`, and the files
-listed in `environment/assets.manifest`. Regenerate it after changing any of
-those sources:
-
-```
-$ scripts/build
-$ bash tests/test_shell.sh
-```
-
-#### prek or pre-commit
-
-Install prek or pre-commit by pip like:
+Install either [prek](https://prek.j178.dev/) or
+[pre-commit](https://pre-commit.com/) before making changes. The configured
+hooks install and run ShellCheck, so a separate system installation is not
+required.
 
 ```
 $ pip3 install prek
-```
-
-or by Homebrew
-
-```
+# or
 $ brew install prek
 ```
 
-Install prek (pre-commit) environment:
+Install the Git hook:
 
 ```
 $ prek install
 ```
 
-Then, automatically checked at `git commit` or run checks manually:
+Run all checks after making changes:
 
 ```
+$ prek run -a
+```
+
+If you use `pre-commit`, replace `prek` in the commands above with
+`pre-commit`.
+
+`bin/ec2` is generated from `src/ec2`, `environment/commands.sh`, and the files
+listed in `environment/assets.manifest`. Regenerate it before running the
+checks when any of those sources change:
+
+```
+$ scripts/build
 $ prek run -a
 ```
