@@ -72,6 +72,8 @@ Subcommands:
 
 Options:
   --all, -a                          Set 1 to ignore preset filters.
+  --config                           Configuration file to read instead of the
+                                     default config file.
   --aws-profile                      Profile name for aws cli (if not
                                      specified, the default profile is used.)
   --cli-input-json, -c               A json file which has parameters to launch
@@ -170,7 +172,12 @@ before using ec2.
 
 ### Configuration
 
-Use **~/.config/ec2/config**.
+Use **~/.config/ec2/config** by default. A different configuration file can be
+selected with `--config`:
+
+```
+ec2 --config ~/.config/ec2/work-config instances
+```
 
 Options can be set like:
 

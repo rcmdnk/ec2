@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2154,SC2155
 
-__version="v0.2.10"
-__date="8/Apr/2026"
+__version="v0.2.11"
+__date="10/Sep/2026"
 __config_dir="${XDG_CONFIG_HOME:-$HOME}/.config/ec2"
 __config="$__config_dir/config"
 __job_list="${__config_dir}/job_list"
@@ -37,6 +37,7 @@ __submit_retry_ssh_interval=10
 
 __options="
 --all|-a Set 1 to ignore preset filters.
+--config Configuration file to read instead of the default config file.
 --aws-profile Profile name for aws cli (if not\nspecified, the default profile is used.)
 --cli-input-json|-c A json file which has parameters to launch\nan instance. Multiple files can be\nassigned by comma separated list.\nIf multiple files are given, secondary\nfiles are used if the first one failed by\nthe capacity problem.
 --cli-input-json-group|-G JSON group name for launch\nan instance. Multiple groups can be\nassigned by comma separated list.\nIf multiple groups are given, secondary\ngroups are used if the first one failed by\nthe capacity problem.
@@ -1178,6 +1179,24 @@ _read_config () {
   fi
 }
 
+_read_config_path () {
+  while [[ $# -gt 0 ]]; do
+    if [ "$1" = "--" ];then
+      break
+    fi
+    if [ "$1" = "--config" ];then
+      if [ $# -lt 2 ];then
+        echo "Option --config requires an argument" 1>&2
+        exit 1
+      fi
+      __config="$2"
+      shift 2
+    else
+      shift
+    fi
+  done
+}
+
 _print_explain () {
   local value="$1"
   local spaces="$2"
@@ -1277,6 +1296,7 @@ if [ $# -eq 0 ];then
   exit
 fi
 
+_read_config_path "$@"
 _read_config
 eval "$(_generate_read_args)"
 _read_args "$@"
