@@ -1,6 +1,6 @@
 # ec2
 
-AWS CLI wrapper for EC2 management, AMI builds, and environment setup.
+AWS CLI wrapper for EC2 management.
 
 ## Requirement
 
