@@ -1,3 +1,6 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2154
+
 _environment_runtime() {
   local script=$1
   shift
@@ -61,7 +64,8 @@ _environment_install_config() {
 
   if [ -e "$__default_config" ] || [ -L "$__default_config" ];then
     if ! _environment_config_is_managed "$__default_config";then
-      local backup="${__default_config}.backup-$(date +%Y%m%d-%H%M%S)"
+      local backup
+      backup="${__default_config}.backup-$(date +%Y%m%d-%H%M%S)"
       [ ! -e "$backup" ] && [ ! -L "$backup" ] || backup="${backup}.$$"
       mv "$__default_config" "$backup"
       echo "Backed up existing configuration to $backup"
