@@ -1347,6 +1347,28 @@ _read_config () {
   fi
 }
 
+_require_config () {
+  [ -f "$__config" ] && return 0
+
+  echo "EC2 configuration file not found: $__config" >&2
+  if [ "$__config" != "$__default_config" ];then
+    echo "Create that file or select an existing one with --config." >&2
+    return 1
+  fi
+  cat >&2 << EOF
+Create $__config manually with contents such as:
+  name_filter=my-instances
+  image_name_filter=my-images
+  ssh_user=ec2-user
+
+Or generate it from an environment configuration:
+  ec2 init_environment
+  ${EDITOR:-vi} $__environment_config
+  ec2 setup
+EOF
+  return 1
+}
+
 _read_config_path () {
   while [[ $# -gt 0 ]]; do
     if [ "$1" = "--" ];then
@@ -1492,6 +1514,11 @@ if ! echo " $__subcommands "|grep -q " $__subcommand ";then
   _print_help
   exit 1
 fi
+
+case "$__subcommand" in
+  cleanup_resources|commands|help|init_environment|make_ami|setup|setup_efs|setup_fsx|setup_io2|setup_s3files|version) ;;
+  *) _require_config || exit 1;;
+esac
 
 if [ "$__all" = "1" ];then
   __name_filter=""

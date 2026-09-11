@@ -14,7 +14,8 @@ CONFIG=$requested_config
 export WORKDIR CONFIG
 
 if [[ ! -f "$CONFIG" ]]; then
-  echo "Configuration file not found: $CONFIG (copy config.example to config)" >&2
+  echo "Environment configuration file not found: $CONFIG" >&2
+  echo "When using ec2, run 'ec2 init_environment' and edit the created environment file first." >&2
   exit 1
 fi
 source "$CONFIG"

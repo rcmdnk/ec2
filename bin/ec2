@@ -1347,6 +1347,28 @@ _read_config () {
   fi
 }
 
+_require_config () {
+  [ -f "$__config" ] && return 0
+
+  echo "EC2 configuration file not found: $__config" >&2
+  if [ "$__config" != "$__default_config" ];then
+    echo "Create that file or select an existing one with --config." >&2
+    return 1
+  fi
+  cat >&2 << EOF
+Create $__config manually with contents such as:
+  name_filter=my-instances
+  image_name_filter=my-images
+  ssh_user=ec2-user
+
+Or generate it from an environment configuration:
+  ec2 init_environment
+  ${EDITOR:-vi} $__environment_config
+  ec2 setup
+EOF
+  return 1
+}
+
 _read_config_path () {
   while [[ $# -gt 0 ]]; do
     if [ "$1" = "--" ];then
@@ -2348,7 +2370,8 @@ CONFIG=$requested_config
 export WORKDIR CONFIG
 
 if [[ ! -f "$CONFIG" ]]; then
-  echo "Configuration file not found: $CONFIG (copy config.example to config)" >&2
+  echo "Environment configuration file not found: $CONFIG" >&2
+  echo "When using ec2, run 'ec2 init_environment' and edit the created environment file first." >&2
   exit 1
 fi
 source "$CONFIG"
@@ -4103,9 +4126,25 @@ _environment_runtime() {
   )
 }
 
+_environment_require_config() {
+  local config=$1
+  [ -f "$config" ] && return 0
+
+  echo "Environment configuration file not found: $config" >&2
+  echo "Create it, then edit the settings before running the command again:" >&2
+  if [ "$config" = "$__config_dir/environment" ];then
+    echo "  ec2 init_environment" >&2
+  else
+    echo "  ec2 init_environment --environment-config $config" >&2
+  fi
+  echo "  ${EDITOR:-vi} $config" >&2
+  return 1
+}
+
 _environment_args() {
   __environment_command_workdir="${__positional[0]:-$__workdir}"
   __environment_command_config="${__positional[1]:-$__environment_config}"
+  _environment_require_config "$__environment_command_config"
 }
 
 _environment_config_is_managed() {
@@ -4182,13 +4221,13 @@ _environment_cleanup_args() {
 
 make_ami() {
   # Build the configured EC2 AMIs with Packer.
-  _environment_args
+  _environment_args || return
   _environment_runtime make_ami "$__environment_command_workdir" "$__environment_command_config"
 }
 
 setup() {
   # Generate EC2 launch inputs and install the default ec2 configuration.
-  _environment_args
+  _environment_args || return
   _environment_preflight_config || return 1
   _environment_runtime setup_ec2 "$__environment_command_workdir" "$__environment_command_config" || return
   _environment_install_config "$__environment_command_workdir/ec2/config"
@@ -4196,31 +4235,31 @@ setup() {
 
 setup_efs() {
   # Resolve or create configured EFS file systems.
-  _environment_args
+  _environment_args || return
   _environment_runtime setup_efs "$__environment_command_workdir" "$__environment_command_config"
 }
 
 setup_fsx() {
   # Resolve or create configured FSx file systems.
-  _environment_args
+  _environment_args || return
   _environment_runtime setup_fsx "$__environment_command_workdir" "$__environment_command_config"
 }
 
 setup_io2() {
   # Resolve or create configured io2 volumes.
-  _environment_args
+  _environment_args || return
   _environment_runtime setup_io2 "$__environment_command_workdir" "$__environment_command_config"
 }
 
 setup_s3files() {
   # Resolve configured S3 file-system identifiers.
-  _environment_args
+  _environment_args || return
   _environment_runtime setup_s3files "$__environment_command_workdir" "$__environment_command_config"
 }
 
 cleanup_resources() {
   # Show or execute cleanup for resources recorded by environment commands.
-  _environment_args
+  _environment_args || return
   _environment_cleanup_args
   _environment_runtime cleanup_resources "${__environment_cleanup_args[@]}"
 }
@@ -4275,6 +4314,11 @@ if ! echo " $__subcommands "|grep -q " $__subcommand ";then
   _print_help
   exit 1
 fi
+
+case "$__subcommand" in
+  cleanup_resources|commands|help|init_environment|make_ami|setup|setup_efs|setup_fsx|setup_io2|setup_s3files|version) ;;
+  *) _require_config || exit 1;;
+esac
 
 if [ "$__all" = "1" ];then
   __name_filter=""
