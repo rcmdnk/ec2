@@ -37,6 +37,7 @@ __opt_spot="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions
 
 __selection_tool="sentaku,peco,fzy,fzf"
 __selection_tool_ref="  - [sentaku](https://github.com/rcmdnk/sentaku/)\n  - [peco](https://github.com/peco/peco)\n  - [fzy](https://github.com/jhawthorn/fzy)\n  - [fzf](https://github.com/junegunn/fzf)"
+__ssh_option=()
 __submit_n_retry_launch=0
 __submit_retry_launch_interval=60
 __submit_n_retry_ssh=0
@@ -72,7 +73,7 @@ __options="
 --selection-tool|-s Selection tool list, separated by ','. The\ndefault value is '$__selection_tool'.\nThe first one found is used. If nothing,\nbash's 'select' is used. Tools ref:\n$__selection_tool_ref
 --spot-instance|-S Set 1 to launch a spot instance.
 --ssh-key|-k Key for ssh.
---ssh-option Additional ssh options.
+--ssh-option Additional SSH argument. Repeat for more.
 --ssh-user|-u User for ssh.
 --submit-command Set 1 to submit command instead of\nsubmitting script file.
 --submit-current-dir Set 1 to use the current directory as the\nworking directory by submit.
@@ -751,11 +752,11 @@ describe () {
 ssh () {
   # SSH to an instance.
   # Use `ssh [commands] [options]`.
-  cmd="${1:-ssh}"
+  local cmd="${1:-ssh}"
   _instance_check
-  local ssh_option="$__ssh_option"
+  local -a ssh_options=("${__ssh_option[@]}")
   if [ -n "$__ssh_key" ];then
-    ssh_option="$ssh_option -i $__ssh_key"
+    ssh_options+=(-i "$__ssh_key")
   fi
   local ip=$__instance_ip
   if [ -n "$__ssh_user" ];then
@@ -763,8 +764,7 @@ ssh () {
   fi
   waiting_for_ready=0
   while :;do
-    # shellcheck disable=SC2086
-    command ssh $ssh_option $ip "sudo tail -n1 /var/log/cloud-init-output.log |grep 'Cloud-init.*finished at.*seconds$'" >/dev/null 2>&1
+    command ssh "${ssh_options[@]}" "$ip" "sudo tail -n1 /var/log/cloud-init-output.log |grep 'Cloud-init.*finished at.*seconds$'" >/dev/null 2>&1
     local ret=$?
     if [ "$ret" -eq 0 ];then
       break
@@ -778,16 +778,22 @@ ssh () {
     _instance_check
   done
   if [ "$cmd" = "mosh" ];then
-    ssh_option=""
-    if [ -n "$__ssh_key" ];then
-      ssh_option="--ssh=ssh -i $__ssh_key"
+    if ((${#ssh_options[@]}));then
+      local mosh_ssh
+      printf -v mosh_ssh '%q ' ssh "${ssh_options[@]}"
+      ssh_options=("--ssh=${mosh_ssh% }")
+    else
+      ssh_options=()
     fi
     if [ -n "$__mosh_server" ];then
-    ssh_option="$ssh_option --server=$__mosh_server"
+      ssh_options+=("--server=$__mosh_server")
     fi
   fi
-  # shellcheck disable=SC2086
-  command $cmd $ssh_option $ip $__execute_command
+  local -a execute_command=()
+  if [ -n "${__execute_command:-}" ];then
+    execute_command=("$__execute_command")
+  fi
+  command "$cmd" "${ssh_options[@]}" "$ip" "${execute_command[@]}"
 }
 
 mosh () {
@@ -801,17 +807,16 @@ scp () {
   # SCP to an instance.
   # Use `scp <file> [options]`.
   _instance_check
-  local ssh_option=""
+  local -a ssh_options=("${__ssh_option[@]}")
   if [ -n "$__ssh_key" ];then
-    ssh_option="$ssh_option -i $__ssh_key"
+    ssh_options+=(-i "$__ssh_key")
   fi
   local ip=$__instance_ip
   if [ -n "$__ssh_user" ];then
     ip="$__ssh_user@$ip"
   fi
   while :;do
-    # shellcheck disable=SC2086
-    command ssh $ssh_option $ip "exit"
+    command ssh "${ssh_options[@]}" "$ip" "exit"
     local ret=$?
     if [ $ret -eq 0 ];then
       break
@@ -821,8 +826,7 @@ scp () {
     # Soemtime instance is stopped during waiting, restart it if needed.
     _instance_check
   done
-  # shellcheck disable=SC2086
-  command scp $ssh_option $__file $ip:
+  command scp "${ssh_options[@]}" "$__file" "$ip:"
 }
 
 _clear_job () {
@@ -1184,7 +1188,17 @@ _read_config () {
       fi
       local opt="${line%%=*}"
       local val="${line#*=}"
-      eval "__${opt//-/_}=${val}"
+      if [ "${opt//-/_}" = "ssh_option" ];then
+        if [[ "$val" == \(*\) ]];then
+          eval "__ssh_option=$val"
+        else
+          local ssh_option_value
+          eval "ssh_option_value=$val"
+          read -r -a __ssh_option <<< "$ssh_option_value"
+        fi
+      else
+        eval "__${opt//-/_}=${val}"
+      fi
       if [[ "${opt//-/_}" =~ ^cli_input_json_group_.*$ ]];then
         __cli_input_json_groups=("${__cli_input_json_groups[@]}" "${opt//cli_input_json_group_/}")
       fi
@@ -1243,7 +1257,11 @@ EOF
     fi
     local opt=$(echo "$line" | awk '{print $1}')
     local val_name=$(echo "${opt//-/_}" | cut -d '|' -f 1)
-    echo "      $opt) ${val_name}=\"\$2\"; shift; shift;;"
+    if [ "$val_name" = "__ssh_option" ];then
+      echo "      $opt) ${val_name}+=(\"\$2\"); shift; shift;;"
+    else
+      echo "      $opt) ${val_name}=\"\$2\"; shift; shift;;"
+    fi
   done
 
 cat << EOF

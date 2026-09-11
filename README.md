@@ -144,7 +144,7 @@ Options:
                                        - [fzf](https://github.com/junegunn/fzf)
   --spot-instance, -S                Set 1 to launch a spot instance.
   --ssh-key, -k                      Key for ssh.
-  --ssh-option                       Additional ssh options.
+--ssh-option                       Additional SSH argument. Repeat for more.
   --ssh-user, -u                     User for ssh.
   --submit-command                   Set 1 to submit command instead of
                                      submitting script file.
@@ -228,6 +228,20 @@ selects the identity from its defaults, `ssh-agent`, or `~/.ssh/config`. Add
 `ssh_key=~/.ssh/my_ssh.pem` only when you want `ec2` to pass that key explicitly
 with `-i`. Because `ec2` normally connects by IP address, any `Host` rule must
 match that address or pattern.
+
+Write multiple SSH arguments as a one-line Bash array in the configuration.
+Each element is passed to `ssh`, `mosh`, and `scp` without another round of word
+splitting:
+
+```
+ssh_option=(-o StrictHostKeyChecking=no -o 'ProxyCommand=ssh -W %h:%p bastion')
+```
+
+On the command line, repeat the option once per SSH argument:
+
+```
+$ ec2 mosh --ssh-option -o --ssh-option 'ProxyCommand=ssh -W %h:%p bastion'
+```
 
 To launch your prepared AMI without `ec2 setup`, create the referenced launch
 JSON yourself:

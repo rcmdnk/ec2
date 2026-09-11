@@ -179,6 +179,7 @@ bash tests/test_reproducible_build_inputs.sh
 bash tests/test_packer_template.sh
 bash tests/test_resource_lifecycle.sh
 bash tests/test_environment_config_install.sh
+bash tests/test_ssh_arguments.sh
 bash tests/test_generated_bin.sh
 
 echo "All static checks passed."
