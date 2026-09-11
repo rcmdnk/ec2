@@ -1400,7 +1400,6 @@ _environment_extract() {
 #      SUBNET_IDS          subnet(s) to deploy into               (section 3)
 #                          (or SUBNET_NAMES)
 #      KEY_NAME            EC2 key pair name                      (section 3)
-#      EC2_SSH_KEY         local private key matching KEY_NAME    (section 9)
 #
 #  The file system scripts also need SUBNET_IDS, but only to create something.
 #
@@ -1982,10 +1981,13 @@ EC2_NAME_FILTER="${PREFIX}"
 # Substring the `ec2` command uses to list *your* AMIs.
 EC2_IMAGE_NAME_FILTER="${PREFIX}"
 
-# Local path to the private key matching KEY_NAME, used for ssh/mosh from your
-# machine, typically ~/.ssh/<KEY_NAME>.pem. It is written to $WORKDIR/ec2/config
-# only, never into user-data and never onto the instance.
-EC2_SSH_KEY=""   # REQUIRED by setup_ec2
+# Optional local path to the private key matching KEY_NAME, typically
+# ~/.ssh/<KEY_NAME>.pem. When empty, ssh/scp/mosh use the usual OpenSSH identity
+# selection, including ssh-agent and ~/.ssh/config. The ec2 command normally
+# connects by IP address, so any Host rule must match that address or pattern.
+# This value is written to $WORKDIR/ec2/config only, never into user-data or the
+# config installed on the instance.
+EC2_SSH_KEY=""
 
 # Login user on the launched instances. Also the user whose home directory the
 # generated user-data sets up: dotfiles, ~/.aws, ~/.ssh, ~/.config/ec2,
@@ -2823,8 +2825,8 @@ __EC2_ASSET_scripts_make_ami__
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Read by scripts/variables: this entry point also needs KEY_NAME and
-# EC2_SSH_KEY, which building an AMI or a file system does not.
+# Read by scripts/variables: this entry point also needs KEY_NAME, which
+# building an AMI or a file system does not.
 # shellcheck disable=SC2034
 REQUIRE_EC2_SETTINGS=1
 source "$script_dir/base_setup" "${1:-}" "${2:-}"
@@ -3481,7 +3483,7 @@ set -euo pipefail
 #                          writes the launch JSON and the `ec2` configuration.
 #                          Building an AMI or a file system does not need them.
 REQUIRED_SETTINGS=(REGION)
-REQUIRED_SETTINGS_EC2=(SUBNET_IDS KEY_NAME EC2_SSH_KEY)
+REQUIRED_SETTINGS_EC2=(SUBNET_IDS KEY_NAME)
 required_settings=("${REQUIRED_SETTINGS[@]}")
 [[ "${REQUIRE_EC2_SETTINGS:-0}" == 1 ]] && required_settings+=("${REQUIRED_SETTINGS_EC2[@]}")
 missing=()
@@ -3622,6 +3624,7 @@ IO2_DEVICES=${IO2_DEVICES-/dev/sdf}
 
 EC2_NAME_FILTER=${EC2_NAME_FILTER-}
 EC2_IMAGE_NAME_FILTER=${EC2_IMAGE_NAME_FILTER-}
+EC2_SSH_KEY=${EC2_SSH_KEY-}
 EC2_SSH_USER=${EC2_SSH_USER-${EC2_USER}}
 EC2_PUBLIC_IP=${EC2_PUBLIC_IP-false}
 EC2_PRIVATE_IP=${EC2_PRIVATE_IP-1}

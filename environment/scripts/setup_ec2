@@ -3,8 +3,8 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Read by scripts/variables: this entry point also needs KEY_NAME and
-# EC2_SSH_KEY, which building an AMI or a file system does not.
+# Read by scripts/variables: this entry point also needs KEY_NAME, which
+# building an AMI or a file system does not.
 # shellcheck disable=SC2034
 REQUIRE_EC2_SETTINGS=1
 source "$script_dir/base_setup" "${1:-}" "${2:-}"

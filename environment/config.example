@@ -92,7 +92,6 @@
 #      SUBNET_IDS          subnet(s) to deploy into               (section 3)
 #                          (or SUBNET_NAMES)
 #      KEY_NAME            EC2 key pair name                      (section 3)
-#      EC2_SSH_KEY         local private key matching KEY_NAME    (section 9)
 #
 #  The file system scripts also need SUBNET_IDS, but only to create something.
 #
@@ -674,10 +673,13 @@ EC2_NAME_FILTER="${PREFIX}"
 # Substring the `ec2` command uses to list *your* AMIs.
 EC2_IMAGE_NAME_FILTER="${PREFIX}"
 
-# Local path to the private key matching KEY_NAME, used for ssh/mosh from your
-# machine, typically ~/.ssh/<KEY_NAME>.pem. It is written to $WORKDIR/ec2/config
-# only, never into user-data and never onto the instance.
-EC2_SSH_KEY=""   # REQUIRED by setup_ec2
+# Optional local path to the private key matching KEY_NAME, typically
+# ~/.ssh/<KEY_NAME>.pem. When empty, ssh/scp/mosh use the usual OpenSSH identity
+# selection, including ssh-agent and ~/.ssh/config. The ec2 command normally
+# connects by IP address, so any Host rule must match that address or pattern.
+# This value is written to $WORKDIR/ec2/config only, never into user-data or the
+# config installed on the instance.
+EC2_SSH_KEY=""
 
 # Login user on the launched instances. Also the user whose home directory the
 # generated user-data sets up: dotfiles, ~/.aws, ~/.ssh, ~/.config/ec2,

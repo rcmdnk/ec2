@@ -9,7 +9,7 @@ set -euo pipefail
 #                          writes the launch JSON and the `ec2` configuration.
 #                          Building an AMI or a file system does not need them.
 REQUIRED_SETTINGS=(REGION)
-REQUIRED_SETTINGS_EC2=(SUBNET_IDS KEY_NAME EC2_SSH_KEY)
+REQUIRED_SETTINGS_EC2=(SUBNET_IDS KEY_NAME)
 required_settings=("${REQUIRED_SETTINGS[@]}")
 [[ "${REQUIRE_EC2_SETTINGS:-0}" == 1 ]] && required_settings+=("${REQUIRED_SETTINGS_EC2[@]}")
 missing=()
@@ -150,6 +150,7 @@ IO2_DEVICES=${IO2_DEVICES-/dev/sdf}
 
 EC2_NAME_FILTER=${EC2_NAME_FILTER-}
 EC2_IMAGE_NAME_FILTER=${EC2_IMAGE_NAME_FILTER-}
+EC2_SSH_KEY=${EC2_SSH_KEY-}
 EC2_SSH_USER=${EC2_SSH_USER-${EC2_USER}}
 EC2_PUBLIC_IP=${EC2_PUBLIC_IP-false}
 EC2_PRIVATE_IP=${EC2_PRIVATE_IP-1}

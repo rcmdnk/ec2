@@ -29,7 +29,7 @@ these up once in the region you use as `REGION`, then put the IDs in
 | --------------------------------- | ---------------------- | ----------------- |
 | Subnet(s)                         | `SUBNET_IDS`           | for `ec2 setup`   |
 | EC2 key pair                      | `KEY_NAME`             | for `ec2 setup`   |
-| The matching private key, locally | `EC2_SSH_KEY`          | for `ec2 setup`   |
+| Private key path override         | `EC2_SSH_KEY`          | no, see below     |
 | Security group(s) in the same VPC | `SECURITY_GROUP_IDS`   | no, but see below |
 | VPC                               | `VPC_ID`               | no                |
 | IAM instance profile              | `IAM_INSTANCE_PROFILE` | no, but see below |
@@ -83,12 +83,14 @@ so the machine running Packer must reach the VPC privately - over a VPN, Direct
 Connect, or from inside the VPC. Otherwise set it to `public_ip` with a public
 subnet, or to `session_manager`.
 
-**Key pair.** Create it in EC2, put its name in `KEY_NAME`, and put the local
-path of the downloaded private key in `EC2_SSH_KEY`. Only `ec2 setup` needs
-them: `KEY_NAME` goes into the launch JSON and `EC2_SSH_KEY` into the `ec2`
-command configuration, and the private key never leaves your machine. Packer
-creates and discards a temporary key pair of its own, so `make_ami` works
-without either.
+**Key pair.** Create it in EC2 and put its name in `KEY_NAME`; `ec2 setup` puts
+that name into the launch JSON. `EC2_SSH_KEY` is optional. Set it to a local
+private-key path only when you want the generated `ec2` configuration to pass
+that key explicitly with `-i`. Otherwise OpenSSH selects an identity from its
+defaults, `ssh-agent`, or `~/.ssh/config`. Because `ec2` normally connects by IP
+address, any `Host` rule must match that address or pattern. The private key
+never leaves your machine. Packer creates and discards a temporary key pair of
+its own, so `make_ami` works without either setting.
 
 **Instance profile.** Optional, but the instance cannot use the AWS credential
 chain without one. Required if you use io2 (`ec2:AttachVolume` from user-data),

@@ -216,15 +216,18 @@ If you already have an AMI and the required AWS resources, create
 ```
 name_filter=my-instances
 image_name_filter=my-ami
-ssh_key=~/.ssh/my_ssh.pem
 ssh_user=ec2-user
 aws_profile=my-profile
 cli_input_json=~/.config/ec2/cli_input_json/my-instance.json
 ```
 
 This limits instance listings to names containing `my-instances`, uses the
-configured SSH key and user for `ec2 ssh` and `ec2 mosh`, and selects the AWS
-CLI profile. Omit `aws_profile` to use the default AWS credential chain.
+configured user for `ec2 ssh` and `ec2 mosh`, and selects the AWS CLI profile.
+Omit `aws_profile` to use the default AWS credential chain. OpenSSH normally
+selects the identity from its defaults, `ssh-agent`, or `~/.ssh/config`. Add
+`ssh_key=~/.ssh/my_ssh.pem` only when you want `ec2` to pass that key explicitly
+with `-i`. Because `ec2` normally connects by IP address, any `Host` rule must
+match that address or pattern.
 
 To launch your prepared AMI without `ec2 setup`, create the referenced launch
 JSON yourself:
