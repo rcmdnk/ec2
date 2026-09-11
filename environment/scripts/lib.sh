@@ -128,6 +128,17 @@ shell_assignment() {
   printf '%q\n' "$value"
 }
 
+shell_array_assignment() {
+  local name=$1 value
+  shift
+  printf '%s=(' "$name"
+  for value in "$@";do
+    printf ' %q' "$value"
+  done
+  (($# == 0)) || printf ' '
+  printf ')\n'
+}
+
 base64_string() {
   printf '%s' "${1-}" | base64 | tr -d '\n'
 }

@@ -32,6 +32,8 @@ Subcommands:
   commands                           List commands.
   delete_job                         Delete jobs.
   describe                           Show detailed information about instances
+  et                                 Connect to an instance with Eternal Terminal.
+                                     Use `et [command] [options]`.
   help                               Show help.
   images                             List images.
   init_environment                   Install an example environment configuration without overwriting one.
@@ -113,6 +115,8 @@ Options:
   --cpu-filter                       Filter to pick up instance type by CPU.
   --dry-run, -d                      Set 1 to run as dry run mode (modification
                                      commands are not executed.)
+  --et-option                        Additional Eternal Terminal argument.
+                                     Repeat for more.
   --gpu-filter                       Filter to pick up instance type by GPU.
   --image-id                         Image name for new_image/rm_image command.
   --image-name, -I                   Image name for new_image/rm_image command.
@@ -222,7 +226,7 @@ cli_input_json=~/.config/ec2/cli_input_json/my-instance.json
 ```
 
 This limits instance listings to names containing `my-instances`, uses the
-configured user for `ec2 ssh` and `ec2 mosh`, and selects the AWS CLI profile.
+configured user for `ec2 ssh`, `ec2 mosh`, and `ec2 et`, and selects the AWS CLI profile.
 Omit `aws_profile` to use the default AWS credential chain. OpenSSH normally
 selects the identity from its defaults, `ssh-agent`, or `~/.ssh/config`. Add
 `ssh_key=~/.ssh/my_ssh.pem` only when you want `ec2` to pass that key explicitly
@@ -231,7 +235,8 @@ match that address or pattern.
 
 Write multiple SSH arguments as a one-line Bash array in the configuration.
 Each element is passed to `ssh`, `mosh`, and `scp` without another round of word
-splitting:
+splitting. `ec2 et` forwards `-o VALUE` and `-i KEY` through Eternal Terminal's
+`--ssh-option` interface:
 
 ```
 ssh_option=(-o StrictHostKeyChecking=no -o 'ProxyCommand=ssh -W %h:%p bastion')
@@ -242,6 +247,18 @@ On the command line, repeat the option once per SSH argument:
 ```
 $ ec2 mosh --ssh-option -o --ssh-option 'ProxyCommand=ssh -W %h:%p bastion'
 ```
+
+Eternal Terminal-specific arguments use `et_option` in the configuration or a
+repeated `--et-option` on the command line:
+
+```
+et_option=(--keepalive 30)
+$ ec2 et
+```
+
+The local `et` client must be installed, `etserver` must be running on the
+instance, and its TCP port must be reachable (2022 by default). ET also uses SSH
+for its initial handshake, so normal SSH access must work.
 
 To launch your prepared AMI without `ec2 setup`, create the referenced launch
 JSON yourself:

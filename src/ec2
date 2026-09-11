@@ -37,6 +37,7 @@ __opt_spot="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions
 
 __selection_tool="sentaku,peco,fzy,fzf"
 __selection_tool_ref="  - [sentaku](https://github.com/rcmdnk/sentaku/)\n  - [peco](https://github.com/peco/peco)\n  - [fzy](https://github.com/jhawthorn/fzy)\n  - [fzf](https://github.com/junegunn/fzf)"
+__et_option=()
 __ssh_option=()
 __submit_n_retry_launch=0
 __submit_retry_launch_interval=60
@@ -58,6 +59,7 @@ __options="
 --cli-input-json-directory|-C A directory which has json files. If\ncli_input_json is not assigned and\ncli_input_json_directory is set, files are\nsearched and it enters the selection mode.
 --cpu-filter Filter to pick up instance type by CPU.
 --dry-run|-d Set 1 to run as dry run mode (modification\ncommands are not executed.)
+--et-option Additional Eternal Terminal argument. Repeat for more.
 --gpu-filter Filter to pick up instance type by GPU.
 --image-id Image name for new_image/rm_image command.
 --image-name|-I Image name for new_image/rm_image command.
@@ -777,6 +779,10 @@ ssh () {
     # Soemtime instance is stopped during waiting, restart it if needed.
     _instance_check
   done
+  local -a execute_command=()
+  if [ -n "${__execute_command:-}" ];then
+    execute_command=("$__execute_command")
+  fi
   if [ "$cmd" = "mosh" ];then
     if ((${#ssh_options[@]}));then
       local mosh_ssh
@@ -788,19 +794,57 @@ ssh () {
     if [ -n "$__mosh_server" ];then
       ssh_options+=("--server=$__mosh_server")
     fi
-  fi
-  local -a execute_command=()
-  if [ -n "${__execute_command:-}" ];then
-    execute_command=("$__execute_command")
+  elif [ "$cmd" = "et" ];then
+    local -a et_options=("${__et_option[@]}")
+    local i option
+    for ((i=0; i<${#ssh_options[@]}; i++));do
+      option=${ssh_options[i]}
+      case "$option" in
+        -o|-i)
+          if ((i + 1 >= ${#ssh_options[@]}));then
+            echo "$option requires a value for an Eternal Terminal connection." >&2
+            return 2
+          fi
+          ((i += 1))
+          if [ "$option" = "-o" ];then
+            et_options+=(--ssh-option "${ssh_options[i]}")
+          else
+            et_options+=(--ssh-option "IdentityFile=${ssh_options[i]}")
+          fi
+          ;;
+        -o?*) et_options+=(--ssh-option "${option#-o}");;
+        -i?*) et_options+=(--ssh-option "IdentityFile=${option#-i}");;
+        *)
+          echo "SSH argument '$option' cannot be forwarded to Eternal Terminal; use --et-option or ~/.ssh/config." >&2
+          return 2
+          ;;
+      esac
+    done
+    if ((${#execute_command[@]}));then
+      et_options+=(--command "${execute_command[0]}")
+      execute_command=()
+    fi
+    ssh_options=("${et_options[@]}")
   fi
   command "$cmd" "${ssh_options[@]}" "$ip" "${execute_command[@]}"
+}
+
+et () {
+  # Connect to an instance with Eternal Terminal.
+  # Use `et [command] [options]`.
+  ssh et
+  local ret=$?
+  _instance_check
+  return "$ret"
 }
 
 mosh () {
   # Mosh to an instance.
   # Use `mosh [commands] [options]`.
   ssh mosh
+  local ret=$?
   _instance_check
+  return "$ret"
 }
 
 scp () {
@@ -1188,16 +1232,18 @@ _read_config () {
       fi
       local opt="${line%%=*}"
       local val="${line#*=}"
-      if [ "${opt//-/_}" = "ssh_option" ];then
+      local config_name="${opt//-/_}"
+      if [ "$config_name" = "ssh_option" ] || [ "$config_name" = "et_option" ];then
+        local array_name="__$config_name"
         if [[ "$val" == \(*\) ]];then
-          eval "__ssh_option=$val"
+          eval "$array_name=$val"
         else
-          local ssh_option_value
-          eval "ssh_option_value=$val"
-          read -r -a __ssh_option <<< "$ssh_option_value"
+          local option_value
+          eval "option_value=$val"
+          read -r -a "${array_name?}" <<< "$option_value"
         fi
       else
-        eval "__${opt//-/_}=${val}"
+        eval "__$config_name=${val}"
       fi
       if [[ "${opt//-/_}" =~ ^cli_input_json_group_.*$ ]];then
         __cli_input_json_groups=("${__cli_input_json_groups[@]}" "${opt//cli_input_json_group_/}")
@@ -1257,7 +1303,7 @@ EOF
     fi
     local opt=$(echo "$line" | awk '{print $1}')
     local val_name=$(echo "${opt//-/_}" | cut -d '|' -f 1)
-    if [ "$val_name" = "__ssh_option" ];then
+    if [ "$val_name" = "__ssh_option" ] || [ "$val_name" = "__et_option" ];then
       echo "      $opt) ${val_name}+=(\"\$2\"); shift; shift;;"
     else
       echo "      $opt) ${val_name}=\"\$2\"; shift; shift;;"
@@ -1364,7 +1410,7 @@ __ids[__enum_instance]="$__instance_id"
 __ids[__enum_image]="$__image_id"
 __ids[__enum_template]="$__template_id"
 
-if [ "$__subcommand" == "ssh" ];then
+if [ "$__subcommand" = "ssh" ] || [ "$__subcommand" = "mosh" ] || [ "$__subcommand" = "et" ];then
   __execute_command="${__positional[0]}"
 fi
 

@@ -10,7 +10,7 @@ mock_bin="$runtime_dir/bin"
 export ARG_LOG="$runtime_dir/arguments.log"
 mkdir -p "$mock_bin"
 
-for command_name in ssh mosh scp;do
+for command_name in ssh mosh et scp;do
   cat > "$mock_bin/$command_name" <<'EOF'
 #!/usr/bin/env bash
 {
@@ -39,20 +39,28 @@ _read_config
 
 cat > "$config" <<'EOF'
 ssh_option=(-o StrictHostKeyChecking=no -o 'ProxyCommand=ssh -W %h:%p bastion')
+et_option=(--keepalive 30)
 EOF
 __ssh_option=()
+__et_option=()
 _read_config
 [[ ${#__ssh_option[@]} == 4 ]]
 [[ ${__ssh_option[0]} == -o ]]
 [[ ${__ssh_option[1]} == StrictHostKeyChecking=no ]]
 [[ ${__ssh_option[2]} == -o ]]
 [[ ${__ssh_option[3]} == 'ProxyCommand=ssh -W %h:%p bastion' ]]
+[[ ${#__et_option[@]} == 2 ]]
+[[ ${__et_option[0]} == --keepalive ]]
+[[ ${__et_option[1]} == 30 ]]
 
 eval "$(_generate_read_args)"
-_read_args mosh --ssh-option -J --ssh-option 'jump host'
+_read_args mosh --ssh-option -J --ssh-option 'jump host' --et-option --terminal-path --et-option 'et terminal'
 [[ ${#__ssh_option[@]} == 6 ]]
 [[ ${__ssh_option[4]} == -J ]]
 [[ ${__ssh_option[5]} == 'jump host' ]]
+[[ ${#__et_option[@]} == 4 ]]
+[[ ${__et_option[2]} == --terminal-path ]]
+[[ ${__et_option[3]} == 'et terminal' ]]
 
 __ssh_user=tester
 __execute_command=''
@@ -79,6 +87,13 @@ mapfile -t default_mosh_args < <(read_command_args mosh 1)
 [[ ${default_mosh_args[0]} == tester@203.0.113.10 ]]
 
 : > "$ARG_LOG"
+__et_option=()
+et
+mapfile -t default_et_args < <(read_command_args et 1)
+[[ ${#default_et_args[@]} == 1 ]]
+[[ ${default_et_args[0]} == tester@203.0.113.10 ]]
+
+: > "$ARG_LOG"
 __ssh_option=(-o StrictHostKeyChecking=no -o 'ProxyCommand=ssh -W %h:%p bastion')
 __ssh_key="$runtime_dir/key with spaces.pem"
 __mosh_server="$runtime_dir/mosh server"
@@ -96,6 +111,26 @@ expected_mosh_ssh=${expected_mosh_ssh% }
 [[ ${mosh_args[0]} == "--ssh=$expected_mosh_ssh" ]]
 [[ ${mosh_args[1]} == "--server=$__mosh_server" ]]
 [[ ${mosh_args[2]} == tester@203.0.113.10 ]]
+
+: > "$ARG_LOG"
+__et_option=(--keepalive 30 --terminal-path "$runtime_dir/et terminal")
+__execute_command='tmux new-session'
+et
+mapfile -t et_args < <(read_command_args et 1)
+[[ ${#et_args[@]} == 13 ]]
+[[ ${et_args[0]} == --keepalive ]]
+[[ ${et_args[1]} == 30 ]]
+[[ ${et_args[2]} == --terminal-path ]]
+[[ ${et_args[3]} == "$runtime_dir/et terminal" ]]
+[[ ${et_args[4]} == --ssh-option ]]
+[[ ${et_args[5]} == StrictHostKeyChecking=no ]]
+[[ ${et_args[6]} == --ssh-option ]]
+[[ ${et_args[7]} == 'ProxyCommand=ssh -W %h:%p bastion' ]]
+[[ ${et_args[8]} == --ssh-option ]]
+[[ ${et_args[9]} == "IdentityFile=$__ssh_key" ]]
+[[ ${et_args[10]} == --command ]]
+[[ ${et_args[11]} == "$__execute_command" ]]
+[[ ${et_args[12]} == tester@203.0.113.10 ]]
 
 : > "$ARG_LOG"
 __execute_command="printf '%s\\n' 'hello world'"

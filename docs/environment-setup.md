@@ -77,8 +77,9 @@ default security group.
 When you do set it, the same groups are attached to both the Packer build
 instance and the launched instances, so they have to cover both. Inbound TCP 22
 from wherever you run Packer and from wherever you SSH in; add UDP 60000-61000
-if you use mosh. Outbound HTTPS for the package installs, and outbound TCP 2049
-when you mount EFS or FSx. Note that `SSH_INTERFACE` defaults to `private_ip`,
+if you use mosh, or TCP 2022 (by default) if you use Eternal Terminal. Outbound
+HTTPS for the package installs, and outbound TCP 2049 when you mount EFS or FSx.
+Note that `SSH_INTERFACE` defaults to `private_ip`,
 so the machine running Packer must reach the VPC privately - over a VPN, Direct
 Connect, or from inside the VPC. Otherwise set it to `public_ip` with a public
 subnet, or to `session_manager`.
@@ -86,11 +87,12 @@ subnet, or to `session_manager`.
 **Key pair.** Create it in EC2 and put its name in `KEY_NAME`; `ec2 setup` puts
 that name into the launch JSON. `EC2_SSH_KEY` is optional. Set it to a local
 private-key path only when you want the generated `ec2` configuration to pass
-that key explicitly with `-i`. Otherwise OpenSSH selects an identity from its
-defaults, `ssh-agent`, or `~/.ssh/config`. Because `ec2` normally connects by IP
-address, any `Host` rule must match that address or pattern. The private key
-never leaves your machine. Packer creates and discards a temporary key pair of
-its own, so `make_ami` works without either setting.
+that key explicitly with `-i`, or as Eternal Terminal's `IdentityFile` SSH
+option. Otherwise OpenSSH selects an identity from its defaults, `ssh-agent`, or
+`~/.ssh/config`. Because `ec2` normally connects by IP address, any `Host` rule
+must match that address or pattern. The private key never leaves your machine.
+Packer creates and discards a temporary key pair of its own, so `make_ami` works
+without either setting.
 
 **Instance profile.** Optional, but the instance cannot use the AWS credential
 chain without one. Required if you use io2 (`ec2:AttachVolume` from user-data),
