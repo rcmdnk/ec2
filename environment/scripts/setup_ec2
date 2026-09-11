@@ -113,6 +113,8 @@ done
   shell_assignment ssh_key "$EC2_SSH_KEY"
   shell_array_assignment ssh_option "${EC2_SSH_OPTIONS[@]}"
   shell_array_assignment et_option "${EC2_ET_OPTIONS[@]}"
+  shell_array_assignment scp_option "${EC2_SCP_OPTIONS[@]}"
+  shell_array_assignment rsync_option "${EC2_RSYNC_OPTIONS[@]}"
   shell_assignment ssh_user "$EC2_SSH_USER"
   shell_assignment mosh_server "$EC2_MOSH_SERVER"
   shell_assignment private_ip "$EC2_PRIVATE_IP"

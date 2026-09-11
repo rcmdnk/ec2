@@ -52,8 +52,12 @@ Subcommands:
   pricing                            Show pricing of instance types.
   rm                                 Alias for terminate.
   rm_image                           Delete images.
-  scp                                SCP to an instance.
-                                     Use `scp <file> [options]`.
+  rsync                              Synchronize files with an instance.
+                                     Prefix an instance path with `:`, for
+                                     example `rsync ./src/ :/srv/src/`.
+  scp                                Copy files to or from an instance.
+                                     Prefix an instance path with `:`, for
+                                     example `scp file :/tmp/`.
   setup                              Generate EC2 launch inputs and install the default ec2 configuration.
   setup_efs                          Resolve or create configured EFS file systems.
   setup_fsx                          Resolve or create configured FSx file systems.
@@ -138,6 +142,8 @@ Options:
   --retry-non-spot                   Set 0 to disable retry to launch a
                                      non-spot instance when launching a spot
                                      instance failed.
+  --rsync-option                     Additional rsync argument. Repeat for more.
+  --scp-option                       Additional scp argument. Repeat for more.
   --selection-tool, -s               Selection tool list, separated by ','. The
                                      default value is 'sentaku,peco,fzy,fzf'.
                                      The first one found is used. If nothing,
@@ -234,9 +240,10 @@ with `-i`. Because `ec2` normally connects by IP address, any `Host` rule must
 match that address or pattern.
 
 Write multiple SSH arguments as a one-line Bash array in the configuration.
-Each element is passed to `ssh`, `mosh`, and `scp` without another round of word
-splitting. `ec2 et` forwards `-o VALUE` and `-i KEY` through Eternal Terminal's
-`--ssh-option` interface:
+Each element is passed without another round of word splitting. `ec2 rsync`
+uses the array to construct its SSH transport, and `ec2 scp` converts SSH's
+lowercase `-p PORT` to scp's uppercase `-P PORT`. `ec2 et` forwards `-o VALUE`
+and `-i KEY` through Eternal Terminal's `--ssh-option` interface:
 
 ```
 ssh_option=(-o StrictHostKeyChecking=no -o 'ProxyCommand=ssh -W %h:%p bastion')
@@ -259,6 +266,16 @@ $ ec2 et
 The local `et` client must be installed, `etserver` must be running on the
 instance, and its TCP port must be reachable (2022 by default). ET also uses SSH
 for its initial handshake, so normal SSH access must work.
+
+scp- and rsync-specific arguments use arrays of their own. `rsync` defaults to
+archive mode; set `rsync_option=()` to disable that default. Do not put
+`-e`/`--rsh` in `rsync_option`, because `ec2` constructs the remote shell from
+`ssh_option` and `ssh_key`:
+
+```
+scp_option=(-r -p)
+rsync_option=(-a --delete)
+```
 
 To launch your prepared AMI without `ec2 setup`, create the referenced launch
 JSON yourself:
@@ -339,6 +356,28 @@ $ ec2 -t r3.large launch
 If you give `-t select`, you can choose the instance type from the list.
 
 You can pass the template name by `-T <your template>`, too.
+
+#### Transfer files
+
+Prefix an instance-side path with `:`. This supports uploads and downloads while
+the instance host and SSH user continue to come from the normal selection and
+configuration:
+
+```
+$ ec2 scp ./build/ :/tmp/build/ --scp-option -r
+$ ec2 scp :/var/log/app.log ./logs/
+$ ec2 rsync ./src/ :/srv/app/src/
+$ ec2 rsync :/srv/app/output/ ./output/
+```
+
+For compatibility, `ec2 scp FILE` uploads to the remote home directory. If no
+path has a `:` prefix, the final path is treated as the remote destination, so
+`ec2 rsync SOURCE DESTINATION` is an upload. Use `--` before paths beginning
+with a dash.
+
+`rsync` must be installed both locally and on the instance. Repeat
+`--scp-option` or `--rsync-option` to pass command-specific arguments, or place
+the corresponding arrays in `~/.config/ec2/config`.
 
 #### Create a new template version
 

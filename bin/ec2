@@ -38,7 +38,10 @@ __opt_spot="--instance-market-options '{ \"MarketType\": \"spot\", \"SpotOptions
 __selection_tool="sentaku,peco,fzy,fzf"
 __selection_tool_ref="  - [sentaku](https://github.com/rcmdnk/sentaku/)\n  - [peco](https://github.com/peco/peco)\n  - [fzy](https://github.com/jhawthorn/fzy)\n  - [fzf](https://github.com/junegunn/fzf)"
 __et_option=()
+__rsync_option=(-a)
+__scp_option=()
 __ssh_option=()
+__transfer_operands=()
 __submit_n_retry_launch=0
 __submit_retry_launch_interval=60
 __submit_n_retry_ssh=0
@@ -72,6 +75,8 @@ __options="
 --name-filter|-f Only instances which include this value\nis listed.
 --private-ip|-P Set 1 to use private IP addresses instead\nof public IP addresses.
 --retry-non-spot Set 0 to disable retry to launch a\nnon-spot instance when launching a spot\ninstance failed.
+--rsync-option Additional rsync argument. Repeat for more.
+--scp-option Additional scp argument. Repeat for more.
 --selection-tool|-s Selection tool list, separated by ','. The\ndefault value is '$__selection_tool'.\nThe first one found is used. If nothing,\nbash's 'select' is used. Tools ref:\n$__selection_tool_ref
 --spot-instance|-S Set 1 to launch a spot instance.
 --ssh-key|-k Key for ssh.
@@ -771,7 +776,7 @@ ssh () {
     if [ "$ret" -eq 0 ];then
       break
     fi
-    if [ $waiting_for_ready -eq 0 ];then
+    if [ "$waiting_for_ready" -eq 0 ];then
       echo "Waiting for ready..."
     fi
     ((waiting_for_ready++))
@@ -847,9 +852,52 @@ mosh () {
   return "$ret"
 }
 
-scp () {
-  # SCP to an instance.
-  # Use `scp <file> [options]`.
+_transfer () {
+  local cmd=$1
+  local -a operands=("${__transfer_operands[@]}")
+  if ((${#operands[@]} == 0)) && [ "$cmd" = "scp" ] && [ -n "${__file:-}" ];then
+    # submit uses the legacy single-file upload internally.
+    operands=("$__file")
+  fi
+  if ((${#operands[@]} == 0));then
+    echo "Usage: $__cmd $cmd <source> <destination>" >&2
+    return 2
+  fi
+  if [ "$cmd" = "scp" ] && ((${#operands[@]} == 1));then
+    operands+=(":")
+  elif ((${#operands[@]} < 2));then
+    echo "Usage: $__cmd $cmd <source> <destination>" >&2
+    return 2
+  fi
+
+  local last=$((${#operands[@]} - 1))
+  local remote_destination=0
+  [[ "${operands[last]}" == :* ]] && remote_destination=1
+  local remote_sources=0 i
+  for ((i=0; i<last; i++));do
+    [[ "${operands[i]}" == :* ]] && ((remote_sources += 1))
+  done
+  if ((remote_destination && remote_sources));then
+    echo "$cmd cannot copy between two remote paths." >&2
+    return 2
+  fi
+  if ((!remote_destination && !remote_sources));then
+    # With no explicit ':' marker, retain the upload-oriented scp behavior.
+    operands[last]=":${operands[last]}"
+    remote_destination=1
+  elif ((!remote_destination && remote_sources != last));then
+    echo "$cmd cannot mix local and remote source paths." >&2
+    return 2
+  fi
+  if ((remote_destination));then
+    for ((i=0; i<last; i++));do
+      if [ ! -e "${operands[i]}" ] && [ ! -L "${operands[i]}" ];then
+        echo "${operands[i]} does not exist" >&2
+        return 2
+      fi
+    done
+  fi
+
   _instance_check
   local -a ssh_options=("${__ssh_option[@]}")
   if [ -n "$__ssh_key" ];then
@@ -859,18 +907,64 @@ scp () {
   if [ -n "$__ssh_user" ];then
     ip="$__ssh_user@$ip"
   fi
+  local waiting_for_ready=0
   while :;do
-    command ssh "${ssh_options[@]}" "$ip" "exit"
+    command ssh "${ssh_options[@]}" "$ip" "exit" >/dev/null 2>&1
     local ret=$?
     if [ $ret -eq 0 ];then
       break
     fi
-    echo "Waiting for ready..."
+    if [ "$waiting_for_ready" -eq 0 ];then
+      echo "Waiting for ready..."
+    fi
+    ((waiting_for_ready += 1))
     sleep 5
     # Soemtime instance is stopped during waiting, restart it if needed.
     _instance_check
   done
-  command scp "${ssh_options[@]}" "$__file" "$ip:"
+
+  for ((i=0; i<${#operands[@]}; i++));do
+    if [[ "${operands[i]}" == :* ]];then
+      operands[i]="$ip:${operands[i]#:}"
+    fi
+  done
+  if [ "$cmd" = "rsync" ];then
+    local rsync_ssh
+    printf -v rsync_ssh '%q ' ssh "${ssh_options[@]}"
+    command rsync "${__rsync_option[@]}" -e "${rsync_ssh% }" "${operands[@]}"
+    return
+  fi
+
+  local -a scp_ssh_options=()
+  local option
+  for ((i=0; i<${#ssh_options[@]}; i++));do
+    option=${ssh_options[i]}
+    case "$option" in
+      -p)
+        if ((i + 1 >= ${#ssh_options[@]}));then
+          echo "-p requires a port value." >&2
+          return 2
+        fi
+        ((i += 1))
+        scp_ssh_options+=(-P "${ssh_options[i]}")
+        ;;
+      -p?*) scp_ssh_options+=(-P "${option#-p}");;
+      *) scp_ssh_options+=("$option");;
+    esac
+  done
+  command scp "${scp_ssh_options[@]}" "${__scp_option[@]}" "${operands[@]}"
+}
+
+rsync () {
+  # Synchronize files with an instance.
+  # Prefix an instance path with `:`, for example `rsync ./src/ :/srv/src/`.
+  _transfer rsync
+}
+
+scp () {
+  # Copy files to or from an instance.
+  # Prefix an instance path with `:`, for example `scp file :/tmp/`.
+  _transfer scp
 }
 
 _clear_job () {
@@ -1233,7 +1327,8 @@ _read_config () {
       local opt="${line%%=*}"
       local val="${line#*=}"
       local config_name="${opt//-/_}"
-      if [ "$config_name" = "ssh_option" ] || [ "$config_name" = "et_option" ];then
+      if [ "$config_name" = "ssh_option" ] || [ "$config_name" = "et_option" ] ||
+         [ "$config_name" = "scp_option" ] || [ "$config_name" = "rsync_option" ];then
         local array_name="__$config_name"
         if [[ "$val" == \(*\) ]];then
           eval "$array_name=$val"
@@ -1303,7 +1398,8 @@ EOF
     fi
     local opt=$(echo "$line" | awk '{print $1}')
     local val_name=$(echo "${opt//-/_}" | cut -d '|' -f 1)
-    if [ "$val_name" = "__ssh_option" ] || [ "$val_name" = "__et_option" ];then
+    if [ "$val_name" = "__ssh_option" ] || [ "$val_name" = "__et_option" ] ||
+       [ "$val_name" = "__scp_option" ] || [ "$val_name" = "__rsync_option" ];then
       echo "      $opt) ${val_name}+=(\"\$2\"); shift; shift;;"
     else
       echo "      $opt) ${val_name}=\"\$2\"; shift; shift;;"
@@ -2055,14 +2151,25 @@ EC2_IMAGE_NAME_FILTER="${PREFIX}"
 EC2_SSH_KEY=""
 
 # Additional SSH arguments copied to the generated ec2 config. Each array
-# element is preserved as one argument for ssh/scp and converted to Eternal
-# Terminal's --ssh-option form for `ec2 et`. ET forwarding supports -o VALUE
-# and -i KEY; use EC2_ET_OPTIONS or ~/.ssh/config for other ET-specific needs.
+# element is preserved as one argument for ssh/scp and rsync's SSH transport,
+# and converted to Eternal Terminal's --ssh-option form for `ec2 et`. ET
+# forwarding supports -o VALUE and -i KEY; use EC2_ET_OPTIONS or ~/.ssh/config
+# for other ET-specific needs.
 EC2_SSH_OPTIONS=()
 
 # Native Eternal Terminal client arguments, for example (--keepalive 30) or
 # (--port 2022). Do not include the destination host.
 EC2_ET_OPTIONS=()
+
+# Native scp arguments, for example (-r) for recursive directory copies or
+# (-p) to preserve modification times. SSH connection arguments still belong in
+# EC2_SSH_OPTIONS.
+EC2_SCP_OPTIONS=()
+
+# Native rsync arguments. The default archive mode supports recursive directory
+# synchronization while preserving metadata. Do not set -e/--rsh here; ec2
+# constructs it from EC2_SSH_OPTIONS and EC2_SSH_KEY.
+EC2_RSYNC_OPTIONS=(-a)
 
 # Login user on the launched instances. Also the user whose home directory the
 # generated user-data sets up: dotfiles, ~/.aws, ~/.ssh, ~/.config/ec2,
@@ -3021,6 +3128,8 @@ done
   shell_assignment ssh_key "$EC2_SSH_KEY"
   shell_array_assignment ssh_option "${EC2_SSH_OPTIONS[@]}"
   shell_array_assignment et_option "${EC2_ET_OPTIONS[@]}"
+  shell_array_assignment scp_option "${EC2_SCP_OPTIONS[@]}"
+  shell_array_assignment rsync_option "${EC2_RSYNC_OPTIONS[@]}"
   shell_assignment ssh_user "$EC2_SSH_USER"
   shell_assignment mosh_server "$EC2_MOSH_SERVER"
   shell_assignment private_ip "$EC2_PRIVATE_IP"
@@ -3719,6 +3828,12 @@ fi
 if ! declare -p EC2_ET_OPTIONS &>/dev/null; then
   EC2_ET_OPTIONS=()
 fi
+if ! declare -p EC2_SCP_OPTIONS &>/dev/null; then
+  EC2_SCP_OPTIONS=()
+fi
+if ! declare -p EC2_RSYNC_OPTIONS &>/dev/null; then
+  EC2_RSYNC_OPTIONS=(-a)
+fi
 EC2_SSH_USER=${EC2_SSH_USER-${EC2_USER}}
 EC2_PUBLIC_IP=${EC2_PUBLIC_IP-false}
 EC2_PRIVATE_IP=${EC2_PRIVATE_IP-1}
@@ -4178,10 +4293,14 @@ if [ "$__subcommand" = "ssh" ] || [ "$__subcommand" = "mosh" ] || [ "$__subcomma
   __execute_command="${__positional[0]}"
 fi
 
-if [ "$__subcommand" = "scp" ] || { [ "$__subcommand" = "submit" ] && [ "$__submit_command" != "1" ]; };then
+if [ "$__subcommand" = "scp" ] || [ "$__subcommand" = "rsync" ];then
+  __transfer_operands=("${__positional[@]}")
+fi
+
+if [ "$__subcommand" = "submit" ] && [ "$__submit_command" != "1" ];then
   __file="${__positional[0]}"
   if [ -z "$__file" ];then
-    echo "Usage: $__cmd [options] $__subcommand <file>"
+    echo "Usage: $__cmd [options] submit <file>"
     exit 1
   fi
   if [ ! -f "$__file" ];then

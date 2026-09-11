@@ -157,6 +157,12 @@ fi
 if ! declare -p EC2_ET_OPTIONS &>/dev/null; then
   EC2_ET_OPTIONS=()
 fi
+if ! declare -p EC2_SCP_OPTIONS &>/dev/null; then
+  EC2_SCP_OPTIONS=()
+fi
+if ! declare -p EC2_RSYNC_OPTIONS &>/dev/null; then
+  EC2_RSYNC_OPTIONS=(-a)
+fi
 EC2_SSH_USER=${EC2_SSH_USER-${EC2_USER}}
 EC2_PUBLIC_IP=${EC2_PUBLIC_IP-false}
 EC2_PRIVATE_IP=${EC2_PRIVATE_IP-1}

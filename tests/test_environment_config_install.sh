@@ -29,6 +29,8 @@ SUBNET_LABELS=ci
 KEY_NAME=environment-install-test
 EC2_SSH_OPTIONS=(-o StrictHostKeyChecking=no)
 EC2_ET_OPTIONS=(--keepalive 30 --terminal-path '/opt/et terminal')
+EC2_SCP_OPTIONS=(-r -p)
+EC2_RSYNC_OPTIONS=(-a --delete '--exclude=cache dir')
 FS_USR=0
 FS_DOTFILES_FILE=
 FS_DOTFILES_DIR=
@@ -65,6 +67,13 @@ bash -c '
   [[ ${et_option[1]} == 30 ]]
   [[ ${et_option[2]} == --terminal-path ]]
   [[ ${et_option[3]} == "/opt/et terminal" ]]
+  [[ ${#scp_option[@]} == 2 ]]
+  [[ ${scp_option[0]} == -r ]]
+  [[ ${scp_option[1]} == -p ]]
+  [[ ${#rsync_option[@]} == 3 ]]
+  [[ ${rsync_option[0]} == -a ]]
+  [[ ${rsync_option[1]} == --delete ]]
+  [[ ${rsync_option[2]} == "--exclude=cache dir" ]]
 ' _ "$installed"
 grep -q "cli_input_json_directory=$xdg_config/ec2/work/ec2/cli_input_json" "$installed"
 grep -q "user_data=fileb://$xdg_config/ec2/work/ec2/user_data.sh.gz" "$installed"

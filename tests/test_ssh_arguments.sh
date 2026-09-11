@@ -10,7 +10,7 @@ mock_bin="$runtime_dir/bin"
 export ARG_LOG="$runtime_dir/arguments.log"
 mkdir -p "$mock_bin"
 
-for command_name in ssh mosh et scp;do
+for command_name in ssh mosh et scp rsync;do
   cat > "$mock_bin/$command_name" <<'EOF'
 #!/usr/bin/env bash
 {
@@ -40,9 +40,13 @@ _read_config
 cat > "$config" <<'EOF'
 ssh_option=(-o StrictHostKeyChecking=no -o 'ProxyCommand=ssh -W %h:%p bastion')
 et_option=(--keepalive 30)
+scp_option=(-r -p)
+rsync_option=(-a '--exclude=cache dir')
 EOF
 __ssh_option=()
 __et_option=()
+__scp_option=()
+__rsync_option=()
 _read_config
 [[ ${#__ssh_option[@]} == 4 ]]
 [[ ${__ssh_option[0]} == -o ]]
@@ -52,15 +56,27 @@ _read_config
 [[ ${#__et_option[@]} == 2 ]]
 [[ ${__et_option[0]} == --keepalive ]]
 [[ ${__et_option[1]} == 30 ]]
+[[ ${#__scp_option[@]} == 2 ]]
+[[ ${__scp_option[0]} == -r ]]
+[[ ${__scp_option[1]} == -p ]]
+[[ ${#__rsync_option[@]} == 2 ]]
+[[ ${__rsync_option[0]} == -a ]]
+[[ ${__rsync_option[1]} == '--exclude=cache dir' ]]
 
 eval "$(_generate_read_args)"
-_read_args mosh --ssh-option -J --ssh-option 'jump host' --et-option --terminal-path --et-option 'et terminal'
+_read_args mosh --ssh-option -J --ssh-option 'jump host' \
+  --et-option --terminal-path --et-option 'et terminal' \
+  --scp-option -C --rsync-option --delete
 [[ ${#__ssh_option[@]} == 6 ]]
 [[ ${__ssh_option[4]} == -J ]]
 [[ ${__ssh_option[5]} == 'jump host' ]]
 [[ ${#__et_option[@]} == 4 ]]
 [[ ${__et_option[2]} == --terminal-path ]]
 [[ ${__et_option[3]} == 'et terminal' ]]
+[[ ${#__scp_option[@]} == 3 ]]
+[[ ${__scp_option[2]} == -C ]]
+[[ ${#__rsync_option[@]} == 3 ]]
+[[ ${__rsync_option[2]} == --delete ]]
 
 __ssh_user=tester
 __execute_command=''
@@ -142,11 +158,69 @@ mapfile -t command_args < <(read_command_args ssh 2)
 : > "$ARG_LOG"
 __file="$runtime_dir/input file"
 : > "$__file"
+__transfer_operands=()
+__scp_option=()
 scp
 mapfile -t scp_args < <(read_command_args scp 1)
 [[ ${#scp_args[@]} == 8 ]]
 [[ ${scp_args[5]} == "$__ssh_key" ]]
 [[ ${scp_args[6]} == "$__file" ]]
 [[ ${scp_args[7]} == tester@203.0.113.10: ]]
+
+: > "$ARG_LOG"
+source_dir="$runtime_dir/source directory"
+mkdir -p "$source_dir"
+__transfer_operands=("$source_dir" ':/tmp/remote directory/')
+__ssh_option=(-p 2222 -o StrictHostKeyChecking=no)
+__ssh_key="$runtime_dir/key with spaces.pem"
+__scp_option=(-r -p)
+scp
+mapfile -t upload_args < <(read_command_args scp 1)
+[[ ${#upload_args[@]} == 10 ]]
+[[ ${upload_args[0]} == -P ]]
+[[ ${upload_args[1]} == 2222 ]]
+[[ ${upload_args[2]} == -o ]]
+[[ ${upload_args[3]} == StrictHostKeyChecking=no ]]
+[[ ${upload_args[4]} == -i ]]
+[[ ${upload_args[5]} == "$__ssh_key" ]]
+[[ ${upload_args[6]} == -r ]]
+[[ ${upload_args[7]} == -p ]]
+[[ ${upload_args[8]} == "$source_dir" ]]
+[[ ${upload_args[9]} == 'tester@203.0.113.10:/tmp/remote directory/' ]]
+
+: > "$ARG_LOG"
+download_dir="$runtime_dir/download directory"
+__transfer_operands=(':/tmp/remote file' "$download_dir")
+__ssh_option=()
+__ssh_key=''
+__scp_option=()
+scp
+mapfile -t download_args < <(read_command_args scp 1)
+[[ ${#download_args[@]} == 2 ]]
+[[ ${download_args[0]} == 'tester@203.0.113.10:/tmp/remote file' ]]
+[[ ${download_args[1]} == "$download_dir" ]]
+
+: > "$ARG_LOG"
+__transfer_operands=("$source_dir" 'remote directory')
+__rsync_option=(-a --delete)
+__ssh_option=(-o 'ProxyCommand=ssh -W %h:%p bastion')
+__ssh_key="$runtime_dir/key with spaces.pem"
+rsync
+mapfile -t rsync_args < <(read_command_args rsync 1)
+printf -v expected_rsync_ssh '%q ' ssh "${__ssh_option[@]}" -i "$__ssh_key"
+expected_rsync_ssh=${expected_rsync_ssh% }
+[[ ${#rsync_args[@]} == 6 ]]
+[[ ${rsync_args[0]} == -a ]]
+[[ ${rsync_args[1]} == --delete ]]
+[[ ${rsync_args[2]} == -e ]]
+[[ ${rsync_args[3]} == "$expected_rsync_ssh" ]]
+[[ ${rsync_args[4]} == "$source_dir" ]]
+[[ ${rsync_args[5]} == 'tester@203.0.113.10:remote directory' ]]
+
+__transfer_operands=(':/tmp/source' ':/tmp/destination')
+if rsync >/dev/null 2>&1;then
+  echo 'rsync must reject remote-to-remote transfers.' >&2
+  exit 1
+fi
 
 echo 'SSH argument tests passed.'

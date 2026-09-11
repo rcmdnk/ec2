@@ -683,14 +683,25 @@ EC2_IMAGE_NAME_FILTER="${PREFIX}"
 EC2_SSH_KEY=""
 
 # Additional SSH arguments copied to the generated ec2 config. Each array
-# element is preserved as one argument for ssh/scp and converted to Eternal
-# Terminal's --ssh-option form for `ec2 et`. ET forwarding supports -o VALUE
-# and -i KEY; use EC2_ET_OPTIONS or ~/.ssh/config for other ET-specific needs.
+# element is preserved as one argument for ssh/scp and rsync's SSH transport,
+# and converted to Eternal Terminal's --ssh-option form for `ec2 et`. ET
+# forwarding supports -o VALUE and -i KEY; use EC2_ET_OPTIONS or ~/.ssh/config
+# for other ET-specific needs.
 EC2_SSH_OPTIONS=()
 
 # Native Eternal Terminal client arguments, for example (--keepalive 30) or
 # (--port 2022). Do not include the destination host.
 EC2_ET_OPTIONS=()
+
+# Native scp arguments, for example (-r) for recursive directory copies or
+# (-p) to preserve modification times. SSH connection arguments still belong in
+# EC2_SSH_OPTIONS.
+EC2_SCP_OPTIONS=()
+
+# Native rsync arguments. The default archive mode supports recursive directory
+# synchronization while preserving metadata. Do not set -e/--rsh here; ec2
+# constructs it from EC2_SSH_OPTIONS and EC2_SSH_KEY.
+EC2_RSYNC_OPTIONS=(-a)
 
 # Login user on the launched instances. Also the user whose home directory the
 # generated user-data sets up: dotfiles, ~/.aws, ~/.ssh, ~/.config/ec2,
