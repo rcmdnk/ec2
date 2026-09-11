@@ -36,6 +36,17 @@ for name in "${required[@]}"; do
   }
 done
 
+# Keep only the two commonly customized EC2 filters active in a fresh template.
+# Other optional EC2 settings should inherit defaults from scripts/variables so
+# that future default changes are not pinned by `ec2 init_environment` output.
+mapfile -t active_ec2_settings < <(sed -n 's/^\(EC2_[A-Z0-9_]*\)=.*/\1/p' environment/config.example | sort)
+expected_active_ec2_settings=(EC2_IMAGE_NAME_FILTER EC2_NAME_FILTER)
+if [[ "${active_ec2_settings[*]}" != "${expected_active_ec2_settings[*]}" ]];then
+  echo 'config.example must activate only EC2_NAME_FILTER and EC2_IMAGE_NAME_FILTER.' >&2
+  printf '  active: %s\n' "${active_ec2_settings[*]:-(none)}" >&2
+  exit 1
+fi
+
 # With the required settings filled in it must load cleanly, so that every
 # variable the scripts read has a value or a default in scripts/variables.
 filled=$(mktemp "${TMPDIR:-/tmp}/ec2-environment-config.XXXXXX")
