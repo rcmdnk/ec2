@@ -158,7 +158,7 @@ if ! declare -p EC2_ET_OPTIONS &>/dev/null; then
   EC2_ET_OPTIONS=()
 fi
 if ! declare -p EC2_SCP_OPTIONS &>/dev/null; then
-  EC2_SCP_OPTIONS=()
+  EC2_SCP_OPTIONS=(-r)
 fi
 if ! declare -p EC2_RSYNC_OPTIONS &>/dev/null; then
   EC2_RSYNC_OPTIONS=(-a)

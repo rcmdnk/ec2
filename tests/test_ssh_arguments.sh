@@ -159,13 +159,14 @@ mapfile -t command_args < <(read_command_args ssh 2)
 __file="$runtime_dir/input file"
 : > "$__file"
 __transfer_operands=()
-__scp_option=()
+__scp_option=(-r)
 scp
 mapfile -t scp_args < <(read_command_args scp 1)
-[[ ${#scp_args[@]} == 8 ]]
+[[ ${#scp_args[@]} == 9 ]]
 [[ ${scp_args[5]} == "$__ssh_key" ]]
-[[ ${scp_args[6]} == "$__file" ]]
-[[ ${scp_args[7]} == tester@203.0.113.10: ]]
+[[ ${scp_args[6]} == -r ]]
+[[ ${scp_args[7]} == "$__file" ]]
+[[ ${scp_args[8]} == tester@203.0.113.10: ]]
 
 : > "$ARG_LOG"
 source_dir="$runtime_dir/source directory"

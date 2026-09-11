@@ -693,10 +693,10 @@ EC2_SSH_OPTIONS=()
 # (--port 2022). Do not include the destination host.
 EC2_ET_OPTIONS=()
 
-# Native scp arguments, for example (-r) for recursive directory copies or
-# (-p) to preserve modification times. SSH connection arguments still belong in
-# EC2_SSH_OPTIONS.
-EC2_SCP_OPTIONS=()
+# Native scp arguments. Recursive copies are enabled by default; use () to
+# disable that default, or add -p to preserve modification times. SSH connection
+# arguments still belong in EC2_SSH_OPTIONS.
+EC2_SCP_OPTIONS=(-r)
 
 # Native rsync arguments. The default archive mode supports recursive directory
 # synchronization while preserving metadata. Do not set -e/--rsh here; ec2

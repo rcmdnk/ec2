@@ -267,10 +267,11 @@ The local `et` client must be installed, `etserver` must be running on the
 instance, and its TCP port must be reachable (2022 by default). ET also uses SSH
 for its initial handshake, so normal SSH access must work.
 
-scp- and rsync-specific arguments use arrays of their own. `rsync` defaults to
-archive mode; set `rsync_option=()` to disable that default. Do not put
-`-e`/`--rsh` in `rsync_option`, because `ec2` constructs the remote shell from
-`ssh_option` and `ssh_key`:
+scp- and rsync-specific arguments use arrays of their own. `scp` defaults to
+recursive copies (`-r`), and `rsync` defaults to archive mode (`-a`). Set the
+corresponding option array to `()` to disable its default. Do not put `-e`/`--rsh`
+in `rsync_option`, because `ec2` constructs the remote shell from `ssh_option`
+and `ssh_key`:
 
 ```
 scp_option=(-r -p)
@@ -364,7 +365,7 @@ the instance host and SSH user continue to come from the normal selection and
 configuration:
 
 ```
-$ ec2 scp ./build/ :/tmp/build/ --scp-option -r
+$ ec2 scp ./build/ :/tmp/build/
 $ ec2 scp :/var/log/app.log ./logs/
 $ ec2 rsync ./src/ :/srv/app/src/
 $ ec2 rsync :/srv/app/output/ ./output/
