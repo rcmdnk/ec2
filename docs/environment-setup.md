@@ -159,6 +159,18 @@ ec2 make_ami --setup
 The setup phase runs only when every AMI build succeeds. Setup options such as
 `--install-config 0` can be supplied on the same command line.
 
+Packer is invoked with `AMI_PACKER_ON_ERROR=cleanup` by default. If a failed
+build still leaves an AMI or build instance identifiable in the Packer log, its
+ID is recorded in the resource manifest. Review and remove such resources with:
+
+```sh
+ec2 cleanup_resources
+ec2 cleanup_resources --execute 1
+```
+
+AMI cleanup also attempts to remove its associated snapshots, but only after
+verifying their `ManagedBy` tag.
+
 Prepare shared filesystems and generate one launch JSON per enabled AMI and
 subnet:
 

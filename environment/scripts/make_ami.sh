@@ -212,7 +212,7 @@ aws_auth_watch() {
 }
 
 run_family() {
-  local family=$1 variables_file="variables_${1,,}.json" build_output=".build-${1,,}.log" result_file=".build-${1,,}.result" packer_pid monitor_pid build_status ami_id ami_name
+  local family=$1 variables_file="variables_${1,,}.json" build_output=".build-${1,,}.log" result_file=".build-${1,,}.result" packer_pid monitor_pid build_status ami_id ami_name build_instance_id
 
   : > "$build_output"
   : > "$result_file"
@@ -260,7 +260,8 @@ run_family() {
       --filters "Name=name,Values=$ami_name" \
       --query 'Images | sort_by(@,&CreationDate)[-1].ImageId' --output text 2>/dev/null || true)
   fi
-  printf '%s\t%s\n' "$build_status" "$ami_id" > "$result_file"
+  build_instance_id=$(grep -Eo 'instance i-[[:alnum:]]+' "$build_output" | grep -Eo 'i-[[:alnum:]]+' | tail -n 1 || true)
+  printf '%s\t%s\t%s\n' "$build_status" "$ami_id" "$build_instance_id" > "$result_file"
   return "$build_status"
 }
 
@@ -304,12 +305,19 @@ wait "$sso_pid" 2>/dev/null || true
 
 for family in "${enabled_families[@]}"; do
   result_file=".build-${family,,}.result"
-  IFS=$'\t' read -r family_status ami_id < "$result_file"
+  IFS=$'\t' read -r family_status ami_id build_instance_id < "$result_file"
   ami_name=$(family_value "$family" OUTPUT_AMI_NAME)
-  if [[ "$family_status" == 0 && -n "$ami_id" ]]; then
+  if [[ -n "$ami_id" && ( "$family_status" == 0 || "$AMI_VALIDATE_ONLY" != 1 ) ]]; then
     record_resource ami "$ami_id" "$ami_name"
+    if [[ "$family_status" != 0 ]]; then
+      echo "Recorded failed-build AMI $ami_id in $RESOURCE_MANIFEST for cleanup." >&2
+    fi
   elif [[ "$family_status" == 0 && "$AMI_VALIDATE_ONLY" != 1 ]]; then
     echo "Could not determine the built AMI ID for '$ami_name'; skipping manifest recording." >&2
+  fi
+  if [[ "$family_status" != 0 && -n "$build_instance_id" ]]; then
+    record_resource instance "$build_instance_id" "$ami_name"
+    echo "Recorded failed-build instance $build_instance_id in $RESOURCE_MANIFEST for cleanup." >&2
   fi
 done
 exit "$build_status"

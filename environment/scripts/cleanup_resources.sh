@@ -34,6 +34,14 @@ managed_tag() {
       aws "${AWS_ARGS[@]}" ec2 describe-images --image-ids "$id" \
         --query "Images[0].Tags[?Key=='ManagedBy'].Value | [0]" --output text
       ;;
+    instance)
+      aws "${AWS_ARGS[@]}" ec2 describe-instances --instance-ids "$id" \
+        --query "Reservations[0].Instances[0].Tags[?Key=='ManagedBy'].Value | [0]" --output text
+      ;;
+    snapshot)
+      aws "${AWS_ARGS[@]}" ec2 describe-snapshots --snapshot-ids "$id" \
+        --query "Snapshots[0].Tags[?Key=='ManagedBy'].Value | [0]" --output text
+      ;;
     efs)
       aws "${AWS_ARGS[@]}" efs describe-file-systems --file-system-id "$id" \
         --query "FileSystems[0].Tags[?Key=='ManagedBy'].Value | [0]" --output text
@@ -77,11 +85,28 @@ delete_efs() {
   aws "${AWS_ARGS[@]}" efs delete-file-system --file-system-id "$id"
 }
 
+delete_ami() {
+  local id=$1 snapshot_ids snapshot
+  mapfile -t snapshot_ids < <(aws "${AWS_ARGS[@]}" ec2 describe-images --image-ids "$id" \
+    --query 'Images[0].BlockDeviceMappings[].Ebs.SnapshotId' --output text 2>/dev/null | \
+    tr '\t' '\n' | awk 'NF && $0 != "None"')
+  aws "${AWS_ARGS[@]}" ec2 deregister-image --image-id "$id"
+  for snapshot in "${snapshot_ids[@]}"; do
+    if verify_managed_resource snapshot "$snapshot"; then
+      aws "${AWS_ARGS[@]}" ec2 delete-snapshot --snapshot-id "$snapshot"
+    else
+      echo "Leaving snapshot $snapshot because its ManagedBy tag could not be verified." >&2
+    fi
+  done
+}
+
 delete_resource() {
   local type=$1 id=$2
   verify_managed_resource "$type" "$id" || return 1
   case $type in
-    ami) aws "${AWS_ARGS[@]}" ec2 deregister-image --image-id "$id" ;;
+    ami) delete_ami "$id" ;;
+    instance) aws "${AWS_ARGS[@]}" ec2 terminate-instances --instance-ids "$id" ;;
+    snapshot) aws "${AWS_ARGS[@]}" ec2 delete-snapshot --snapshot-id "$id" ;;
     efs) delete_efs "$id" ;;
     fsx) aws "${AWS_ARGS[@]}" fsx delete-file-system --file-system-id "$id" --open-zfs-configuration SkipFinalBackup=true ;;
     io2) aws "${AWS_ARGS[@]}" ec2 delete-volume --volume-id "$id" ;;
