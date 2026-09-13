@@ -2383,14 +2383,20 @@ source "$(dirname "$0")/variables"
 source "$(dirname "$0")/lib.sh"
 mkdir -p "$WORKDIR"
 
-if ! aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
+ensure_aws_session() {
+  if aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
+    return 0
+  fi
+
   aws sso login --profile "$PROFILE" || true
   if ! aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
     echo "AWS authentication failed for profile '$PROFILE' in region '$REGION'" >&2
     echo "Please login using 'aws sso login --profile $PROFILE' or check your AWS credentials." >&2
-    exit 1
+    return 1
   fi
-fi
+}
+
+ensure_aws_session || exit 1
 
 # Names have to be resolved after the credentials are checked, because every one
 # of these costs a describe call. Setting the <X>_IDS form skips the lookup.
@@ -3002,36 +3008,150 @@ EOF
 export AWS_POLL_DELAY_SECONDS
 export AWS_MAX_ATTEMPTS
 
+monitor_ami_progress() {
+  local family=$1 build_output=$2 packer_pid=$3 ami_id='' snapshot_id='' state='' progress=''
+
+  while kill -0 "$packer_pid" 2>/dev/null; do
+    ami_id=$(sed -n 's/.*AMI: \(ami-[[:alnum:]]*\).*/\1/p' "$build_output" | tail -n 1)
+    if [[ -n "$ami_id" ]]; then
+      snapshot_id=$(aws "${AWS_ARGS[@]}" ec2 describe-images --image-ids "$ami_id" \
+        --query 'Images[0].BlockDeviceMappings[0].Ebs.SnapshotId' --output text 2>/dev/null || true)
+      if [[ -n "$snapshot_id" && "$snapshot_id" != None ]]; then
+        state=$(aws "${AWS_ARGS[@]}" ec2 describe-snapshots --snapshot-ids "$snapshot_id" \
+          --query 'Snapshots[0].State' --output text 2>/dev/null || true)
+        progress=$(aws "${AWS_ARGS[@]}" ec2 describe-snapshots --snapshot-ids "$snapshot_id" \
+          --query 'Snapshots[0].Progress' --output text 2>/dev/null || true)
+        printf '%s: AMI %s snapshot %s (%s)\n' "$family" "$ami_id" "${progress:-unknown}" "${state:-unknown}"
+      fi
+    else
+      printf '%s: Packer build in progress...\n' "$family"
+    fi
+    sleep 15
+  done
+}
+
+sso_watch() {
+  local -a pids=("$@")
+  local alive pid
+
+  while :; do
+    alive=0
+    for pid in "${pids[@]}"; do
+      if kill -0 "$pid" 2>/dev/null; then
+        alive=1
+        break
+      fi
+    done
+    ((alive)) || return 0
+
+    if ! aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
+      printf 'AWS SSO session is unavailable; attempting login for active Packer builds...\n' >&2
+      if ! aws sso login --profile "$PROFILE"; then
+        printf 'AWS SSO login failed; active Packer builds may fail authentication.\n' >&2
+      fi
+    fi
+    sleep 60
+  done
+}
+
+run_family() {
+  local family=$1 variables_file="variables_${1,,}.json" build_output=".build-${1,,}.log" result_file=".build-${1,,}.result" packer_pid monitor_pid build_status ami_id ami_name
+
+  : > "$build_output"
+  : > "$result_file"
+  if [[ "$PACKER_VALIDATE_ONLY" == 1 ]]; then
+    if packer validate -syntax-only main.json >"$build_output" 2>&1; then
+      printf '0\t\n' > "$result_file"
+      cat "$build_output"
+      return 0
+    else
+      build_status=$?
+    fi
+    printf '%s\t\n' "$build_status" > "$result_file"
+    cat "$build_output" >&2
+    return "$build_status"
+  fi
+
+  if packer validate -var-file="$variables_file" main.json >"$build_output" 2>&1; then
+    :
+  else
+    build_status=$?
+    printf '%s\t\n' "$build_status" > "$result_file"
+    cat "$build_output" >&2
+    return "$build_status"
+  fi
+
+  packer build -var-file="$variables_file" main.json >>"$build_output" 2>&1 &
+  packer_pid=$!
+  monitor_ami_progress "$family" "$build_output" "$packer_pid" &
+  monitor_pid=$!
+
+  if wait "$packer_pid"; then
+    build_status=0
+  else
+    build_status=$?
+  fi
+  kill "$monitor_pid" 2>/dev/null || true
+  wait "$monitor_pid" 2>/dev/null || true
+  sed "s/^/$family: /" "$build_output"
+
+  ami_id=$(grep -Eo 'AMI: ami-[[:alnum:]]+' "$build_output" | grep -Eo 'ami-[[:alnum:]]+' | tail -n 1 || true)
+  ami_name=$(family_value "$family" AMI_NAME)
+  if [[ -z "$ami_id" && -z "$(family_value "$family" SOURCE_AMI_ID)" ]]; then
+    ami_id=$(aws "${AWS_ARGS[@]}" ec2 describe-images --owners self \
+      --filters "Name=name,Values=$ami_name" \
+      --query 'Images | sort_by(@,&CreationDate)[-1].ImageId' --output text 2>/dev/null || true)
+  fi
+  printf '%s\t%s\n' "$build_status" "$ami_id" > "$result_file"
+  return "$build_status"
+}
+
 make_main
 packer init .
 
+enabled_families=()
 for family in CPU GPU; do
   instance_var=${family}_INSTANCE
   if [[ "${!instance_var:-0}" == 1 ]]; then
     make_vars "$family"
     [[ -f "variables_${family,,}.json" ]] || { echo "Packer variables not generated: $PWD/variables_${family,,}.json" >&2; exit 1; }
     write_build_manifest "$family" "variables_${family,,}.json"
-    if [[ "$PACKER_VALIDATE_ONLY" == 1 ]];then
-      packer validate -syntax-only main.json
-    else
-      packer validate -var-file="variables_${family,,}.json" main.json
-      build_output=".build-${family,,}.log"
-      packer build -var-file="variables_${family,,}.json" main.json | tee -a log | tee "$build_output"
-      ami_name=$(family_value "$family" AMI_NAME)
-      ami_id=$(grep -Eo 'ami-[[:alnum:]]+' "$build_output" | tail -n 1 || true)
-      if [[ -z "$ami_id" && -z "$(family_value "$family" SOURCE_AMI_ID)" ]]; then
-        ami_id=$(aws "${AWS_ARGS[@]}" ec2 describe-images --owners self \
-          --filters "Name=name,Values=$ami_name" \
-          --query 'Images | sort_by(@,&CreationDate)[-1].ImageId' --output text)
-      fi
-      if [[ -n "$ami_id" && "$ami_id" != None ]]; then
-        record_resource ami "$ami_id" "$ami_name"
-      else
-        echo "Could not determine the built AMI ID for '$ami_name'; skipping manifest recording." >&2
-      fi
-    fi
+    enabled_families+=("$family")
   fi
 done
+
+if ((${#enabled_families[@]} == 0)); then
+  exit 0
+fi
+
+declare -a family_pids=()
+for family in "${enabled_families[@]}"; do
+  run_family "$family" &
+  family_pids+=("$!")
+done
+sso_watch "${family_pids[@]}" &
+sso_pid=$!
+
+build_status=0
+for pid in "${family_pids[@]}"; do
+  if ! wait "$pid"; then
+    build_status=1
+  fi
+done
+kill "$sso_pid" 2>/dev/null || true
+wait "$sso_pid" 2>/dev/null || true
+
+for family in "${enabled_families[@]}"; do
+  result_file=".build-${family,,}.result"
+  IFS=$'\t' read -r family_status ami_id < "$result_file"
+  ami_name=$(family_value "$family" AMI_NAME)
+  if [[ "$family_status" == 0 && -n "$ami_id" ]]; then
+    record_resource ami "$ami_id" "$ami_name"
+  elif [[ "$family_status" == 0 && "$PACKER_VALIDATE_ONLY" != 1 ]]; then
+    echo "Could not determine the built AMI ID for '$ami_name'; skipping manifest recording." >&2
+  fi
+done
+exit "$build_status"
 __EC2_ASSET_scripts_make_ami__
   chmod 755 "$root/scripts/make_ami"
   mkdir -p "$(dirname "$root/scripts/setup_ec2")"

@@ -27,14 +27,20 @@ source "$(dirname "$0")/variables"
 source "$(dirname "$0")/lib.sh"
 mkdir -p "$WORKDIR"
 
-if ! aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
+ensure_aws_session() {
+  if aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
+    return 0
+  fi
+
   aws sso login --profile "$PROFILE" || true
   if ! aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
     echo "AWS authentication failed for profile '$PROFILE' in region '$REGION'" >&2
     echo "Please login using 'aws sso login --profile $PROFILE' or check your AWS credentials." >&2
-    exit 1
+    return 1
   fi
-fi
+}
+
+ensure_aws_session || exit 1
 
 # Names have to be resolved after the credentials are checked, because every one
 # of these costs a describe call. Setting the <X>_IDS form skips the lookup.
