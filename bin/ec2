@@ -1666,6 +1666,14 @@ AWS_REGION=""   # REQUIRED
 # Raise AWS_MAX_ATTEMPTS if a build times out while snapshotting.
 #AWS_POLL_DELAY_SECONDS=10
 #AWS_MAX_ATTEMPTS=400
+
+# Packer action for resources it created when a build fails:
+#   cleanup  Remove temporary build resources (recommended).
+#   abort    Leave resources for manual inspection.
+#   ask      Ask interactively (not suitable for unattended builds).
+# Default: cleanup
+#AMI_PACKER_ON_ERROR="cleanup"
+
 # Number of attempts and delay (seconds) used by instance user-data while
 # waiting for requested mounts and attached block devices. Provisioning fails
 # without creating ~/ready when a required mount never becomes usable.
@@ -3196,7 +3204,8 @@ run_family() {
     return "$build_status"
   fi
 
-  packer build -var-file="$variables_file" main.json </dev/null >>"$build_output" 2>&1 &
+  packer build -on-error="$AMI_PACKER_ON_ERROR" -var-file="$variables_file" main.json \
+    </dev/null >>"$build_output" 2>&1 &
   packer_pid=$!
   monitor_ami_progress "$family" "$build_output" "$packer_pid" &
   monitor_pid=$!
@@ -4063,6 +4072,11 @@ AWS_MAX_ATTEMPTS=${AWS_MAX_ATTEMPTS-400}
 MOUNT_READY_MAX_ATTEMPTS=${MOUNT_READY_MAX_ATTEMPTS-60}
 MOUNT_READY_RETRY_INTERVAL_SECONDS=${MOUNT_READY_RETRY_INTERVAL_SECONDS-2}
 AMI_VALIDATE_ONLY=${AMI_VALIDATE_ONLY-0}
+AMI_PACKER_ON_ERROR=${AMI_PACKER_ON_ERROR-cleanup}
+case "$AMI_PACKER_ON_ERROR" in
+  cleanup|abort|ask) ;;
+  *) echo 'AMI_PACKER_ON_ERROR must be cleanup, abort, or ask.' >&2; exit 1 ;;
+esac
 
 AMI_BUILD_SSH_INTERFACE=${AMI_BUILD_SSH_INTERFACE-private_ip}
 AMI_BUILD_SSH_USERNAME=${AMI_BUILD_SSH_USERNAME-${EC2_USER}}

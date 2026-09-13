@@ -238,7 +238,8 @@ run_family() {
     return "$build_status"
   fi
 
-  packer build -var-file="$variables_file" main.json </dev/null >>"$build_output" 2>&1 &
+  packer build -on-error="$AMI_PACKER_ON_ERROR" -var-file="$variables_file" main.json \
+    </dev/null >>"$build_output" 2>&1 &
   packer_pid=$!
   monitor_ami_progress "$family" "$build_output" "$packer_pid" &
   monitor_pid=$!

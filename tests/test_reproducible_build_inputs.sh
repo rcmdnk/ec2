@@ -20,7 +20,7 @@ cat > "$mock_bin/packer" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> '$packer_log'
 if [[ "\${1:-}" == version ]];then echo 'Packer v-test';fi
-if [[ "\${1:-}" == build ]];then echo 'mock build';fi
+if [[ " \$* " == *" build "* ]];then echo 'mock build';fi
 EOF
 chmod 755 "$mock_bin"/*
 
@@ -61,6 +61,12 @@ grep -q '"source_ami_id": "ami-resolved-source"' "$generated/build-inputs-cpu.js
 }
 grep -q '^init \.$' "$packer_log" || {
   echo 'make_ami did not initialize the constrained Packer plugin.' >&2
+  exit 1
+}
+
+# The build must request cleanup for resources created before a failure.
+grep -q '^build -on-error=cleanup ' "$packer_log" || {
+  echo 'make_ami did not request Packer cleanup on build failure.' >&2
   exit 1
 }
 
