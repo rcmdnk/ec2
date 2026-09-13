@@ -111,13 +111,25 @@ make_ami() {
   # Build the configured EC2 AMIs with Packer.
   _environment_args || return
   [ "$__setup_after_ami" = "1" ] || {
-    _environment_runtime make_ami.sh "$__environment_command_workdir" "$__environment_command_config"
-    return
+    if _environment_runtime make_ami.sh "$__environment_command_workdir" "$__environment_command_config"; then
+      return 0
+    fi
+    echo 'AMI build failed; setup was not run.' >&2
+    return 1
   }
   _environment_preflight_config || return 1
-  _environment_runtime make_ami.sh "$__environment_command_workdir" "$__environment_command_config"
+  if ! _environment_runtime make_ami.sh "$__environment_command_workdir" "$__environment_command_config"; then
+    echo 'AMI build failed; setup was not run.' >&2
+    return 1
+  fi
   echo 'AMI build completed; running ec2 setup.'
-  setup
+  if setup; then
+    return 0
+  fi
+  echo 'AMI builds completed, but setup failed.' >&2
+  printf 'Re-run setup with: ec2 setup --workdir %q --environment-config %q\n' \
+    "$__environment_command_workdir" "$__environment_command_config" >&2
+  return 1
 }
 
 setup() {
