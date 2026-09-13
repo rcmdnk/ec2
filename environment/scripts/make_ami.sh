@@ -149,6 +149,18 @@ EOF
 export AWS_POLL_DELAY_SECONDS
 export AWS_MAX_ATTEMPTS
 
+terminal_state=''
+if [[ -t 0 && -r /dev/tty ]]; then
+  terminal_state=$(stty -g </dev/tty 2>/dev/null || true)
+fi
+# shellcheck disable=SC2317  # Called indirectly by the EXIT trap.
+restore_terminal() {
+  if [[ -n "$terminal_state" ]]; then
+    stty "$terminal_state" </dev/tty 2>/dev/null || true
+  fi
+}
+trap restore_terminal EXIT
+
 monitor_ami_progress() {
   local family=$1 build_output=$2 packer_pid=$3 ami_id='' snapshot_id='' state='' progress=''
 
@@ -187,7 +199,7 @@ sso_watch() {
 
     if ! aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
       printf 'AWS SSO session is unavailable; attempting login for active Packer builds...\n' >&2
-      if ! aws sso login --profile "$PROFILE"; then
+      if ! aws sso login --profile "$PROFILE" </dev/tty >/dev/tty 2>/dev/tty; then
         printf 'AWS SSO login failed; active Packer builds may fail authentication.\n' >&2
       fi
     fi
@@ -201,7 +213,7 @@ run_family() {
   : > "$build_output"
   : > "$result_file"
   if [[ "$PACKER_VALIDATE_ONLY" == 1 ]]; then
-    if packer validate -syntax-only main.json >"$build_output" 2>&1; then
+    if packer validate -syntax-only main.json </dev/null >"$build_output" 2>&1; then
       printf '0\t\n' > "$result_file"
       cat "$build_output"
       return 0
@@ -213,7 +225,7 @@ run_family() {
     return "$build_status"
   fi
 
-  if packer validate -var-file="$variables_file" main.json >"$build_output" 2>&1; then
+  if packer validate -var-file="$variables_file" main.json </dev/null >"$build_output" 2>&1; then
     :
   else
     build_status=$?
@@ -222,7 +234,7 @@ run_family() {
     return "$build_status"
   fi
 
-  packer build -var-file="$variables_file" main.json >>"$build_output" 2>&1 &
+  packer build -var-file="$variables_file" main.json </dev/null >>"$build_output" 2>&1 &
   packer_pid=$!
   monitor_ami_progress "$family" "$build_output" "$packer_pid" &
   monitor_pid=$!
