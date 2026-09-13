@@ -34,10 +34,18 @@ ensure_aws_session() {
     return 0
   fi
 
-  aws sso login --profile "$PROFILE" || true
+  if [[ -z "$AWS_AUTH_COMMAND" ]]; then
+    echo "AWS authentication failed for profile '$PROFILE' in region '$REGION'." >&2
+    echo 'Set AWS_AUTH_COMMAND if this credential provider needs an explicit refresh.' >&2
+    return 1
+  fi
+  if ! run_aws_auth_command; then
+    echo 'AWS authentication refresh command failed.' >&2
+    return 1
+  fi
   if ! aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
     echo "AWS authentication failed for profile '$PROFILE' in region '$REGION'" >&2
-    echo "Please login using 'aws sso login --profile $PROFILE' or check your AWS credentials." >&2
+    echo 'Check the configured AWS credentials or authentication refresh command.' >&2
     return 1
   fi
 }

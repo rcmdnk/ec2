@@ -55,6 +55,7 @@ make_main() {
       "AMI_PACKAGES={{user \`packages\`}}",
       "AMI_FLATPAK_PACKAGES={{user \`flatpak_packages\`}}",
       "AMI_UPDATE_PACKAGES={{user \`update_packages\`}}",
+      "AMI_PACKAGE_MANAGER={{user \`package_manager\`}}",
       "AMI_EXTRA_PACKAGES={{user \`extra_packages\`}}",
       "AMI_TIMEZONE={{user \`timezone\`}}",
       "AMI_IDLE_SHUTDOWN_BACKEND={{user \`idle_shutdown_backend\`}}",
@@ -121,6 +122,7 @@ make_vars() {
   "packages": $(json_quote "$(family_value "$family" AMI_PACKAGES)"),
   "flatpak_packages": $(json_quote "$(family_value "$family" AMI_FLATPAK_PACKAGES)"),
   "update_packages": $(json_quote "$(family_value "$family" AMI_UPDATE_PACKAGES)"),
+  "package_manager": $(json_quote "$(family_value "$family" AMI_PACKAGE_MANAGER)"),
   "timezone": $(json_quote "$(family_value "$family" AMI_TIMEZONE)"),
   "idle_shutdown_backend": $(json_quote "$(family_value "$family" AMI_IDLE_SHUTDOWN_BACKEND)"),
   "idle_shutdown_schedule": $(json_quote "$(family_value "$family" AMI_IDLE_SHUTDOWN_SCHEDULE)"),
@@ -184,7 +186,7 @@ monitor_ami_progress() {
   done
 }
 
-sso_watch() {
+aws_auth_watch() {
   local -a pids=("$@")
   local alive pid
 
@@ -199,9 +201,10 @@ sso_watch() {
     ((alive)) || return 0
 
     if ! aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
-      printf 'AWS SSO session is unavailable; attempting login for active Packer builds...\n' >&2
-      if ! aws sso login --profile "$PROFILE" </dev/tty >/dev/tty 2>/dev/tty; then
-        printf 'AWS SSO login failed; active Packer builds may fail authentication.\n' >&2
+      if [[ -z "$AWS_AUTH_COMMAND" ]]; then
+        printf 'AWS credentials are unavailable; no authentication refresh command is configured.\n' >&2
+      elif ! run_aws_auth_command; then
+        printf 'AWS authentication refresh failed; active Packer builds may fail authentication.\n' >&2
       fi
     fi
     sleep 60
@@ -264,7 +267,9 @@ make_main
 packer init .
 
 enabled_families=()
-for family in CPU GPU; do
+# shellcheck disable=SC2153  # The uppercase setting is loaded from the environment config.
+IFS=, read -r -a ami_families <<<"$AMI_FAMILIES"
+for family in "${ami_families[@]}"; do
   instance_var=${family}_ENABLED
   if [[ "${!instance_var:-0}" == 1 ]]; then
     make_vars "$family"
@@ -273,6 +278,7 @@ for family in CPU GPU; do
     enabled_families+=("$family")
   fi
 done
+unset ami_families
 
 if ((${#enabled_families[@]} == 0)); then
   exit 0
@@ -283,7 +289,7 @@ for family in "${enabled_families[@]}"; do
   run_family "$family" &
   family_pids+=("$!")
 done
-sso_watch "${family_pids[@]}" &
+    aws_auth_watch "${family_pids[@]}" &
 sso_pid=$!
 
 build_status=0

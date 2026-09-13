@@ -1,4 +1,4 @@
-600 config.example
+600 environment.example
 755 scripts/bootstrap.sh
 755 scripts/cleanup_resources.sh
 755 scripts/common.sh

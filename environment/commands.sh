@@ -110,7 +110,14 @@ _environment_cleanup_args() {
 make_ami() {
   # Build the configured EC2 AMIs with Packer.
   _environment_args || return
+  [ "$__setup_after_ami" = "1" ] || {
+    _environment_runtime make_ami.sh "$__environment_command_workdir" "$__environment_command_config"
+    return
+  }
+  _environment_preflight_config || return 1
   _environment_runtime make_ami.sh "$__environment_command_workdir" "$__environment_command_config"
+  echo 'AMI build completed; running ec2 setup.'
+  setup
 }
 
 setup() {
@@ -166,7 +173,7 @@ init_environment() {
     _environment_extract "$runtime"
     mkdir -p "$(dirname "$__environment_config")"
     temporary="${__environment_config}.tmp.$$"
-    cp "$runtime/config.example" "$temporary"
+    cp "$runtime/environment.example" "$temporary"
     chmod 600 "$temporary"
     mv "$temporary" "$__environment_config"
   )

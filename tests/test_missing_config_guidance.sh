@@ -15,8 +15,8 @@ fi
 grep -Fq "Environment configuration file not found: $XDG_CONFIG_HOME/ec2/environment" <<< "$output"
 grep -Fq 'ec2 init_environment' <<< "$output"
 grep -Fq "${EDITOR:-vi} $XDG_CONFIG_HOME/ec2/environment" <<< "$output"
-if grep -Fq 'copy config.example' <<< "$output";then
-  echo 'setup must not refer to an unavailable config.example file.' >&2
+if grep -Fq 'copy environment.example' <<< "$output";then
+  echo 'setup must not refer to an unavailable environment.example file.' >&2
   exit 1
 fi
 

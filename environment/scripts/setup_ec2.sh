@@ -8,10 +8,21 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC2034
 REQUIRE_EC2_SETTINGS=1
 source "$script_dir/bootstrap.sh" "${1:-}" "${2:-}" ec2
-S3FILES_IDS=$(source "$script_dir/setup_s3files.sh")
-EFS_IDS=$("$script_dir/setup_efs.sh")
-FSX_IDS=$("$script_dir/setup_fsx.sh")
-IO2_IDS=$("$script_dir/setup_io2.sh")
+IFS=, read -r -a filesystem_providers <<<"$EC2_FILESYSTEM_PROVIDERS"
+for filesystem_provider in "${filesystem_providers[@]}"; do
+  [[ -z "$filesystem_provider" ]] && continue
+  [[ "$filesystem_provider" =~ ^[a-z][a-z0-9_]*$ ]] || {
+    echo "Invalid EC2_FILESYSTEM_PROVIDERS entry: $filesystem_provider" >&2
+    exit 1
+  }
+  provider_script="$script_dir/setup_${filesystem_provider}.sh"
+  [[ -x "$provider_script" ]] || {
+    echo "Filesystem provider script not found: $provider_script" >&2
+    exit 1
+  }
+  provider_var="${filesystem_provider^^}_IDS"
+  printf -v "$provider_var" '%s' "$("$provider_script")"
+done
 
 for setting in MOUNT_READY_MAX_ATTEMPTS MOUNT_READY_RETRY_INTERVAL_SECONDS;do
   [[ "${!setting}" =~ ^[1-9][0-9]*$ ]] || {
@@ -41,6 +52,7 @@ get_image_id() {
 
 json_dir="$WORKDIR/ec2/cli_input_json"
 mkdir -p "$json_dir"
+mkdir -p "$WORKDIR/ec2/mounts"
 # The `ec2` command is run from anywhere, so it needs an absolute path.
 json_dir_abs=$(cd "$json_dir" && pwd)
 cpu_group=''
@@ -50,6 +62,11 @@ mapfile -t labels < <(csv_items "$EC2_SUBNET_LABELS")
 jsons=()
 json_contents=()
 used_labels=()
+# shellcheck disable=SC2153  # The uppercase setting is loaded from the environment config.
+IFS=, read -r -a ami_families <<<"$AMI_FAMILIES"
+for family in "${ami_families[@]}"; do
+  printf -v "${family,,}_group" '%s' ''
+done
 
 for i in "${!ids[@]}";do
   if [ -z "${ids[i]}" ];then
@@ -68,9 +85,9 @@ for i in "${!ids[@]}";do
     exit 1
   fi
   used_labels+=("$label")
-  for family in CPU GPU;do
+  for family in "${ami_families[@]}";do
     enabled_var="${family}_ENABLED"; name_var="${family}_OUTPUT_AMI_NAME"; type_var="${family}_BUILD_INSTANCE_TYPE"
-    image_id=$(get_image_id "${!enabled_var}" "${!name_var}")
+    image_id=$(get_image_id "${!enabled_var-0}" "${!name_var-}")
     [[ -n "$image_id" ]] || continue
     json_name="${!name_var}-${label}.json"
     output="$json_dir/$json_name"
@@ -101,7 +118,8 @@ for i in "${!ids[@]}";do
     })
     echo "$json_content" > "$output"
     json_contents+=("$json_content")
-    if [[ "$family" == CPU ]];then cpu_group="${cpu_group:+$cpu_group,}$(basename "$output")"; else gpu_group="${gpu_group:+$gpu_group,}$(basename "$output")"; fi
+    group_var="${family,,}_group"
+    printf -v "$group_var" '%s' "${!group_var:+${!group_var},}$(basename "$output")"
   done
 done
 
@@ -116,6 +134,7 @@ done
   shell_array_assignment scp_option "${EC2_SCP_OPTIONS[@]}"
   shell_array_assignment rsync_option "${EC2_RSYNC_OPTIONS[@]}"
   shell_assignment ssh_user "$EC2_SSH_USERNAME"
+  shell_assignment connection_method "$EC2_CONNECTION_METHOD"
   shell_assignment mosh_server "$EC2_MOSH_SERVER_PATH"
   shell_assignment private_ip "$EC2_USE_PRIVATE_IP"
   shell_assignment instance_type "$EC2_DEFAULT_INSTANCE_TYPE"
@@ -126,11 +145,15 @@ done
   shell_assignment submit_retry_launch_interval "$EC2_SUBMIT_RETRY_LAUNCH_INTERVAL"
   shell_assignment submit_retry_ssh_interval "$EC2_SUBMIT_RETRY_SSH_INTERVAL"
   shell_assignment user_data "$EC2_USER_DATA_URI"
+  shell_assignment auth_command "$AWS_AUTH_COMMAND"
   shell_assignment cli_input_json_directory "$json_dir_abs"
   shell_assignment cli_input_json_group "$EC2_CLI_INPUT_JSON_GROUP"
-  shell_assignment cli_input_json_group_cpu "$cpu_group"
-  shell_assignment cli_input_json_group_gpu "$gpu_group"
+  for family in "${ami_families[@]}"; do
+    group_var="${family,,}_group"
+    shell_assignment "cli_input_json_group_${family,,}" "${!group_var}"
+  done
 } > "$WORKDIR/ec2/config"
+unset ami_families group_var family
 chmod 600 "$WORKDIR/ec2/config"
 
 user_data_name=$(basename "$EC2_USER_DATA_URI")
@@ -148,6 +171,7 @@ set -euo pipefail
 echo "=== Starting user script set by ec2 command ==="
 EEOF
   shell_assignment user "$EC2_SSH_USERNAME"
+  shell_assignment ready_filename "$EC2_READY_FILENAME"
   shell_assignment region "$REGION"
   shell_assignment mount_max_attempts "$MOUNT_READY_MAX_ATTEMPTS"
   shell_assignment mount_retry_interval "$MOUNT_READY_RETRY_INTERVAL_SECONDS"
@@ -171,19 +195,23 @@ mount_required() {
   return 1
 }
 EEOF
-  if [[ -n "$S3FILES_IDS" && -n "$S3FILES_MOUNT_POINTS" ]];then
+  for filesystem_provider in "${filesystem_providers[@]}"; do
+    mount_script="$WORKDIR/ec2/mounts/$filesystem_provider.sh"
+    [[ -f "$mount_script" ]] && cat "$mount_script"
+  done
+  if [[ " ${filesystem_providers[*]} " == *" s3files "* && -n "$S3FILES_IDS" && -n "$S3FILES_MOUNT_POINTS" ]];then
     IFS=, read -r -a ids <<<"$S3FILES_IDS"; IFS=, read -r -a mounts <<<"$S3FILES_MOUNT_POINTS"
     for i in "${!ids[@]}";do printf 'mount_entry %q %q s3files %q\n' "${ids[i]}:/" "${mounts[i]}" '_netdev,nofail'; done
   fi
-  if [[ -n "$EFS_IDS" && -n "$EFS_MOUNT_POINTS" ]];then
+  if [[ " ${filesystem_providers[*]} " == *" efs "* && -n "$EFS_IDS" && -n "$EFS_MOUNT_POINTS" ]];then
     IFS=, read -r -a ids <<<"$EFS_IDS"; IFS=, read -r -a mounts <<<"$EFS_MOUNT_POINTS"
     for i in "${!ids[@]}";do printf 'mount_entry %q %q efs %q\n' "${ids[i]}:/" "${mounts[i]}" '_netdev,tls,noresvport,nofail'; done
   fi
-  if [[ -n "$FSX_IDS" && -n "$FSX_MOUNT_POINTS" ]];then
+  if [[ " ${filesystem_providers[*]} " == *" fsx "* && -n "$FSX_IDS" && -n "$FSX_MOUNT_POINTS" ]];then
     IFS=, read -r -a ids <<<"$FSX_IDS"; IFS=, read -r -a mounts <<<"$FSX_MOUNT_POINTS"
     for i in "${!ids[@]}";do printf 'mount_entry %q %q nfs4 %q\n' "${ids[i]}.fsx.${REGION}.amazonaws.com:/fsx/" "${mounts[i]}" 'noatime,nfsvers=4.2,nconnect=16,_netdev,nofail'; done
   fi
-  if [[ -n "$IO2_IDS" && -n "$IO2_MOUNT_POINTS" ]];then
+  if [[ " ${filesystem_providers[*]} " == *" io2 "* && -n "$IO2_IDS" && -n "$IO2_MOUNT_POINTS" ]];then
     n_ids=$(tr ',' '\n' <<<"$IO2_IDS" | wc -l | tr -d ' ')
     IO2_DEVICE_NAMES=$(make_array "$n_ids" "$IO2_DEVICE_NAMES")
     IO2_FSTYPES=$(make_array "$n_ids" "$IO2_FSTYPES")
@@ -334,6 +362,7 @@ EEOF
     shell_assignment name_filter "$EC2_NAME_FILTER"
     shell_assignment image_name_filter "$EC2_IMAGE_NAME_FILTER"
     shell_assignment ssh_user "$EC2_SSH_USERNAME"
+    shell_assignment connection_method "$EC2_CONNECTION_METHOD"
     shell_assignment mosh_server "$EC2_MOSH_SERVER_PATH"
     shell_assignment private_ip "$EC2_USE_PRIVATE_IP"
     shell_assignment instance_type "$EC2_DEFAULT_INSTANCE_TYPE"
@@ -359,8 +388,8 @@ EEOF
   done
 
   shell_assignment user_data_name "$user_data_name"
+  printf 'cp %q/$instance_id/user-data.txt "/home/$user/.config/ec2/$user_data_name"\n' "$EC2_CLOUD_INIT_INSTANCE_DIR"
   cat <<'EEOF'
-cp "/var/lib/cloud/instances/$instance_id/user-data.txt" "/home/$user/.config/ec2/$user_data_name"
 chown -R "$user:$user" "/home/$user/.config/ec2/$user_data_name"
 
 EEOF
@@ -411,13 +440,18 @@ EEOF
 
 echo "=== End user script set by ec2 command ==="
 
-cp /var/log/cloud-init-output.log "/home/$user/ready"
-chown "$user:$user" "/home/$user/ready"
+cp /var/log/cloud-init-output.log "/home/$user/$ready_filename"
+chown "$user:$user" "/home/$user/$ready_filename"
 
 EEOF
 } > "$user_data_sh"
 chmod 700 "$user_data_sh"
-if [[ -z "$EC2_USER_DATA_URI" || "$EC2_USER_DATA_URI" == *gz ]];then
+case "$EC2_USER_DATA_FORMAT" in
+auto) [[ "$EC2_USER_DATA_URI" == *gz ]] && EC2_USER_DATA_FORMAT=gzip || EC2_USER_DATA_FORMAT=plain ;;
+plain|gzip) ;;
+*) echo 'EC2_USER_DATA_FORMAT must be auto, plain, or gzip.' >&2; exit 1 ;;
+esac
+if [[ "$EC2_USER_DATA_FORMAT" == gzip ]];then
   gzip -c "$user_data_sh" > "$user_data_sh.gz"
   chmod 600 "$user_data_sh.gz"
   user_data_sent="$user_data_sh.gz"
@@ -428,12 +462,12 @@ fi
 # EC2 caps user-data at 16 KB of raw bytes, measured before base64 encoding, and
 # rejects the launch with an opaque error when it is exceeded.
 user_data_size=$(wc -c < "$user_data_sent" | tr -d ' ')
-if ((user_data_size > 16384));then
-  echo "user-data is $user_data_size bytes encoded, over the 16384 byte limit." >&2
+if ((user_data_size > EC2_USER_DATA_MAX_BYTES));then
+  echo "user-data is $user_data_size bytes encoded, over the $EC2_USER_DATA_MAX_BYTES byte limit." >&2
   echo 'Shorten INSTANCE_USER_DATA_EXTRA_SCRIPT, or move the work into the AMI or USER_ENV_INSTALLER_SCRIPTS.' >&2
   exit 1
 fi
-if ((user_data_size > 13107));then
-  echo "Warning: user-data is $user_data_size of the 16384 bytes allowed." >&2
+if ((user_data_size > EC2_USER_DATA_MAX_BYTES * 80 / 100));then
+  echo "Warning: user-data is $user_data_size of the $EC2_USER_DATA_MAX_BYTES bytes allowed." >&2
 fi
 echo "Generated $WORKDIR/ec2/config and $user_data_sh"

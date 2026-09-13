@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Run an optional authentication refresh command supplied by the environment
+# configuration. AWS CLI's credential provider chain is always tried first;
+# this hook is only for providers that need an explicit refresh.
+run_aws_auth_command() {
+  [[ -n "${AWS_AUTH_COMMAND:-}" ]] || return 2
+  if [[ -t 0 && -r /dev/tty ]]; then
+    bash -c "$AWS_AUTH_COMMAND" </dev/tty >/dev/tty 2>/dev/tty
+  else
+    bash -c "$AWS_AUTH_COMMAND"
+  fi
+}
+
 # Fill <IDS_VAR> by looking each entry of <NAMES_VAR> up through an aws describe
 # call. Does nothing when <IDS_VAR> already has a value, so an explicit ID always
 # wins. A name that matches nothing, or more than one resource, is an error:

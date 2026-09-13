@@ -13,46 +13,46 @@ Install [the AWS CLI](https://aws.amazon.com/cli/). Install
 [ShellCheck](https://github.com/koalaman/shellcheck) is needed only to run the
 repository checks.
 
-Configure an AWS CLI profile and set it as `PROFILE`. Authentication goes
-through the normal credential chain; the environment commands run
-`aws sso login` for you when the credentials are missing or expired.
+Configure an AWS CLI profile and set it as `AWS_PROFILE`. Authentication goes
+through the normal credential chain; optionally set `AWS_AUTH_COMMAND` to a
+local refresh command when credentials expire.
 Credentials are never written into user-data.
 
 ### In AWS
 
 This toolkit creates AMIs, EFS, FSx and io2 volumes, but it never creates the
 network or identity resources around them - it only references them by ID. Set
-these up once in the region you use as `REGION`, then put the IDs in
+these up once in the region you use as `AWS_REGION`, then put the IDs in
 `~/.config/ec2/environment`.
 
-| Prepare                           | Setting                | Required          |
-| --------------------------------- | ---------------------- | ----------------- |
-| Subnet(s)                         | `SUBNET_IDS`           | for `ec2 setup`   |
-| EC2 key pair                      | `KEY_NAME`             | for `ec2 setup`   |
-| Private key path override         | `EC2_SSH_KEY`          | no, see below     |
-| Security group(s) in the same VPC | `SECURITY_GROUP_IDS`   | no, but see below |
-| VPC                               | `VPC_ID`               | no                |
-| IAM instance profile              | `IAM_INSTANCE_PROFILE` | no, but see below |
+| Prepare                           | Setting                    | Required          |
+| --------------------------------- | -------------------------- | ----------------- |
+| Subnet(s)                         | `AWS_SUBNET_IDS`           | for `ec2 setup`   |
+| EC2 key pair                      | `EC2_KEY_NAME`             | for `ec2 setup`   |
+| Private key path override         | `EC2_SSH_PRIVATE_KEY`      | no, see below     |
+| Security group(s) in the same VPC | `AWS_SECURITY_GROUP_IDS`   | no, but see below |
+| VPC                               | `AWS_VPC_ID`               | no                |
+| IAM instance profile              | `AWS_IAM_INSTANCE_PROFILE` | no, but see below |
 
-Every one of these can be given by name instead of by ID - `SUBNET_NAMES`,
-`SECURITY_GROUP_NAMES`, `VPC_NAME` - and the environment commands resolve them before
+Every one of these can be given by name instead of by ID - `AWS_SUBNET_NAMES`,
+`AWS_SECURITY_GROUP_NAMES`, `AWS_VPC_NAME` - and the environment commands resolve them before
 anything else runs. The `*_IDS` form wins when both are set, and a name that
 matches nothing or more than one resource is an error rather than a guess,
 because Name tags are not unique in AWS. Security groups are matched on their
 real `GroupName`, not on a Name tag; since group names are only unique within a
-VPC, set `VPC_ID` too when the same name exists in several VPCs.
+VPC, set `AWS_VPC_ID` too when the same name exists in several VPCs.
 
-`REGION` is the only setting every environment command needs. `ec2 make_ami`
+`AWS_REGION` is the only setting every environment command needs. `ec2 make_ami`
 can build an AMI with nothing else: Packer picks a subnet in the default VPC, creates a
 throwaway security group, and uses a temporary key pair of its own. Read the
 security group note below before relying on that.
 
 **VPC.** Every instance runs in one, but you do not have to name it. The subnet
-determines the VPC, and Packer resolves it from `SUBNET_ID` when `VPC_ID` is
+determines the VPC, and Packer resolves it from `AWS_SUBNET_IDS` when `AWS_VPC_ID` is
 empty - the only thing Packer wants the VPC for is a temporary security group,
-which it never creates here because `SECURITY_GROUP_IDS` is always passed.
-`ec2 setup` does not read `VPC_ID` at all. The account's default VPC is
-therefore enough: pick a subnet in it and leave `VPC_ID` commented out. Set it
+which it never creates here because `AWS_SECURITY_GROUP_IDS` is always passed.
+`ec2 setup` does not read `AWS_VPC_ID` at all. The account's default VPC is
+therefore enough: pick a subnet in it and leave `AWS_VPC_ID` commented out. Set it
 when you want Packer to fail early if the subnet and the security groups do not
 belong to the VPC you expect.
 
@@ -67,7 +67,7 @@ mirrors and from `cli.github.com`, `rpm.releases.hashicorp.com`,
 `dl.google.com` and `flathub.org`. Use a NAT gateway for a private subnet, or a
 public subnet with auto-assign public IP.
 
-**Security groups.** Optional, but leaving `SECURITY_GROUP_IDS` empty is a real
+**Security groups.** Optional, but leaving `AWS_SECURITY_GROUP_IDS` empty is a real
 downgrade rather than a neutral default: Packer then builds a throwaway
 security group authorised from `temporary_security_group_source_cidrs`, which
 defaults to `0.0.0.0/0`, so inbound SSH is open to the internet for the length
@@ -79,13 +79,13 @@ instance and the launched instances, so they have to cover both. Inbound TCP 22
 from wherever you run Packer and from wherever you SSH in; add UDP 60000-61000
 if you use mosh, or TCP 2022 (by default) if you use Eternal Terminal. Outbound
 HTTPS for the package installs, and outbound TCP 2049 when you mount EFS or FSx.
-Note that `SSH_INTERFACE` defaults to `private_ip`,
+Note that `AMI_BUILD_SSH_INTERFACE` defaults to `private_ip`,
 so the machine running Packer must reach the VPC privately - over a VPN, Direct
 Connect, or from inside the VPC. Otherwise set it to `public_ip` with a public
 subnet, or to `session_manager`.
 
-**Key pair.** Create it in EC2 and put its name in `KEY_NAME`; `ec2 setup` puts
-that name into the launch JSON. `EC2_SSH_KEY` is optional. Set it to a local
+**Key pair.** Create it in EC2 and put its name in `EC2_KEY_NAME`; `ec2 setup` puts
+that name into the launch JSON. `EC2_SSH_PRIVATE_KEY` is optional. Set it to a local
 private-key path only when you want the generated `ec2` configuration to pass
 that key explicitly with `-i`, or as Eternal Terminal's `IdentityFile` SSH
 option. Otherwise OpenSSH selects an identity from its defaults, `ssh-agent`, or
@@ -98,7 +98,7 @@ without either setting.
 chain without one. Required if you use io2 (`ec2:AttachVolume` from user-data),
 an `AWS_CONFIG` profile with `credential_source = Ec2InstanceMetadata`
 (`sts:AssumeRole` on the target role, whose trust policy must allow this one),
-IAM-authenticated EFS mounts, or `SSH_INTERFACE=session_manager`.
+IAM-authenticated EFS mounts, or `EC2_CONNECTION_METHOD=ssm`.
 
 **Permissions for the identity running the commands.** Packer's own EC2 build
 permissions, plus `ec2:DescribeImages` and `ec2:DescribeSubnets`, plus whatever
@@ -116,11 +116,11 @@ when you never create anything:
 | VPC             | `ec2:DescribeVpcs`                      | -                                                                                                                                                 |
 | Route tables    | `ec2:DescribeRouteTables`               | -                                                                                                                                                 |
 
-When `IAM_INSTANCE_PROFILE` is set you also need `iam:PassRole` for that role -
+When `AWS_IAM_INSTANCE_PROFILE` is set you also need `iam:PassRole` for that role -
 both Packer and `run-instances` fail without it.
 
 **Depending on what you enable.** Creating EFS or FSx needs its own security
-group allowing inbound TCP 2049 from `SECURITY_GROUP_IDS`
+group allowing inbound TCP 2049 from `AWS_SECURITY_GROUP_IDS`
 (`EFS_SECURITY_GROUP_IDS`, `FSX_SECURITY_GROUP_IDS`). A `MULTI_AZ_*` FSx
 deployment needs route tables (`FSX_ROUTE_TABLE_IDS`). S3-backed file systems
 (`S3FILES_*`) are never created here and must already exist. GPU instance types
@@ -139,7 +139,7 @@ for what each one does. Almost everything in it is commented out and shows the
 default value; the uncommented lines are the ones you have to inspect. Settings
 marked `# REQUIRED` have no default, and the command refuses to run until all of
 them are set, listing every missing one at once. The repository copy is
-available at [`environment/config.example`](../environment/config.example).
+available at [`environment/environment.example`](../environment/environment.example).
 
 ## Workflow
 
@@ -148,6 +148,16 @@ Build one or both AMI families selected in the environment file:
 ```sh
 ec2 make_ami
 ```
+
+To generate the launch JSON and install the resulting `ec2` configuration after
+all enabled AMI builds complete, add `--setup`:
+
+```sh
+ec2 make_ami --setup
+```
+
+The setup phase runs only when every AMI build succeeds. Setup options such as
+`--install-config 0` can be supplied on the same command line.
 
 Prepare shared filesystems and generate one launch JSON per enabled AMI and
 subnet:
@@ -173,7 +183,7 @@ FSx file system is not usable immediately - the scripts say so when they create
 one, and the generated mounts use `nofail` so a launch during that window still
 boots.
 
-`SUBNET_IDS` accepts several subnets, which produces one launch JSON per subnet
+`AWS_SUBNET_IDS` accepts several subnets, which produces one launch JSON per subnet
 per enabled AMI family. Two of the file system kinds constrain the count, and
 both checks run even when that kind is unused: io2 requires exactly one subnet,
 and FSx requires one for `SINGLE_AZ_*` and at least two for `MULTI_AZ_*`. io2
@@ -187,7 +197,7 @@ you hit it.
 ### Use an existing AMI
 
 You can skip `ec2 make_ami` when the configured AMI already exists in your AWS
-account. Set `CPU_AMI_NAME` and, when enabled, `GPU_AMI_NAME` to the existing
+account. Set `CPU_OUTPUT_AMI_NAME` and, when enabled, `GPU_OUTPUT_AMI_NAME` to the existing
 AMI names, then run `ec2 setup`. The setup command resolves the newest matching
 self-owned AMI and writes its ID into the generated launch JSON.
 
@@ -248,7 +258,7 @@ bash tests/test_shell.sh
 ```
 
 The test script runs `bash -n` and `shellcheck` over every script, checks that
-an untouched `environment/config.example` is rejected for its unset required settings, that
+an untouched `environment/environment.example` is rejected for its unset required settings, that
 a filled-in copy loads cleanly, and that no script reads a variable that nothing
 defines. It never contacts AWS.
 

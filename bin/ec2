@@ -10,6 +10,7 @@ __environment_config="${EC2_ENVIRONMENT_CONFIG:-$__config_dir/environment}"
 __workdir="${EC2_ENVIRONMENT_WORKDIR:-$__config_dir/work}"
 __install_config=1
 __replace_config=0
+__setup_after_ami=0
 __manifest=""
 __execute=0
 __job_list="${__config_dir}/job_list"
@@ -39,6 +40,8 @@ __selection_tool="sentaku,peco,fzy,fzf"
 __selection_tool_ref="  - [sentaku](https://github.com/rcmdnk/sentaku/)\n  - [peco](https://github.com/peco/peco)\n  - [fzy](https://github.com/jhawthorn/fzy)\n  - [fzf](https://github.com/junegunn/fzf)"
 __et_option=()
 __rsync_option=(-a)
+__auth_command=""
+__connection_method="ssh"
 __scp_option=(-r)
 __ssh_option=()
 __transfer_operands=()
@@ -53,6 +56,7 @@ __options="
  --environment-config|-E Configuration file for make_ami/setup.
  --workdir|-W Working directory for environment commands.
  --install-config Set 1 to install setup output as the default ec2 config.
+ --setup Run setup automatically after make_ami completes successfully.
  --replace-config Set 1 to back up and replace an unmanaged ec2 config.
  --manifest Resource manifest used by cleanup_resources.
  --execute Set 1 to execute cleanup_resources instead of showing its plan.
@@ -191,14 +195,22 @@ _execute_aws () {
     if [ "$ret" -eq 0 ];then
       return 0
     fi
-    if [ "$ret" -eq 255 ];then
-      aws sso login ${__aws_profile:+--profile ${__aws_profile}} 1>&2
-      local ret=$?
-      if [ "$ret" -eq 0 ];then
+    if [ "$ret" -eq 255 ] && echo "$__execute_result" | grep -Eiq 'expired|invalid.*token|unable to locate credentials|credential|sso|unauthorized';then
+      if [ -z "$__auth_command" ];then
+        echo 'AWS credentials are unavailable and no authentication refresh command is configured.' 1>&2
+        return $ret
+      fi
+      if [ -t 0 ] && [ -r /dev/tty ];then
+        bash -c "$__auth_command" </dev/tty >/dev/tty 2>/dev/tty
+      else
+        bash -c "$__auth_command" 1>&2
+      fi
+      local auth_ret=$?
+      if [ "$auth_ret" -eq 0 ];then
         continue
       else
-        echo "ERR_CODE=$ret: $__execute_result" 1>&2
-        exit $ret
+        echo "ERR_CODE=$auth_ret: AWS authentication refresh command failed." 1>&2
+        exit $auth_ret
       fi
     fi
     if [ "$__exit_at_fail" = "0" ];then
@@ -761,6 +773,17 @@ ssh () {
   # Use `ssh [commands] [options]`.
   local cmd="${1:-ssh}"
   _instance_check
+  if [ "$__connection_method" = "ssm" ];then
+    if [ "$cmd" != "ssh" ] || [ -n "${__execute_command:-}" ];then
+      echo "EC2_CONNECTION_METHOD=ssm supports interactive \`ec2 ssh\` only; use ssh for commands, mosh, et, scp, and rsync." >&2
+      return 2
+    fi
+    _execute_aws "ssm start-session --target ${__ids[__enum_instance]}"
+    return $?
+  elif [ "$__connection_method" != "ssh" ];then
+    echo "Unsupported EC2_CONNECTION_METHOD: $__connection_method (expected ssh or ssm)." >&2
+    return 2
+  fi
   local -a ssh_options=("${__ssh_option[@]}")
   if [ -n "$__ssh_key" ];then
     ssh_options+=(-i "$__ssh_key")
@@ -1412,6 +1435,10 @@ _read_args() {
     fi
     local opt="\${1//_/-}"
     case \$opt in
+      --setup)
+        __setup_after_ami=1
+        shift
+        ;;
 EOF
 
   echo "$__options" | while read -r line; do
@@ -1486,8 +1513,8 @@ _print_help () {
 _environment_extract() {
   local root=$1
   mkdir -p "$root"
-  mkdir -p "$(dirname "$root/config.example")"
-  cat >"$root/config.example" <<'__EC2_ASSET_config_example__'
+  mkdir -p "$(dirname "$root/environment.example")"
+  cat >"$root/environment.example" <<'__EC2_ASSET_environment_example__'
 # =============================================================================
 #  ec2-environment configuration
 # =============================================================================
@@ -1514,8 +1541,9 @@ _environment_extract() {
 #
 #  ec2 environment commands source this file, apply their defaults and helpers,
 #                       and finally verify that
-#                       `aws sts get-caller-identity` works, running
-#                       `aws sso login --profile $AWS_PROFILE` once if it does not.
+#                       `aws sts get-caller-identity` works. If the credential
+#                       provider needs an explicit refresh, AWS_AUTH_COMMAND is
+#                       run; otherwise no provider-specific login is attempted.
 #  ec2 make_ami         Writes $WORKDIR/packer/main.json and
 #                       $WORKDIR/packer/variables_<family>.json, then runs
 #                       `packer validate` and `packer build` for every enabled
@@ -1559,12 +1587,13 @@ _environment_extract() {
 #  (scripts/make_ami.sh: make_vars / family_value). For example:
 #
 #      AMI_ROOT_VOLUME_SIZE_GIB="60"        # applies to both families
-#      GPU_VOLUME_SIZE="200"   # GPU family only
+#      GPU_AMI_ROOT_VOLUME_SIZE_GIB="200"   # GPU family only
 #
-#  Supported bases: AMI_NAME, AMI_FILTER, AMI_OWNER, SOURCE_AMI_ID,
-#  INSTANCE_TYPE, AWS_PROFILE,
-#  AWS_REGION, SSH_INTERFACE, SSH_USERNAME, SECURITY_GROUP_IDS, SUBNET_ID, AWS_VPC_ID,
-#  AWS_IAM_INSTANCE_PROFILE, AMI_ROOT_DEVICE_NAME, AMI_ROOT_VOLUME_DELETE_ON_TERMINATION, AMI_ROOT_VOLUME_SIZE_GIB,
+#  Supported bases: OUTPUT_AMI_NAME, SOURCE_AMI_NAME_FILTER, SOURCE_AMI_OWNER,
+#  SOURCE_AMI_ID, BUILD_INSTANCE_TYPE, AMI_BUILD_PROFILE, AMI_BUILD_REGION,
+#  AMI_BUILD_SSH_INTERFACE, AMI_BUILD_SSH_USERNAME, AMI_BUILD_SECURITY_GROUP_IDS,
+#  AMI_BUILD_SUBNET_ID, AMI_BUILD_VPC_ID, AMI_BUILD_IAM_INSTANCE_PROFILE,
+#  AMI_ROOT_DEVICE_NAME, AMI_ROOT_VOLUME_DELETE_ON_TERMINATION, AMI_ROOT_VOLUME_SIZE_GIB,
 #  AMI_ROOT_VOLUME_TYPE, AMI_ROOT_VOLUME_ENCRYPTED, AMI_PROVISION_SCRIPTS, AMI_SWAP_BLOCK_SIZE, AMI_SWAP_BLOCK_COUNT, AMI_PACKAGES,
 #  AMI_FLATPAK_PACKAGES, AMI_EXTRA_PACKAGES, AMI_TIMEZONE, AMI_IDLE_SHUTDOWN_BACKEND,
 #  AMI_IDLE_SHUTDOWN_SCHEDULE, AMI_IDLE_SHUTDOWN_KEEPALIVE_PROCESSES, AMI_ENABLE_SHARED_MEMORY,
@@ -1614,11 +1643,16 @@ RESOURCE_NAME_PREFIX="dev"
 # =============================================================================
 
 # AWS CLI profile. Used for every aws call (--profile) and passed to Packer as
-# `profile`. scripts/bootstrap.sh runs `aws sso login --profile "$AWS_PROFILE"` when
-# the credentials are missing or expired, so an SSO profile works as is.
+# `profile`.
 # Credentials are never written into the generated user-data.
 # Default: default
 #AWS_PROFILE="default"
+
+# Optional command used to refresh credentials after the AWS CLI credential
+# provider chain reports an authentication failure. This is not limited to SSO:
+# it can call `aws sso login`, aws-vault, a credential broker, or another local
+# authentication helper. Use single quotes when the command refers to variables.
+#AWS_AUTH_COMMAND='aws sso login --profile "$AWS_PROFILE"'
 
 # AWS region. Required - scripts/variables.sh aborts when it is empty. Used for
 # every aws call (--region), for Packer's `region`, and inside user-data to
@@ -1646,11 +1680,11 @@ AWS_REGION=""   # REQUIRED
 # VPC used by the Packer build instance (Packer `vpc_id`). Optional: Packer
 # resolves it from the subnet when it is empty, and the only thing it needs the
 # VPC for is creating a temporary security group, which it never does here
-# because SECURITY_GROUP_IDS is always passed.
+# because AWS_SECURITY_GROUP_IDS is always passed.
 #
 # Set it to have Packer fail early on a mismatch: it must be the VPC that owns
-# AWS_SUBNET_IDS and SECURITY_GROUP_IDS.
-# Default: empty, resolved from SUBNET_ID
+# AWS_SUBNET_IDS and AWS_SECURITY_GROUP_IDS.
+# Default: empty, resolved from AMI_BUILD_SUBNET_ID
 #AWS_VPC_ID=""
 
 # Name tag of the VPC, looked up when AWS_VPC_ID is empty.
@@ -1692,14 +1726,14 @@ AWS_SUBNET_IDS=""   # REQUIRED by setup_ec2
 # normal case. Uncomment it only when the AMI must be built in a different
 # subnet from the one the instances are launched in. An empty value is *not* the
 # same as leaving it out: scripts/bootstrap.sh only fills in the default when the
-# variable is undefined, so SUBNET_ID="" means "let Packer choose a subnet".
-#SUBNET_ID=""
+# variable is undefined, so AMI_BUILD_SUBNET_ID="" means "let Packer choose a subnet".
+#AMI_BUILD_SUBNET_ID=""
 
 # Security groups, comma separated. Optional, but you almost certainly want to
 # set it. They are applied to both
 #   * the Packer build instance (Packer `security_group_ids`), and
 #   * the network interface in the generated launch JSON ("Groups").
-# They must therefore allow whatever SSH_INTERFACE needs (inbound 22 from the
+# They must therefore allow whatever AMI_BUILD_SSH_INTERFACE needs (inbound 22 from the
 # host that runs Packer) plus the NFS/EFS/mosh traffic you expect at run time.
 #
 # Leaving it empty is a real downgrade, not just a default:
@@ -1709,9 +1743,9 @@ AWS_SUBNET_IDS=""   # REQUIRED by setup_ec2
 #   * The launch JSON leaves "Groups" out, so instances get the VPC default
 #     security group - whatever that happens to allow.
 # Default: empty
-#SECURITY_GROUP_IDS=""
+#AWS_SECURITY_GROUP_IDS=""
 
-# Security group names, comma separated, looked up when SECURITY_GROUP_IDS is
+# Security group names, comma separated, looked up when AWS_SECURITY_GROUP_IDS is
 # empty. These are real group names (the EC2 GroupName attribute), not Name
 # tags. Group names are unique within a VPC, so set AWS_VPC_ID as well when the same
 # name exists in more than one VPC.
@@ -1755,12 +1789,12 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 #   session_manager  Connect through SSM, no inbound rule needed. Requires an
 #                    SSM-capable AWS_IAM_INSTANCE_PROFILE on the build instance.
 # Default: private_ip
-#SSH_INTERFACE="private_ip"
+#AMI_BUILD_SSH_INTERFACE="private_ip"
 
 # SSH user Packer logs in as (Packer `ssh_username`), also exported to the
 # provisioning scripts as $SSH_USERNAME.
 # Default: value of EC2_USER
-#SSH_USERNAME="${EC2_USER}"
+#AMI_BUILD_SSH_USERNAME="${EC2_USER}"
 
 
 # =============================================================================
@@ -1838,7 +1872,7 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 # Default: UTC
 #AMI_TIMEZONE="UTC"
 
-# Space-separated packages installed with dnf (falling back to yum). Applies to
+# Space-separated packages installed with the selected package manager. Applies to
 # both AMI families; use CPU_AMI_EXTRA_PACKAGES / GPU_AMI_EXTRA_PACKAGES for
 # family-specific extras.
 #
@@ -1851,10 +1885,16 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 #   spal, spal-release            Installs the spal-release repository package.
 #
 # Add "amazon-efs-utils" when you mount EFS, and "docker" when INSTANCE_ENABLE_DOCKER=1.
-# Only dnf/yum images are supported; the script exits with an error otherwise.
+# dnf/yum support the repository-backed special packages above; apt supports
+# ordinary packages and Flatpak. The script exits for unsupported special names.
 #AMI_PACKAGES=""
 
-# 1 applies dnf/yum update before package installation; 0 installs against the
+# Package manager backend. `auto` detects dnf, yum, or apt-get in that order.
+# Set this explicitly when an image provides more than one backend.
+# Default: auto
+#AMI_PACKAGE_MANAGER="auto"
+
+# 1 applies the package manager's update before package installation; 0 installs against the
 # package versions exposed by the selected source AMI and its configured repos.
 # The final NEVRA list is always recorded in
 # /var/log/ec2-environment-packages.tsv inside the built AMI.
@@ -1899,10 +1939,15 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 # =============================================================================
 #  7. AMI families
 # =============================================================================
-#  Two independent families are supported, CPU and GPU. Each one is built by
-#  scripts/make_ami.sh only when <FAMILY>_INSTANCE=1, and gets its own launch JSON
+#  Families listed here are built by scripts/make_ami.sh only when
+#  <FAMILY>_ENABLED=1, and get their own launch JSON
 #  from scripts/setup_ec2.sh. Everything in sections 4 to 6 can be overridden per
-#  family with a CPU_ / GPU_ prefix.
+#  family with a <FAMILY>_ prefix.
+
+# Comma-separated family names. CPU and GPU are the built-in examples; additional
+# families require matching <FAMILY>_ settings below or in a custom environment.
+# Default: CPU,GPU
+#AMI_FAMILIES="CPU,GPU"
 
 # --- CPU family --------------------------------------------------------------
 
@@ -1996,6 +2041,15 @@ CPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-cpu-${AMI_REVISION}"
 # Default: 0
 #CREATE_FILE_SYSTEMS=0
 
+# Comma-separated filesystem providers used by `ec2 setup`. Each provider maps
+# to scripts/setup_<provider>.sh and returns comma-separated IDs on stdout; this
+# makes custom providers addable without editing setup_ec2.sh. A provider can
+# additionally write $WORKDIR/ec2/mounts/<provider>.sh to append its mount setup
+# to generated user-data. The built-in providers are s3files, efs, fsx, and io2.
+# Removing one skips its lookup, creation, and mount entries.
+# Default: s3files,efs,fsx,io2
+#EC2_FILESYSTEM_PROVIDERS="s3files,efs,fsx,io2"
+
 # Print the missing-resource creation plan without creating anything. This is
 # useful with CREATE_FILE_SYSTEMS=1 before an apply run; generated launch files
 # omit IDs for resources that only appeared in the dry-run plan.
@@ -2037,7 +2091,7 @@ CPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-cpu-${AMI_REVISION}"
 
 # Security groups for the EFS mount targets, one per name (a single value is
 # applied to all). Required only when EFS is created here. It must allow inbound
-# NFS (2049) from SECURITY_GROUP_IDS.
+# NFS (2049) from AWS_SECURITY_GROUP_IDS.
 #EFS_SECURITY_GROUP_IDS=""
 
 # Group names, looked up when EFS_SECURITY_GROUP_IDS is empty.
@@ -2069,7 +2123,7 @@ CPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-cpu-${AMI_REVISION}"
 
 # Security groups for the file system, one per name or a single value for all.
 # Required only when FSx is created here. Must allow inbound NFS (2049) plus the
-# OpenZFS RPC ports from SECURITY_GROUP_IDS.
+# OpenZFS RPC ports from AWS_SECURITY_GROUP_IDS.
 #FSX_SECURITY_GROUP_IDS=""
 
 # Group names, looked up when FSX_SECURITY_GROUP_IDS is empty.
@@ -2199,6 +2253,14 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # Default: value of EC2_USER
 #EC2_SSH_USERNAME="${EC2_USER}"
 
+# Connection backend used by interactive `ec2 ssh`. `ssh` uses the configured
+# IP address and OpenSSH; `ssm` uses AWS Systems Manager Session Manager and
+# requires the instance to be managed by SSM with the required IAM permissions.
+# SSM currently supports interactive `ec2 ssh` only. File transfers, commands,
+# mosh, and Eternal Terminal continue to use SSH.
+# Default: ssh
+#EC2_CONNECTION_METHOD="ssh"
+
 # "AssociatePublicIpAddress" in the launch JSON. Must be the literal true or
 # false - scripts/setup_ec2.sh rejects anything else. Set true only for public
 # subnets; combine with EC2_USE_PRIVATE_IP=0 to actually connect over it.
@@ -2253,6 +2315,20 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # strips the scheme, and a ".gz" suffix additionally triggers gzip of the
 # generated script - which is what makes it fit in the 16 KB user-data limit.
 # Use "fileb://" for the compressed form and "file://" for plain text.
+# User-data encoding. `auto` preserves the current behavior: a .gz URI creates
+# gzip data and any other URI creates plain text. Set plain or gzip explicitly
+# when the URI name should not determine the payload format.
+# Default: auto
+#EC2_USER_DATA_FORMAT="auto"
+
+# Maximum raw user-data size accepted before launch. AWS EC2 currently limits
+# this to 16384 bytes; lower it when a downstream launcher has a smaller limit.
+# Default: 16384
+#EC2_USER_DATA_MAX_BYTES=16384
+
+# cloud-init and completion-marker paths used on the launched instance.
+#EC2_CLOUD_INIT_INSTANCE_DIR="/var/lib/cloud/instances"
+#EC2_READY_FILENAME="ready"
 # Default: fileb://$WORKDIR/ec2/user_data.sh.gz (made absolute automatically)
 #EC2_USER_DATA_URI="fileb://${WORKDIR}/ec2/user_data.sh.gz"
 
@@ -2281,7 +2357,7 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # instance termination: locally built tools and your dotfiles. Normally one of
 # the mount points from section 8, for example "/mnt/fsx/fs2".
 #
-# Leave empty to disable USER_ENV_ENABLE_USR_SYMLINK, USER_ENV_INSTALLER_SCRIPTS and all FS_DOTFILES_* handling -
+# Leave empty to disable USER_ENV_ENABLE_USR_SYMLINK, USER_ENV_INSTALLER_SCRIPTS and all USER_ENV_DOTFILES_* handling -
 # they all live under this directory. setup_ec2 warns about the enabled settings
 # it ignores, then continues generating the remaining configuration.
 #USER_ENV_ROOT_DIR=""
@@ -2350,8 +2426,8 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # monitoring agents. Review it before every launch - it ends up inside the
 # instance metadata. A missing file is skipped silently.
 #INSTANCE_USER_DATA_EXTRA_SCRIPT=""
-__EC2_ASSET_config_example__
-  chmod 600 "$root/config.example"
+__EC2_ASSET_environment_example__
+  chmod 600 "$root/environment.example"
   mkdir -p "$(dirname "$root/scripts/bootstrap.sh")"
   cat >"$root/scripts/bootstrap.sh" <<'__EC2_ASSET_scripts_bootstrap_sh__'
 #!/usr/bin/env bash
@@ -2390,10 +2466,18 @@ ensure_aws_session() {
     return 0
   fi
 
-  aws sso login --profile "$PROFILE" || true
+  if [[ -z "$AWS_AUTH_COMMAND" ]]; then
+    echo "AWS authentication failed for profile '$PROFILE' in region '$REGION'." >&2
+    echo 'Set AWS_AUTH_COMMAND if this credential provider needs an explicit refresh.' >&2
+    return 1
+  fi
+  if ! run_aws_auth_command; then
+    echo 'AWS authentication refresh command failed.' >&2
+    return 1
+  fi
   if ! aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
     echo "AWS authentication failed for profile '$PROFILE' in region '$REGION'" >&2
-    echo "Please login using 'aws sso login --profile $PROFILE' or check your AWS credentials." >&2
+    echo 'Check the configured AWS credentials or authentication refresh command.' >&2
     return 1
   fi
 }
@@ -2547,6 +2631,18 @@ __EC2_ASSET_scripts_cleanup_resources_sh__
   cat >"$root/scripts/common.sh" <<'__EC2_ASSET_scripts_common_sh__'
 #!/usr/bin/env bash
 set -euo pipefail
+
+# Run an optional authentication refresh command supplied by the environment
+# configuration. AWS CLI's credential provider chain is always tried first;
+# this hook is only for providers that need an explicit refresh.
+run_aws_auth_command() {
+  [[ -n "${AWS_AUTH_COMMAND:-}" ]] || return 2
+  if [[ -t 0 && -r /dev/tty ]]; then
+    bash -c "$AWS_AUTH_COMMAND" </dev/tty >/dev/tty 2>/dev/tty
+  else
+    bash -c "$AWS_AUTH_COMMAND"
+  fi
+}
 
 # Fill <IDS_VAR> by looking each entry of <NAMES_VAR> up through an aws describe
 # call. Does nothing when <IDS_VAR> already has a value, so an explicit ID always
@@ -2917,6 +3013,7 @@ make_main() {
       "AMI_PACKAGES={{user \`packages\`}}",
       "AMI_FLATPAK_PACKAGES={{user \`flatpak_packages\`}}",
       "AMI_UPDATE_PACKAGES={{user \`update_packages\`}}",
+      "AMI_PACKAGE_MANAGER={{user \`package_manager\`}}",
       "AMI_EXTRA_PACKAGES={{user \`extra_packages\`}}",
       "AMI_TIMEZONE={{user \`timezone\`}}",
       "AMI_IDLE_SHUTDOWN_BACKEND={{user \`idle_shutdown_backend\`}}",
@@ -2983,6 +3080,7 @@ make_vars() {
   "packages": $(json_quote "$(family_value "$family" AMI_PACKAGES)"),
   "flatpak_packages": $(json_quote "$(family_value "$family" AMI_FLATPAK_PACKAGES)"),
   "update_packages": $(json_quote "$(family_value "$family" AMI_UPDATE_PACKAGES)"),
+  "package_manager": $(json_quote "$(family_value "$family" AMI_PACKAGE_MANAGER)"),
   "timezone": $(json_quote "$(family_value "$family" AMI_TIMEZONE)"),
   "idle_shutdown_backend": $(json_quote "$(family_value "$family" AMI_IDLE_SHUTDOWN_BACKEND)"),
   "idle_shutdown_schedule": $(json_quote "$(family_value "$family" AMI_IDLE_SHUTDOWN_SCHEDULE)"),
@@ -3046,7 +3144,7 @@ monitor_ami_progress() {
   done
 }
 
-sso_watch() {
+aws_auth_watch() {
   local -a pids=("$@")
   local alive pid
 
@@ -3061,9 +3159,10 @@ sso_watch() {
     ((alive)) || return 0
 
     if ! aws "${AWS_ARGS[@]}" sts get-caller-identity >/dev/null 2>&1; then
-      printf 'AWS SSO session is unavailable; attempting login for active Packer builds...\n' >&2
-      if ! aws sso login --profile "$PROFILE" </dev/tty >/dev/tty 2>/dev/tty; then
-        printf 'AWS SSO login failed; active Packer builds may fail authentication.\n' >&2
+      if [[ -z "$AWS_AUTH_COMMAND" ]]; then
+        printf 'AWS credentials are unavailable; no authentication refresh command is configured.\n' >&2
+      elif ! run_aws_auth_command; then
+        printf 'AWS authentication refresh failed; active Packer builds may fail authentication.\n' >&2
       fi
     fi
     sleep 60
@@ -3126,7 +3225,9 @@ make_main
 packer init .
 
 enabled_families=()
-for family in CPU GPU; do
+# shellcheck disable=SC2153  # The uppercase setting is loaded from the environment config.
+IFS=, read -r -a ami_families <<<"$AMI_FAMILIES"
+for family in "${ami_families[@]}"; do
   instance_var=${family}_ENABLED
   if [[ "${!instance_var:-0}" == 1 ]]; then
     make_vars "$family"
@@ -3135,6 +3236,7 @@ for family in CPU GPU; do
     enabled_families+=("$family")
   fi
 done
+unset ami_families
 
 if ((${#enabled_families[@]} == 0)); then
   exit 0
@@ -3145,7 +3247,7 @@ for family in "${enabled_families[@]}"; do
   run_family "$family" &
   family_pids+=("$!")
 done
-sso_watch "${family_pids[@]}" &
+    aws_auth_watch "${family_pids[@]}" &
 sso_pid=$!
 
 build_status=0
@@ -3182,10 +3284,21 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC2034
 REQUIRE_EC2_SETTINGS=1
 source "$script_dir/bootstrap.sh" "${1:-}" "${2:-}" ec2
-S3FILES_IDS=$(source "$script_dir/setup_s3files.sh")
-EFS_IDS=$("$script_dir/setup_efs.sh")
-FSX_IDS=$("$script_dir/setup_fsx.sh")
-IO2_IDS=$("$script_dir/setup_io2.sh")
+IFS=, read -r -a filesystem_providers <<<"$EC2_FILESYSTEM_PROVIDERS"
+for filesystem_provider in "${filesystem_providers[@]}"; do
+  [[ -z "$filesystem_provider" ]] && continue
+  [[ "$filesystem_provider" =~ ^[a-z][a-z0-9_]*$ ]] || {
+    echo "Invalid EC2_FILESYSTEM_PROVIDERS entry: $filesystem_provider" >&2
+    exit 1
+  }
+  provider_script="$script_dir/setup_${filesystem_provider}.sh"
+  [[ -x "$provider_script" ]] || {
+    echo "Filesystem provider script not found: $provider_script" >&2
+    exit 1
+  }
+  provider_var="${filesystem_provider^^}_IDS"
+  printf -v "$provider_var" '%s' "$("$provider_script")"
+done
 
 for setting in MOUNT_READY_MAX_ATTEMPTS MOUNT_READY_RETRY_INTERVAL_SECONDS;do
   [[ "${!setting}" =~ ^[1-9][0-9]*$ ]] || {
@@ -3215,6 +3328,7 @@ get_image_id() {
 
 json_dir="$WORKDIR/ec2/cli_input_json"
 mkdir -p "$json_dir"
+mkdir -p "$WORKDIR/ec2/mounts"
 # The `ec2` command is run from anywhere, so it needs an absolute path.
 json_dir_abs=$(cd "$json_dir" && pwd)
 cpu_group=''
@@ -3224,6 +3338,11 @@ mapfile -t labels < <(csv_items "$EC2_SUBNET_LABELS")
 jsons=()
 json_contents=()
 used_labels=()
+# shellcheck disable=SC2153  # The uppercase setting is loaded from the environment config.
+IFS=, read -r -a ami_families <<<"$AMI_FAMILIES"
+for family in "${ami_families[@]}"; do
+  printf -v "${family,,}_group" '%s' ''
+done
 
 for i in "${!ids[@]}";do
   if [ -z "${ids[i]}" ];then
@@ -3242,9 +3361,9 @@ for i in "${!ids[@]}";do
     exit 1
   fi
   used_labels+=("$label")
-  for family in CPU GPU;do
+  for family in "${ami_families[@]}";do
     enabled_var="${family}_ENABLED"; name_var="${family}_OUTPUT_AMI_NAME"; type_var="${family}_BUILD_INSTANCE_TYPE"
-    image_id=$(get_image_id "${!enabled_var}" "${!name_var}")
+    image_id=$(get_image_id "${!enabled_var-0}" "${!name_var-}")
     [[ -n "$image_id" ]] || continue
     json_name="${!name_var}-${label}.json"
     output="$json_dir/$json_name"
@@ -3275,7 +3394,8 @@ for i in "${!ids[@]}";do
     })
     echo "$json_content" > "$output"
     json_contents+=("$json_content")
-    if [[ "$family" == CPU ]];then cpu_group="${cpu_group:+$cpu_group,}$(basename "$output")"; else gpu_group="${gpu_group:+$gpu_group,}$(basename "$output")"; fi
+    group_var="${family,,}_group"
+    printf -v "$group_var" '%s' "${!group_var:+${!group_var},}$(basename "$output")"
   done
 done
 
@@ -3290,6 +3410,7 @@ done
   shell_array_assignment scp_option "${EC2_SCP_OPTIONS[@]}"
   shell_array_assignment rsync_option "${EC2_RSYNC_OPTIONS[@]}"
   shell_assignment ssh_user "$EC2_SSH_USERNAME"
+  shell_assignment connection_method "$EC2_CONNECTION_METHOD"
   shell_assignment mosh_server "$EC2_MOSH_SERVER_PATH"
   shell_assignment private_ip "$EC2_USE_PRIVATE_IP"
   shell_assignment instance_type "$EC2_DEFAULT_INSTANCE_TYPE"
@@ -3300,11 +3421,15 @@ done
   shell_assignment submit_retry_launch_interval "$EC2_SUBMIT_RETRY_LAUNCH_INTERVAL"
   shell_assignment submit_retry_ssh_interval "$EC2_SUBMIT_RETRY_SSH_INTERVAL"
   shell_assignment user_data "$EC2_USER_DATA_URI"
+  shell_assignment auth_command "$AWS_AUTH_COMMAND"
   shell_assignment cli_input_json_directory "$json_dir_abs"
   shell_assignment cli_input_json_group "$EC2_CLI_INPUT_JSON_GROUP"
-  shell_assignment cli_input_json_group_cpu "$cpu_group"
-  shell_assignment cli_input_json_group_gpu "$gpu_group"
+  for family in "${ami_families[@]}"; do
+    group_var="${family,,}_group"
+    shell_assignment "cli_input_json_group_${family,,}" "${!group_var}"
+  done
 } > "$WORKDIR/ec2/config"
+unset ami_families group_var family
 chmod 600 "$WORKDIR/ec2/config"
 
 user_data_name=$(basename "$EC2_USER_DATA_URI")
@@ -3322,6 +3447,7 @@ set -euo pipefail
 echo "=== Starting user script set by ec2 command ==="
 EEOF
   shell_assignment user "$EC2_SSH_USERNAME"
+  shell_assignment ready_filename "$EC2_READY_FILENAME"
   shell_assignment region "$REGION"
   shell_assignment mount_max_attempts "$MOUNT_READY_MAX_ATTEMPTS"
   shell_assignment mount_retry_interval "$MOUNT_READY_RETRY_INTERVAL_SECONDS"
@@ -3345,19 +3471,23 @@ mount_required() {
   return 1
 }
 EEOF
-  if [[ -n "$S3FILES_IDS" && -n "$S3FILES_MOUNT_POINTS" ]];then
+  for filesystem_provider in "${filesystem_providers[@]}"; do
+    mount_script="$WORKDIR/ec2/mounts/$filesystem_provider.sh"
+    [[ -f "$mount_script" ]] && cat "$mount_script"
+  done
+  if [[ " ${filesystem_providers[*]} " == *" s3files "* && -n "$S3FILES_IDS" && -n "$S3FILES_MOUNT_POINTS" ]];then
     IFS=, read -r -a ids <<<"$S3FILES_IDS"; IFS=, read -r -a mounts <<<"$S3FILES_MOUNT_POINTS"
     for i in "${!ids[@]}";do printf 'mount_entry %q %q s3files %q\n' "${ids[i]}:/" "${mounts[i]}" '_netdev,nofail'; done
   fi
-  if [[ -n "$EFS_IDS" && -n "$EFS_MOUNT_POINTS" ]];then
+  if [[ " ${filesystem_providers[*]} " == *" efs "* && -n "$EFS_IDS" && -n "$EFS_MOUNT_POINTS" ]];then
     IFS=, read -r -a ids <<<"$EFS_IDS"; IFS=, read -r -a mounts <<<"$EFS_MOUNT_POINTS"
     for i in "${!ids[@]}";do printf 'mount_entry %q %q efs %q\n' "${ids[i]}:/" "${mounts[i]}" '_netdev,tls,noresvport,nofail'; done
   fi
-  if [[ -n "$FSX_IDS" && -n "$FSX_MOUNT_POINTS" ]];then
+  if [[ " ${filesystem_providers[*]} " == *" fsx "* && -n "$FSX_IDS" && -n "$FSX_MOUNT_POINTS" ]];then
     IFS=, read -r -a ids <<<"$FSX_IDS"; IFS=, read -r -a mounts <<<"$FSX_MOUNT_POINTS"
     for i in "${!ids[@]}";do printf 'mount_entry %q %q nfs4 %q\n' "${ids[i]}.fsx.${REGION}.amazonaws.com:/fsx/" "${mounts[i]}" 'noatime,nfsvers=4.2,nconnect=16,_netdev,nofail'; done
   fi
-  if [[ -n "$IO2_IDS" && -n "$IO2_MOUNT_POINTS" ]];then
+  if [[ " ${filesystem_providers[*]} " == *" io2 "* && -n "$IO2_IDS" && -n "$IO2_MOUNT_POINTS" ]];then
     n_ids=$(tr ',' '\n' <<<"$IO2_IDS" | wc -l | tr -d ' ')
     IO2_DEVICE_NAMES=$(make_array "$n_ids" "$IO2_DEVICE_NAMES")
     IO2_FSTYPES=$(make_array "$n_ids" "$IO2_FSTYPES")
@@ -3508,6 +3638,7 @@ EEOF
     shell_assignment name_filter "$EC2_NAME_FILTER"
     shell_assignment image_name_filter "$EC2_IMAGE_NAME_FILTER"
     shell_assignment ssh_user "$EC2_SSH_USERNAME"
+    shell_assignment connection_method "$EC2_CONNECTION_METHOD"
     shell_assignment mosh_server "$EC2_MOSH_SERVER_PATH"
     shell_assignment private_ip "$EC2_USE_PRIVATE_IP"
     shell_assignment instance_type "$EC2_DEFAULT_INSTANCE_TYPE"
@@ -3533,8 +3664,8 @@ EEOF
   done
 
   shell_assignment user_data_name "$user_data_name"
+  printf 'cp %q/$instance_id/user-data.txt "/home/$user/.config/ec2/$user_data_name"\n' "$EC2_CLOUD_INIT_INSTANCE_DIR"
   cat <<'EEOF'
-cp "/var/lib/cloud/instances/$instance_id/user-data.txt" "/home/$user/.config/ec2/$user_data_name"
 chown -R "$user:$user" "/home/$user/.config/ec2/$user_data_name"
 
 EEOF
@@ -3585,13 +3716,18 @@ EEOF
 
 echo "=== End user script set by ec2 command ==="
 
-cp /var/log/cloud-init-output.log "/home/$user/ready"
-chown "$user:$user" "/home/$user/ready"
+cp /var/log/cloud-init-output.log "/home/$user/$ready_filename"
+chown "$user:$user" "/home/$user/$ready_filename"
 
 EEOF
 } > "$user_data_sh"
 chmod 700 "$user_data_sh"
-if [[ -z "$EC2_USER_DATA_URI" || "$EC2_USER_DATA_URI" == *gz ]];then
+case "$EC2_USER_DATA_FORMAT" in
+auto) [[ "$EC2_USER_DATA_URI" == *gz ]] && EC2_USER_DATA_FORMAT=gzip || EC2_USER_DATA_FORMAT=plain ;;
+plain|gzip) ;;
+*) echo 'EC2_USER_DATA_FORMAT must be auto, plain, or gzip.' >&2; exit 1 ;;
+esac
+if [[ "$EC2_USER_DATA_FORMAT" == gzip ]];then
   gzip -c "$user_data_sh" > "$user_data_sh.gz"
   chmod 600 "$user_data_sh.gz"
   user_data_sent="$user_data_sh.gz"
@@ -3602,13 +3738,13 @@ fi
 # EC2 caps user-data at 16 KB of raw bytes, measured before base64 encoding, and
 # rejects the launch with an opaque error when it is exceeded.
 user_data_size=$(wc -c < "$user_data_sent" | tr -d ' ')
-if ((user_data_size > 16384));then
-  echo "user-data is $user_data_size bytes encoded, over the 16384 byte limit." >&2
+if ((user_data_size > EC2_USER_DATA_MAX_BYTES));then
+  echo "user-data is $user_data_size bytes encoded, over the $EC2_USER_DATA_MAX_BYTES byte limit." >&2
   echo 'Shorten INSTANCE_USER_DATA_EXTRA_SCRIPT, or move the work into the AMI or USER_ENV_INSTALLER_SCRIPTS.' >&2
   exit 1
 fi
-if ((user_data_size > 13107));then
-  echo "Warning: user-data is $user_data_size of the 16384 bytes allowed." >&2
+if ((user_data_size > EC2_USER_DATA_MAX_BYTES * 80 / 100));then
+  echo "Warning: user-data is $user_data_size of the $EC2_USER_DATA_MAX_BYTES bytes allowed." >&2
 fi
 echo "Generated $WORKDIR/ec2/config and $user_data_sh"
 __EC2_ASSET_scripts_setup_ec2_sh__
@@ -3832,7 +3968,7 @@ __EC2_ASSET_scripts_setup_s3files_sh__
 # shellcheck disable=SC2034  # Values are consumed by the other environment scripts.
 set -euo pipefail
 
-# Settings with no sensible default. config.example ships them uncommented and
+# Settings with no sensible default. environment.example ships them uncommented and
 # empty, so that a fresh copy names all of them at once instead of failing on
 # whichever one happens to be read first.
 #   REQUIRED_SETTINGS      needed by every entry point
@@ -3856,13 +3992,14 @@ done
 if ((${#missing[@]} > 0)); then
   printf 'Required setting(s) not set in %s:\n' "${CONFIG:-config}" >&2
   printf '  %s\n' "${missing[@]}" >&2
-  echo 'See config.example for what each one means.' >&2
+  echo 'See environment.example for what each one means.' >&2
   exit 1
 fi
 unset missing required required_settings alternative
 
 AWS_PROFILE="${AWS_PROFILE-default}"
 AWS_REGION="${AWS_REGION-}"
+AWS_AUTH_COMMAND="${AWS_AUTH_COMMAND-}"
 AWS_VPC_ID="${AWS_VPC_ID-}"
 AWS_VPC_NAME="${AWS_VPC_NAME-}"
 AWS_SUBNET_IDS="${AWS_SUBNET_IDS-}"
@@ -3871,6 +4008,7 @@ AWS_SECURITY_GROUP_IDS="${AWS_SECURITY_GROUP_IDS-}"
 AWS_SECURITY_GROUP_NAMES="${AWS_SECURITY_GROUP_NAMES-}"
 AWS_IAM_INSTANCE_PROFILE="${AWS_IAM_INSTANCE_PROFILE-}"
 EC2_DEFAULT_USERNAME="${EC2_DEFAULT_USERNAME-ec2-user}"
+EC2_CONNECTION_METHOD="${EC2_CONNECTION_METHOD-ssh}"
 
 # Operation-specific settings override the common AWS settings. The normalized
 # names below are internal implementation details; config files should use the
@@ -3917,6 +4055,7 @@ fi
 PROFILE="${PROFILE-}"
 REGION="${REGION-}"
 AWS_ARGS=(--profile "$PROFILE" --region "$REGION")
+export AWS_PROFILE AWS_REGION
 EC2_USER="$EC2_DEFAULT_USERNAME"
 
 AWS_POLL_DELAY_SECONDS=${AWS_POLL_DELAY_SECONDS-10}
@@ -3958,9 +4097,11 @@ AMI_IDLE_SHUTDOWN_KEEPALIVE_PROCESSES=${AMI_IDLE_SHUTDOWN_KEEPALIVE_PROCESSES-ss
 AMI_PACKAGES=${AMI_PACKAGES-}
 AMI_FLATPAK_PACKAGES=${AMI_FLATPAK_PACKAGES-}
 AMI_UPDATE_PACKAGES=${AMI_UPDATE_PACKAGES-1}
+AMI_PACKAGE_MANAGER=${AMI_PACKAGE_MANAGER-auto}
 AMI_ENABLE_SHARED_MEMORY=${AMI_ENABLE_SHARED_MEMORY-1}
 
 # CPU instance configuration.
+AMI_FAMILIES=${AMI_FAMILIES-CPU,GPU}
 CPU_ENABLED=${CPU_ENABLED-1}
 CPU_OUTPUT_AMI_NAME=${CPU_OUTPUT_AMI_NAME-}
 CPU_SOURCE_AMI_NAME_FILTER=${CPU_SOURCE_AMI_NAME_FILTER-al2023-ami-*-x86_64} # Amazon Linux 2023
@@ -3980,17 +4121,19 @@ GPU_AMI_EXTRA_PACKAGES=${GPU_AMI_EXTRA_PACKAGES-}
 
 # An enabled family needs a name: Packer builds under it and setup_ec2 looks the
 # image up by it.
-for family in CPU GPU; do
+IFS=, read -r -a ami_families <<<"$AMI_FAMILIES"
+for family in "${ami_families[@]}"; do
   enabled_var="${family}_ENABLED" name_var="${family}_OUTPUT_AMI_NAME"
-  if [[ "${!enabled_var}" == 1 && -z "${!name_var}" ]]; then
+  if [[ "${!enabled_var-0}" == 1 && -z "${!name_var-}" ]]; then
     echo "${name_var} must be set in ${CONFIG:-config} while ${enabled_var} is 1" >&2
     exit 1
   fi
 done
-unset family enabled_var name_var
+unset family enabled_var name_var ami_families
 
 # File system configuration.
 CREATE_FILE_SYSTEMS=${CREATE_FILE_SYSTEMS-0}
+EC2_FILESYSTEM_PROVIDERS=${EC2_FILESYSTEM_PROVIDERS-s3files,efs,fsx,io2}
 RESOURCE_DRY_RUN=${RESOURCE_DRY_RUN-0}
 RESOURCE_MANAGED_BY=${RESOURCE_MANAGED_BY-ec2-environment}
 RESOURCE_PROJECT=${RESOURCE_PROJECT-}
@@ -4065,6 +4208,10 @@ else
   ec2_user_data_default="fileb://$PWD/$WORKDIR/ec2/user_data.sh.gz"
 fi
 EC2_USER_DATA_URI=${EC2_USER_DATA_URI-$ec2_user_data_default}
+EC2_USER_DATA_FORMAT=${EC2_USER_DATA_FORMAT-auto}
+EC2_USER_DATA_MAX_BYTES=${EC2_USER_DATA_MAX_BYTES-16384}
+EC2_CLOUD_INIT_INSTANCE_DIR=${EC2_CLOUD_INIT_INSTANCE_DIR-/var/lib/cloud/instances}
+EC2_READY_FILENAME=${EC2_READY_FILENAME-ready}
 unset ec2_user_data_default
 EC2_MOSH_SERVER_PATH=${EC2_MOSH_SERVER_PATH-/usr/bin/mosh-server}
 
@@ -4110,7 +4257,7 @@ __EC2_ASSET_packer_scripts_setup_shared_memory_sh__
 #!/usr/bin/env bash
 set -euo pipefail
 
-# AMI_PACKAGES, AMI_EXTRA_PACKAGES, and AMI_UPDATE_PACKAGES come from the Packer template's
+# AMI_PACKAGES, AMI_EXTRA_PACKAGES, AMI_UPDATE_PACKAGES, and AMI_PACKAGE_MANAGER come from the Packer template's
 # environment_vars, so an unset one means the template is out of sync.
 # shellcheck disable=SC2153
 read -r -a packages <<<"${AMI_PACKAGES} ${AMI_EXTRA_PACKAGES}"
@@ -4124,16 +4271,32 @@ remove_package() {
 }
 
 record_package_manifest() {
-  rpm -qa --qf '%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\t%{ARCH}\n' | sort \
-    > /var/log/ec2-environment-packages.tsv
+  if [[ "$package_manager" == apt ]]; then
+    dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' | sort \
+      > /var/log/ec2-environment-packages.tsv
+  else
+    rpm -qa --qf '%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\t%{ARCH}\n' | sort \
+      > /var/log/ec2-environment-packages.tsv
+  fi
 }
+
+package_manager=${AMI_PACKAGE_MANAGER:-auto}
+if [[ "$package_manager" == auto ]]; then
+  if command -v dnf >/dev/null 2>&1; then
+    package_manager=dnf
+  elif command -v yum >/dev/null 2>&1; then
+    package_manager=yum
+  elif command -v apt-get >/dev/null 2>&1; then
+    package_manager=apt
+  fi
+fi
 
 if [[ -z "${packages[*]}" && -z "${AMI_FLATPAK_PACKAGES:-}" ]];then
   record_package_manifest
   exit 0
 fi
 
-if command -v dnf >/dev/null 2>&1; then
+if [[ "$package_manager" == dnf ]]; then
   # shellcheck disable=SC2153  # Supplied by the Packer environment_vars list.
   [[ "$AMI_UPDATE_PACKAGES" == 1 ]] && dnf update -y
   dnf install -y 'dnf-command(config-manager)'
@@ -4187,7 +4350,7 @@ if command -v dnf >/dev/null 2>&1; then
     flatpak install -y flathub $AMI_FLATPAK_PACKAGES
   fi
 
-elif command -v yum >/dev/null 2>&1; then
+elif [[ "$package_manager" == yum ]]; then
   # Plain install only. None of the special cases above apply here: the extra
   # repositories (gh, terraform, lazygit), the versioned kernel packages, the
   # google-chrome rpm and AMI_FLATPAK_PACKAGES are all dnf-only. Listing any of them
@@ -4195,8 +4358,21 @@ elif command -v yum >/dev/null 2>&1; then
   # shellcheck disable=SC2153  # Supplied by the Packer environment_vars list.
   [[ "$AMI_UPDATE_PACKAGES" == 1 ]] && yum update -y
   yum install -y "${packages[@]}"
+elif [[ "$package_manager" == apt ]]; then
+  if printf '%s\n' "${packages[@]}" | grep -Eq '^(spal|spal-release|lazygit|terraform|google-chrome)$'; then
+    echo 'Special package names spal, lazygit, terraform, and google-chrome require a dnf/yum image.' >&2
+    exit 1
+  fi
+  [[ "$AMI_UPDATE_PACKAGES" == 1 ]] && apt-get update
+  [[ "${#packages[@]}" -gt 0 ]] && DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
+  if [[ -n "${AMI_FLATPAK_PACKAGES:-}" ]]; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y flatpak
+    flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+    # shellcheck disable=SC2086
+    flatpak install -y flathub $AMI_FLATPAK_PACKAGES
+  fi
 else
-  echo 'This template supports dnf or yum based images.' >&2
+  echo "Unsupported package manager '$AMI_PACKAGE_MANAGER'; use auto, dnf, yum, or apt." >&2
   exit 1
 fi
 
@@ -4413,7 +4589,14 @@ _environment_cleanup_args() {
 make_ami() {
   # Build the configured EC2 AMIs with Packer.
   _environment_args || return
+  [ "$__setup_after_ami" = "1" ] || {
+    _environment_runtime make_ami.sh "$__environment_command_workdir" "$__environment_command_config"
+    return
+  }
+  _environment_preflight_config || return 1
   _environment_runtime make_ami.sh "$__environment_command_workdir" "$__environment_command_config"
+  echo 'AMI build completed; running ec2 setup.'
+  setup
 }
 
 setup() {
@@ -4469,7 +4652,7 @@ init_environment() {
     _environment_extract "$runtime"
     mkdir -p "$(dirname "$__environment_config")"
     temporary="${__environment_config}.tmp.$$"
-    cp "$runtime/config.example" "$temporary"
+    cp "$runtime/environment.example" "$temporary"
     chmod 600 "$temporary"
     mv "$temporary" "$__environment_config"
   )

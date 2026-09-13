@@ -10,6 +10,7 @@ __environment_config="${EC2_ENVIRONMENT_CONFIG:-$__config_dir/environment}"
 __workdir="${EC2_ENVIRONMENT_WORKDIR:-$__config_dir/work}"
 __install_config=1
 __replace_config=0
+__setup_after_ami=0
 __manifest=""
 __execute=0
 __job_list="${__config_dir}/job_list"
@@ -39,6 +40,8 @@ __selection_tool="sentaku,peco,fzy,fzf"
 __selection_tool_ref="  - [sentaku](https://github.com/rcmdnk/sentaku/)\n  - [peco](https://github.com/peco/peco)\n  - [fzy](https://github.com/jhawthorn/fzy)\n  - [fzf](https://github.com/junegunn/fzf)"
 __et_option=()
 __rsync_option=(-a)
+__auth_command=""
+__connection_method="ssh"
 __scp_option=(-r)
 __ssh_option=()
 __transfer_operands=()
@@ -53,6 +56,7 @@ __options="
  --environment-config|-E Configuration file for make_ami/setup.
  --workdir|-W Working directory for environment commands.
  --install-config Set 1 to install setup output as the default ec2 config.
+ --setup Run setup automatically after make_ami completes successfully.
  --replace-config Set 1 to back up and replace an unmanaged ec2 config.
  --manifest Resource manifest used by cleanup_resources.
  --execute Set 1 to execute cleanup_resources instead of showing its plan.
@@ -191,14 +195,22 @@ _execute_aws () {
     if [ "$ret" -eq 0 ];then
       return 0
     fi
-    if [ "$ret" -eq 255 ];then
-      aws sso login ${__aws_profile:+--profile ${__aws_profile}} 1>&2
-      local ret=$?
-      if [ "$ret" -eq 0 ];then
+    if [ "$ret" -eq 255 ] && echo "$__execute_result" | grep -Eiq 'expired|invalid.*token|unable to locate credentials|credential|sso|unauthorized';then
+      if [ -z "$__auth_command" ];then
+        echo 'AWS credentials are unavailable and no authentication refresh command is configured.' 1>&2
+        return $ret
+      fi
+      if [ -t 0 ] && [ -r /dev/tty ];then
+        bash -c "$__auth_command" </dev/tty >/dev/tty 2>/dev/tty
+      else
+        bash -c "$__auth_command" 1>&2
+      fi
+      local auth_ret=$?
+      if [ "$auth_ret" -eq 0 ];then
         continue
       else
-        echo "ERR_CODE=$ret: $__execute_result" 1>&2
-        exit $ret
+        echo "ERR_CODE=$auth_ret: AWS authentication refresh command failed." 1>&2
+        exit $auth_ret
       fi
     fi
     if [ "$__exit_at_fail" = "0" ];then
@@ -761,6 +773,17 @@ ssh () {
   # Use `ssh [commands] [options]`.
   local cmd="${1:-ssh}"
   _instance_check
+  if [ "$__connection_method" = "ssm" ];then
+    if [ "$cmd" != "ssh" ] || [ -n "${__execute_command:-}" ];then
+      echo "EC2_CONNECTION_METHOD=ssm supports interactive \`ec2 ssh\` only; use ssh for commands, mosh, et, scp, and rsync." >&2
+      return 2
+    fi
+    _execute_aws "ssm start-session --target ${__ids[__enum_instance]}"
+    return $?
+  elif [ "$__connection_method" != "ssh" ];then
+    echo "Unsupported EC2_CONNECTION_METHOD: $__connection_method (expected ssh or ssm)." >&2
+    return 2
+  fi
   local -a ssh_options=("${__ssh_option[@]}")
   if [ -n "$__ssh_key" ];then
     ssh_options+=(-i "$__ssh_key")
@@ -1412,6 +1435,10 @@ _read_args() {
     fi
     local opt="\${1//_/-}"
     case \$opt in
+      --setup)
+        __setup_after_ami=1
+        shift
+        ;;
 EOF
 
   echo "$__options" | while read -r line; do

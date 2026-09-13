@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# AMI_PACKAGES, AMI_EXTRA_PACKAGES, and AMI_UPDATE_PACKAGES come from the Packer template's
+# AMI_PACKAGES, AMI_EXTRA_PACKAGES, AMI_UPDATE_PACKAGES, and AMI_PACKAGE_MANAGER come from the Packer template's
 # environment_vars, so an unset one means the template is out of sync.
 # shellcheck disable=SC2153
 read -r -a packages <<<"${AMI_PACKAGES} ${AMI_EXTRA_PACKAGES}"
@@ -15,16 +15,32 @@ remove_package() {
 }
 
 record_package_manifest() {
-  rpm -qa --qf '%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\t%{ARCH}\n' | sort \
-    > /var/log/ec2-environment-packages.tsv
+  if [[ "$package_manager" == apt ]]; then
+    dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' | sort \
+      > /var/log/ec2-environment-packages.tsv
+  else
+    rpm -qa --qf '%{NAME}\t%{EPOCHNUM}:%{VERSION}-%{RELEASE}\t%{ARCH}\n' | sort \
+      > /var/log/ec2-environment-packages.tsv
+  fi
 }
+
+package_manager=${AMI_PACKAGE_MANAGER:-auto}
+if [[ "$package_manager" == auto ]]; then
+  if command -v dnf >/dev/null 2>&1; then
+    package_manager=dnf
+  elif command -v yum >/dev/null 2>&1; then
+    package_manager=yum
+  elif command -v apt-get >/dev/null 2>&1; then
+    package_manager=apt
+  fi
+fi
 
 if [[ -z "${packages[*]}" && -z "${AMI_FLATPAK_PACKAGES:-}" ]];then
   record_package_manifest
   exit 0
 fi
 
-if command -v dnf >/dev/null 2>&1; then
+if [[ "$package_manager" == dnf ]]; then
   # shellcheck disable=SC2153  # Supplied by the Packer environment_vars list.
   [[ "$AMI_UPDATE_PACKAGES" == 1 ]] && dnf update -y
   dnf install -y 'dnf-command(config-manager)'
@@ -78,7 +94,7 @@ if command -v dnf >/dev/null 2>&1; then
     flatpak install -y flathub $AMI_FLATPAK_PACKAGES
   fi
 
-elif command -v yum >/dev/null 2>&1; then
+elif [[ "$package_manager" == yum ]]; then
   # Plain install only. None of the special cases above apply here: the extra
   # repositories (gh, terraform, lazygit), the versioned kernel packages, the
   # google-chrome rpm and AMI_FLATPAK_PACKAGES are all dnf-only. Listing any of them
@@ -86,8 +102,21 @@ elif command -v yum >/dev/null 2>&1; then
   # shellcheck disable=SC2153  # Supplied by the Packer environment_vars list.
   [[ "$AMI_UPDATE_PACKAGES" == 1 ]] && yum update -y
   yum install -y "${packages[@]}"
+elif [[ "$package_manager" == apt ]]; then
+  if printf '%s\n' "${packages[@]}" | grep -Eq '^(spal|spal-release|lazygit|terraform|google-chrome)$'; then
+    echo 'Special package names spal, lazygit, terraform, and google-chrome require a dnf/yum image.' >&2
+    exit 1
+  fi
+  [[ "$AMI_UPDATE_PACKAGES" == 1 ]] && apt-get update
+  [[ "${#packages[@]}" -gt 0 ]] && DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
+  if [[ -n "${AMI_FLATPAK_PACKAGES:-}" ]]; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y flatpak
+    flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+    # shellcheck disable=SC2086
+    flatpak install -y flathub $AMI_FLATPAK_PACKAGES
+  fi
 else
-  echo 'This template supports dnf or yum based images.' >&2
+  echo "Unsupported package manager '$AMI_PACKAGE_MANAGER'; use auto, dnf, yum, or apt." >&2
   exit 1
 fi
 

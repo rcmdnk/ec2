@@ -2,7 +2,7 @@
 # shellcheck disable=SC2034  # Values are consumed by the other environment scripts.
 set -euo pipefail
 
-# Settings with no sensible default. config.example ships them uncommented and
+# Settings with no sensible default. environment.example ships them uncommented and
 # empty, so that a fresh copy names all of them at once instead of failing on
 # whichever one happens to be read first.
 #   REQUIRED_SETTINGS      needed by every entry point
@@ -26,13 +26,14 @@ done
 if ((${#missing[@]} > 0)); then
   printf 'Required setting(s) not set in %s:\n' "${CONFIG:-config}" >&2
   printf '  %s\n' "${missing[@]}" >&2
-  echo 'See config.example for what each one means.' >&2
+  echo 'See environment.example for what each one means.' >&2
   exit 1
 fi
 unset missing required required_settings alternative
 
 AWS_PROFILE="${AWS_PROFILE-default}"
 AWS_REGION="${AWS_REGION-}"
+AWS_AUTH_COMMAND="${AWS_AUTH_COMMAND-}"
 AWS_VPC_ID="${AWS_VPC_ID-}"
 AWS_VPC_NAME="${AWS_VPC_NAME-}"
 AWS_SUBNET_IDS="${AWS_SUBNET_IDS-}"
@@ -41,6 +42,7 @@ AWS_SECURITY_GROUP_IDS="${AWS_SECURITY_GROUP_IDS-}"
 AWS_SECURITY_GROUP_NAMES="${AWS_SECURITY_GROUP_NAMES-}"
 AWS_IAM_INSTANCE_PROFILE="${AWS_IAM_INSTANCE_PROFILE-}"
 EC2_DEFAULT_USERNAME="${EC2_DEFAULT_USERNAME-ec2-user}"
+EC2_CONNECTION_METHOD="${EC2_CONNECTION_METHOD-ssh}"
 
 # Operation-specific settings override the common AWS settings. The normalized
 # names below are internal implementation details; config files should use the
@@ -87,6 +89,7 @@ fi
 PROFILE="${PROFILE-}"
 REGION="${REGION-}"
 AWS_ARGS=(--profile "$PROFILE" --region "$REGION")
+export AWS_PROFILE AWS_REGION
 EC2_USER="$EC2_DEFAULT_USERNAME"
 
 AWS_POLL_DELAY_SECONDS=${AWS_POLL_DELAY_SECONDS-10}
@@ -128,9 +131,11 @@ AMI_IDLE_SHUTDOWN_KEEPALIVE_PROCESSES=${AMI_IDLE_SHUTDOWN_KEEPALIVE_PROCESSES-ss
 AMI_PACKAGES=${AMI_PACKAGES-}
 AMI_FLATPAK_PACKAGES=${AMI_FLATPAK_PACKAGES-}
 AMI_UPDATE_PACKAGES=${AMI_UPDATE_PACKAGES-1}
+AMI_PACKAGE_MANAGER=${AMI_PACKAGE_MANAGER-auto}
 AMI_ENABLE_SHARED_MEMORY=${AMI_ENABLE_SHARED_MEMORY-1}
 
 # CPU instance configuration.
+AMI_FAMILIES=${AMI_FAMILIES-CPU,GPU}
 CPU_ENABLED=${CPU_ENABLED-1}
 CPU_OUTPUT_AMI_NAME=${CPU_OUTPUT_AMI_NAME-}
 CPU_SOURCE_AMI_NAME_FILTER=${CPU_SOURCE_AMI_NAME_FILTER-al2023-ami-*-x86_64} # Amazon Linux 2023
@@ -150,17 +155,19 @@ GPU_AMI_EXTRA_PACKAGES=${GPU_AMI_EXTRA_PACKAGES-}
 
 # An enabled family needs a name: Packer builds under it and setup_ec2 looks the
 # image up by it.
-for family in CPU GPU; do
+IFS=, read -r -a ami_families <<<"$AMI_FAMILIES"
+for family in "${ami_families[@]}"; do
   enabled_var="${family}_ENABLED" name_var="${family}_OUTPUT_AMI_NAME"
-  if [[ "${!enabled_var}" == 1 && -z "${!name_var}" ]]; then
+  if [[ "${!enabled_var-0}" == 1 && -z "${!name_var-}" ]]; then
     echo "${name_var} must be set in ${CONFIG:-config} while ${enabled_var} is 1" >&2
     exit 1
   fi
 done
-unset family enabled_var name_var
+unset family enabled_var name_var ami_families
 
 # File system configuration.
 CREATE_FILE_SYSTEMS=${CREATE_FILE_SYSTEMS-0}
+EC2_FILESYSTEM_PROVIDERS=${EC2_FILESYSTEM_PROVIDERS-s3files,efs,fsx,io2}
 RESOURCE_DRY_RUN=${RESOURCE_DRY_RUN-0}
 RESOURCE_MANAGED_BY=${RESOURCE_MANAGED_BY-ec2-environment}
 RESOURCE_PROJECT=${RESOURCE_PROJECT-}
@@ -235,6 +242,10 @@ else
   ec2_user_data_default="fileb://$PWD/$WORKDIR/ec2/user_data.sh.gz"
 fi
 EC2_USER_DATA_URI=${EC2_USER_DATA_URI-$ec2_user_data_default}
+EC2_USER_DATA_FORMAT=${EC2_USER_DATA_FORMAT-auto}
+EC2_USER_DATA_MAX_BYTES=${EC2_USER_DATA_MAX_BYTES-16384}
+EC2_CLOUD_INIT_INSTANCE_DIR=${EC2_CLOUD_INIT_INSTANCE_DIR-/var/lib/cloud/instances}
+EC2_READY_FILENAME=${EC2_READY_FILENAME-ready}
 unset ec2_user_data_default
 EC2_MOSH_SERVER_PATH=${EC2_MOSH_SERVER_PATH-/usr/bin/mosh-server}
 

@@ -318,8 +318,7 @@ run the environment commands:
 ```
 $ ec2 init_environment
 $ $EDITOR ~/.config/ec2/environment
-$ ec2 make_ami
-$ ec2 setup
+$ ec2 make_ami --setup
 ```
 
 AWS prerequisites, IAM permissions, network requirements, file-system setup,

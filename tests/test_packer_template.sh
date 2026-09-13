@@ -23,14 +23,20 @@ GPU_ENABLED=0
 CPU_OUTPUT_AMI_NAME=packer-template-test
 AWS_SUBNET_IDS=subnet-packer-template-test
 AWS_VPC_ID=vpc-packer-template-test
+EC2_KEY_NAME=packer-template-test
+EC2_FILESYSTEM_PROVIDERS=
 EOF
 
 work=${runtime_dir#"$root/"}/work
 PATH="$mock_bin:$PATH" AMI_VALIDATE_ONLY=1 bin/ec2 make_ami --workdir "$work" \
-  --environment-config "$config" >/dev/null
+  --environment-config "$config" --setup --install-config 0 >/dev/null
 generated="$runtime_dir/work/packer"
 python3 -m json.tool "$generated/main.json" >/dev/null
 python3 -m json.tool "$generated/variables_cpu.json" >/dev/null
+[[ -s "$runtime_dir/work/ec2/config" ]] || {
+  echo 'make_ami --setup did not run the setup phase.' >&2
+  exit 1
+}
 while read -r mode relative;do
   [[ "$relative" == packer/* ]] || continue
   extracted="$generated/${relative#packer/}"

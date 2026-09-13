@@ -8,21 +8,21 @@ work_dir=${TMPDIR:-/tmp}/ec2-environment-config-test
 mapfile -t shell_files < <(find bin environment/scripts environment/packer/scripts scripts tests -type f -not -name '*.json' -not -name '*.bak' -not -name '*.orig' -not -name '*~' -print)
 for file in "${shell_files[@]}"; do bash -n "$file"; done
 
-# An untouched config.example must be rejected for its unset required settings.
-if CONFIG=environment/config.example WORKDIR="$work_dir" bash -c '
+# An untouched environment.example must be rejected for its unset required settings.
+if CONFIG=environment/environment.example WORKDIR="$work_dir" bash -c '
   set -euo pipefail
-  source environment/config.example
+  source environment/environment.example
   source environment/scripts/variables.sh' >/dev/null 2>&1; then
-  echo 'Expected config.example to be rejected for its unset required settings.' >&2
+  echo 'Expected environment.example to be rejected for its unset required settings.' >&2
   exit 1
 fi
 
 # Every REQUIRED setting must actually be reported, so that none of them can be
-# quietly dropped from config.example or from scripts/variables.sh.
+# quietly dropped from environment.example or from scripts/variables.sh.
 mapfile -t required < <(sed -n 's/^REQUIRED_SETTINGS\(_EC2\)\{0,1\}=(\(.*\))$/\2/p' environment/scripts/variables.sh | tr ' ' '\n')
 ((${#required[@]} > 0)) || { echo 'Could not read REQUIRED_SETTINGS from scripts/variables.sh.' >&2; exit 1; }
-reported=$(CONFIG=environment/config.example WORKDIR="$work_dir" REQUIRE_EC2_SETTINGS=1 bash -c '
-  source environment/config.example
+reported=$(CONFIG=environment/environment.example WORKDIR="$work_dir" REQUIRE_EC2_SETTINGS=1 bash -c '
+  source environment/environment.example
   source environment/scripts/variables.sh' 2>&1 || true)
 for name in "${required[@]}"; do
   # A required <X>_IDS is reported as "<X>_IDS (or <X>_NAMES)".
@@ -30,8 +30,8 @@ for name in "${required[@]}"; do
     echo "scripts/variables.sh did not report the missing required setting $name." >&2
     exit 1
   }
-  grep -qE "^$name=\"\"" environment/config.example || {
-    echo "config.example must ship $name uncommented and empty." >&2
+  grep -qE "^$name=\"\"" environment/environment.example || {
+    echo "environment.example must ship $name uncommented and empty." >&2
     exit 1
   }
 done
@@ -39,10 +39,10 @@ done
 # Keep only the two commonly customized EC2 filters active in a fresh template.
 # Other optional EC2 settings should inherit defaults from scripts/variables.sh so
 # that future default changes are not pinned by `ec2 init_environment` output.
-mapfile -t active_ec2_settings < <(sed -n 's/^\(EC2_[A-Z0-9_]*\)=.*/\1/p' environment/config.example | sort)
+mapfile -t active_ec2_settings < <(sed -n 's/^\(EC2_[A-Z0-9_]*\)=.*/\1/p' environment/environment.example | sort)
 expected_active_ec2_settings=(EC2_IMAGE_NAME_FILTER EC2_KEY_NAME EC2_NAME_FILTER)
 if [[ "${active_ec2_settings[*]}" != "${expected_active_ec2_settings[*]}" ]];then
-  echo 'config.example must activate only EC2_NAME_FILTER and EC2_IMAGE_NAME_FILTER.' >&2
+  echo 'environment.example must activate only EC2_NAME_FILTER and EC2_IMAGE_NAME_FILTER.' >&2
   printf '  active: %s\n' "${active_ec2_settings[*]:-(none)}" >&2
   exit 1
 fi
@@ -53,7 +53,7 @@ filled=$(mktemp "${TMPDIR:-/tmp}/ec2-environment-config.XXXXXX")
 mkdir -p "$root/tmp"
 runtime_dir=$(mktemp -d "$root/tmp/ec2-environment-fs-warning.XXXXXX")
 trap 'rm -f "$filled"; rm -rf "$runtime_dir"' EXIT
-cp environment/config.example "$filled"
+cp environment/environment.example "$filled"
 for name in "${required[@]}"; do
   printf '%s=%s\n' "$name" "placeholder" >> "$filled"
 done
@@ -62,7 +62,7 @@ if ! CONFIG="$filled" WORKDIR="$work_dir" bash -c '
   source "$CONFIG"
   source environment/scripts/variables.sh
   source environment/scripts/common.sh'; then
-  echo 'config.example does not load cleanly once the required settings are set.' >&2
+  echo 'environment.example does not load cleanly once the required settings are set.' >&2
   exit 1
 fi
 
@@ -194,5 +194,7 @@ bash tests/test_missing_config_guidance.sh
 bash tests/test_ssh_arguments.sh
 bash tests/test_generated_bin.sh
 bash tests/test_variable_precedence.sh
+bash tests/test_aws_authentication.sh
+bash tests/test_connection_method.sh
 
 echo "All static checks passed."
