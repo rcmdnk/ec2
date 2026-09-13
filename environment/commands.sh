@@ -110,46 +110,46 @@ _environment_cleanup_args() {
 make_ami() {
   # Build the configured EC2 AMIs with Packer.
   _environment_args || return
-  _environment_runtime make_ami "$__environment_command_workdir" "$__environment_command_config"
+  _environment_runtime make_ami.sh "$__environment_command_workdir" "$__environment_command_config"
 }
 
 setup() {
   # Generate EC2 launch inputs and install the default ec2 configuration.
   _environment_args || return
   _environment_preflight_config || return 1
-  _environment_runtime setup_ec2 "$__environment_command_workdir" "$__environment_command_config" || return
+  _environment_runtime setup_ec2.sh "$__environment_command_workdir" "$__environment_command_config" || return
   _environment_install_config "$__environment_command_workdir/ec2/config"
 }
 
 setup_efs() {
   # Resolve or create configured EFS file systems.
   _environment_args || return
-  _environment_runtime setup_efs "$__environment_command_workdir" "$__environment_command_config"
+  _environment_runtime setup_efs.sh "$__environment_command_workdir" "$__environment_command_config"
 }
 
 setup_fsx() {
   # Resolve or create configured FSx file systems.
   _environment_args || return
-  _environment_runtime setup_fsx "$__environment_command_workdir" "$__environment_command_config"
+  _environment_runtime setup_fsx.sh "$__environment_command_workdir" "$__environment_command_config"
 }
 
 setup_io2() {
   # Resolve or create configured io2 volumes.
   _environment_args || return
-  _environment_runtime setup_io2 "$__environment_command_workdir" "$__environment_command_config"
+  _environment_runtime setup_io2.sh "$__environment_command_workdir" "$__environment_command_config"
 }
 
 setup_s3files() {
   # Resolve configured S3 file-system identifiers.
   _environment_args || return
-  _environment_runtime setup_s3files "$__environment_command_workdir" "$__environment_command_config"
+  _environment_runtime setup_s3files.sh "$__environment_command_workdir" "$__environment_command_config"
 }
 
 cleanup_resources() {
   # Show or execute cleanup for resources recorded by environment commands.
   _environment_args || return
   _environment_cleanup_args
-  _environment_runtime cleanup_resources "${__environment_cleanup_args[@]}"
+  _environment_runtime cleanup_resources.sh "${__environment_cleanup_args[@]}"
 }
 
 init_environment() {

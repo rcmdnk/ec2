@@ -1504,7 +1504,7 @@ _environment_extract() {
 #  The uncommented lines are the ones you have to look at:
 #
 #    * marked "# REQUIRED" and shipped empty - the scripts have no default and
-#      scripts/variables refuses to run until every one of them is set. It lists
+#      scripts/variables.sh refuses to run until every one of them is set. It lists
 #      all the missing ones at once, so you do not have to find them one by one.
 #    * the naming helpers and the AMI/filter names built from them - they work
 #      as shipped, but every AMI and `ec2` lookup is named after them, so set
@@ -1543,20 +1543,20 @@ _environment_extract() {
 #  * Boolean values are not uniform: each one is forwarded verbatim to a
 #    different consumer (Packer, run-instances JSON, the `ec2` command, shell
 #    tests), so the accepted values are stated per entry. Do not guess.
-#  * Anything named *_IDS can be given as *_NAMES instead, and base_setup looks
+#  * Anything named *_IDS can be given as *_NAMES instead, and bootstrap.sh looks
 #    the IDs up for you. *_IDS wins when both are set. A name that matches
 #    nothing, or more than one resource, is an error rather than a guess.
 #  * Every *_IDS list must have as many entries as its *_MOUNT_POINTS list
-#    (scripts/lib.sh: compare_length).
+#    (scripts/common.sh: compare_length).
 #  * For the remaining per-file-system option lists, a single value is broadcast
 #    to all entries; otherwise the length must match the number of names
-#    (scripts/lib.sh: make_array).
+#    (scripts/common.sh: make_array).
 #
 #  -- Per-AMI-family overrides -------------------------------------------------
 #
 #  Every variable consumed by the Packer template can be overridden for a single
 #  AMI family by prefixing it with CPU_ or GPU_
-#  (scripts/make_ami: make_vars / family_value). For example:
+#  (scripts/make_ami.sh: make_vars / family_value). For example:
 #
 #      VOLUME_SIZE="60"        # applies to both families
 #      GPU_VOLUME_SIZE="200"   # GPU family only
@@ -1614,18 +1614,18 @@ PREFIX="dev"
 # =============================================================================
 
 # AWS CLI profile. Used for every aws call (--profile) and passed to Packer as
-# `profile`. scripts/base_setup runs `aws sso login --profile "$PROFILE"` when
+# `profile`. scripts/bootstrap.sh runs `aws sso login --profile "$PROFILE"` when
 # the credentials are missing or expired, so an SSO profile works as is.
 # Credentials are never written into the generated user-data.
 # Default: default
 #PROFILE="default"
 
-# AWS region. Required - scripts/variables aborts when it is empty. Used for
+# AWS region. Required - scripts/variables.sh aborts when it is empty. Used for
 # every aws call (--region), for Packer's `region`, and inside user-data to
 # build the FSx NFS endpoint <fs-id>.fsx.<region>.amazonaws.com.
 REGION=""   # REQUIRED
 
-# Exported by scripts/make_ami as AWS_POLL_DELAY_SECONDS / AWS_MAX_ATTEMPTS, and
+# Exported by scripts/make_ami.sh as AWS_POLL_DELAY_SECONDS / AWS_MAX_ATTEMPTS, and
 # picked up by the AWS SDK that Packer uses. They bound how long Packer waits
 # for AWS state changes such as "AMI available". The defaults allow roughly
 # 10 s x 400 = 66 minutes, which is enough for a large image with many packages.
@@ -1656,20 +1656,20 @@ REGION=""   # REQUIRED
 # Name tag of the VPC, looked up when VPC_ID is empty.
 #VPC_NAME=""
 
-# Subnets to deploy into, comma separated. Required by scripts/setup_ec2, and by
+# Subnets to deploy into, comma separated. Required by scripts/setup_ec2.sh, and by
 # the file system scripts when they create something. make_ami works without it:
 # Packer then picks a subnet in the default VPC. More than one may be
-# listed: scripts/setup_ec2 then writes one launch JSON per subnet per enabled
+# listed: scripts/setup_ec2.sh then writes one launch JSON per subnet per enabled
 # AMI family, so an instance can be started in whichever availability zone has
-# capacity, and scripts/setup_efs adds a mount target in every subnet listed
+# capacity, and scripts/setup_efs.sh adds a mount target in every subnet listed
 # here.
 #
 # Two of the file system kinds restrict how many entries are allowed, and both
-# checks run even when that kind is unused, because scripts/setup_ec2 invokes
+# checks run even when that kind is unused, because scripts/setup_ec2.sh invokes
 # every setup script unconditionally:
-#   * scripts/setup_io2 aborts on more than one subnet - an io2 volume has to be
+#   * scripts/setup_io2.sh aborts on more than one subnet - an io2 volume has to be
 #     created in the availability zone the instance runs in.
-#   * scripts/setup_fsx aborts when FSX_DEPLOYMENT_TYPE is SINGLE_AZ_* and more
+#   * scripts/setup_fsx.sh aborts when FSX_DEPLOYMENT_TYPE is SINGLE_AZ_* and more
 #     than one subnet is given, and when it is MULTI_AZ_* and only one is.
 SUBNET_IDS=""   # REQUIRED by setup_ec2
 
@@ -1681,7 +1681,7 @@ SUBNET_IDS=""   # REQUIRED by setup_ec2
 # Short label per subnet, comma separated, in the same order as SUBNET_IDS.
 # Only used to name the generated launch JSON files:
 #     $WORKDIR/ec2/cli_input_json/<AMI_NAME>-<label>.json
-# When a label is missing, scripts/setup_ec2 falls back to the subnet ID with
+# When a label is missing, scripts/setup_ec2.sh falls back to the subnet ID with
 # the "subnet-" prefix stripped, which makes for long file names. Using the
 # availability-zone letter ("a", "c", "d") keeps them readable.
 # Default: empty, i.e. every file name carries the subnet ID.
@@ -1691,7 +1691,7 @@ SUBNET_IDS=""   # REQUIRED by setup_ec2
 # Leave this commented out to use the first entry of SUBNET_IDS, which is the
 # normal case. Uncomment it only when the AMI must be built in a different
 # subnet from the one the instances are launched in. An empty value is *not* the
-# same as leaving it out: scripts/base_setup only fills in the default when the
+# same as leaving it out: scripts/bootstrap.sh only fills in the default when the
 # variable is undefined, so SUBNET_ID="" means "let Packer choose a subnet".
 #SUBNET_ID=""
 
@@ -1810,14 +1810,14 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 # own by using an absolute path and appending it here. Removing an entry simply
 # skips that step.
 #
-#   make_swap.sh               -> SWAP_BS, SWAP_COUNT
-#   enable_multi_processing.sh -> MULTI_PROCESSING
+#   setup_swap.sh              -> SWAP_BS, SWAP_COUNT
+#   setup_shared_memory.sh     -> MULTI_PROCESSING
 #   install_packages.sh        -> PACKAGES, ADDITIONAL_PACKAGES,
 #                                 FLATPAK_PACKAGES
-#   set_time_zone.sh           -> TIME_ZONE
-#   setup_shutdown.sh          -> SHUTDOWN, SHUTDOWN_DURATION,
+#   set_timezone.sh            -> TIME_ZONE
+#   setup_idle_shutdown.sh     -> SHUTDOWN, SHUTDOWN_DURATION,
 #                                 SHUTDOWN_CHECK_PROCESS
-#SCRIPTS="./scripts/make_swap.sh,./scripts/enable_multi_processing.sh,./scripts/install_packages.sh,./scripts/set_time_zone.sh,./scripts/setup_shutdown.sh"
+#SCRIPTS="./scripts/setup_swap.sh,./scripts/setup_shared_memory.sh,./scripts/install_packages.sh,./scripts/set_timezone.sh,./scripts/setup_idle_shutdown.sh"
 
 # Swap file at /swapfile, created with `dd bs=$SWAP_BS count=$SWAP_COUNT`,
 # activated and appended to /etc/fstab. 128M x 64 = 8 GiB. Set either one to an
@@ -1900,8 +1900,8 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 #  7. AMI families
 # =============================================================================
 #  Two independent families are supported, CPU and GPU. Each one is built by
-#  scripts/make_ami only when <FAMILY>_INSTANCE=1, and gets its own launch JSON
-#  from scripts/setup_ec2. Everything in sections 4 to 6 can be overridden per
+#  scripts/make_ami.sh only when <FAMILY>_INSTANCE=1, and gets its own launch JSON
+#  from scripts/setup_ec2.sh. Everything in sections 4 to 6 can be overridden per
 #  family with a CPU_ / GPU_ prefix.
 
 # --- CPU family --------------------------------------------------------------
@@ -1911,7 +1911,7 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 #CPU_INSTANCE=1
 
 # Required while CPU_INSTANCE is 1.
-# Name of the AMI to build, and the name scripts/setup_ec2 looks up with
+# Name of the AMI to build, and the name scripts/setup_ec2.sh looks up with
 # `describe-images --owners self` to find the image ID (the newest match by
 # creation date wins, and the result is cached in $WORKDIR/ami_ids).
 # Because Packer refuses to overwrite an existing AMI name, include VERSION and
@@ -1982,14 +1982,14 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 #  resolved independently, preserving input order. Missing EFS / FSx / io2
 #  names are created from the remaining settings if CREATE_FILE_SYSTEMS=1; if
 #  it is 0, all missing names are reported before the run aborts. Resolution and
-#  creation happen in scripts/setup_ec2, which calls scripts/setup_s3files,
+#  creation happen in scripts/setup_ec2.sh, which calls scripts/setup_s3files.sh,
 #  setup_efs, setup_fsx and setup_io2 in that order.
 #
 #  The resulting mounts are written into the generated user-data as /etc/fstab
 #  entries followed by `mount -a`, all with `nofail`, so a broken mount does not
 #  prevent the instance from booting - check `mount` after login.
 
-# 1 allows scripts/setup_ec2 to create missing EFS / FSx / io2 resources.
+# 1 allows scripts/setup_ec2.sh to create missing EFS / FSx / io2 resources.
 # 0 (recommended for day-to-day use) makes it fail instead, so a typo in a name
 # cannot silently bill you for a new file system. Creation is a one-off step:
 # set it to 1 once, then put it back to 0.
@@ -2003,7 +2003,7 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 
 # Every created AMI, EFS, FSx, and io2 resource receives ManagedBy plus the
 # non-empty metadata tags below. Exact created IDs are appended to the manifest,
-# which scripts/cleanup_resources consumes in dry-run mode by default.
+# which scripts/cleanup_resources.sh consumes in dry-run mode by default.
 #RESOURCE_MANAGED_BY="ec2-environment"
 #RESOURCE_PROJECT=""
 #RESOURCE_OWNER=""
@@ -2115,7 +2115,7 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 #  no file system yet, mounts it, and adds a UUID-based /etc/fstab entry.
 #
 #  Requires exactly one entry in SUBNET_IDS, because the volume must be created
-#  in the same availability zone as the instance. scripts/setup_io2 enforces
+#  in the same availability zone as the instance. scripts/setup_io2.sh enforces
 #  this even when io2 is unused.
 #IO2_IDS=""
 
@@ -2148,7 +2148,7 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 # =============================================================================
 #  9. Launch JSON and the `ec2` command
 # =============================================================================
-#  scripts/setup_ec2 writes one --cli-input-json file per subnet and enabled
+#  scripts/setup_ec2.sh writes one --cli-input-json file per subnet and enabled
 #  family to $WORKDIR/ec2/cli_input_json/<AMI_NAME>-<label>.json, holding
 #  ImageId, InstanceType, KeyName, EbsOptimized, IamInstanceProfile and a single
 #  network interface. Everything else below is copied into $WORKDIR/ec2/config,
@@ -2200,7 +2200,7 @@ EC2_IMAGE_NAME_FILTER="${PREFIX}"
 #EC2_SSH_USER="${EC2_USER}"
 
 # "AssociatePublicIpAddress" in the launch JSON. Must be the literal true or
-# false - scripts/setup_ec2 rejects anything else. Set true only for public
+# false - scripts/setup_ec2.sh rejects anything else. Set true only for public
 # subnets; combine with EC2_PRIVATE_IP=0 to actually connect over it.
 #EC2_PUBLIC_IP=false
 
@@ -2249,7 +2249,7 @@ EC2_IMAGE_NAME_FILTER="${PREFIX}"
 #EC2_MOSH_SERVER="/usr/bin/mosh-server"
 
 # URI of the generated cloud-init user-data, as the `ec2` command expects it.
-# scripts/setup_ec2 also derives the local output path from this value: it
+# scripts/setup_ec2.sh also derives the local output path from this value: it
 # strips the scheme, and a ".gz" suffix additionally triggers gzip of the
 # generated script - which is what makes it fit in the 16 KB user-data limit.
 # Use "fileb://" for the compressed form and "file://" for plain text.
@@ -2352,8 +2352,8 @@ EC2_IMAGE_NAME_FILTER="${PREFIX}"
 #USER_SCRIPT_PATH=""
 __EC2_ASSET_config_example__
   chmod 600 "$root/config.example"
-  mkdir -p "$(dirname "$root/scripts/base_setup")"
-  cat >"$root/scripts/base_setup" <<'__EC2_ASSET_scripts_base_setup__'
+  mkdir -p "$(dirname "$root/scripts/bootstrap.sh")"
+  cat >"$root/scripts/bootstrap.sh" <<'__EC2_ASSET_scripts_bootstrap_sh__'
 #!/usr/bin/env bash
 # shellcheck disable=SC1090,SC1091
 set -euo pipefail
@@ -2379,8 +2379,8 @@ WORKDIR=$requested_workdir
 CONFIG=$requested_config
 export WORKDIR CONFIG
 unset requested_workdir requested_config
-source "$(dirname "$0")/variables"
-source "$(dirname "$0")/lib.sh"
+source "$(dirname "$0")/variables.sh"
+source "$(dirname "$0")/common.sh"
 mkdir -p "$WORKDIR"
 
 ensure_aws_session() {
@@ -2413,14 +2413,14 @@ done
 unset prefix security_group_filters
 resolve_ids FSX_ROUTE_TABLE_IDS FSX_ROUTE_TABLE_NAMES 'ec2 describe-route-tables' \
   tag:Name 'RouteTables[].RouteTableId'
-# Derived here rather than in scripts/variables, which runs before SUBNET_NAMES
+# Derived here rather than in scripts/variables.sh, which runs before SUBNET_NAMES
 # can be resolved. Unset means "use the first subnet"; an explicit empty value
 # means "let Packer choose", so this must not use the :- form.
 SUBNET_ID=${SUBNET_ID-${SUBNET_IDS%%,*}}
-__EC2_ASSET_scripts_base_setup__
-  chmod 755 "$root/scripts/base_setup"
-  mkdir -p "$(dirname "$root/scripts/cleanup_resources")"
-  cat >"$root/scripts/cleanup_resources" <<'__EC2_ASSET_scripts_cleanup_resources__'
+__EC2_ASSET_scripts_bootstrap_sh__
+  chmod 755 "$root/scripts/bootstrap.sh"
+  mkdir -p "$(dirname "$root/scripts/cleanup_resources.sh")"
+  cat >"$root/scripts/cleanup_resources.sh" <<'__EC2_ASSET_scripts_cleanup_resources_sh__'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -2435,7 +2435,7 @@ while (($# > 0));do
     --workdir) workdir=${2:?--workdir requires a path}; shift ;;
     --config) config=${2:?--config requires a path}; shift ;;
     --help)
-      echo 'Usage: scripts/cleanup_resources [--manifest PATH] [--workdir DIR] [--config FILE] [--execute]'
+      echo 'Usage: scripts/cleanup_resources.sh [--manifest PATH] [--workdir DIR] [--config FILE] [--execute]'
       echo 'Without --execute, only the exact-ID deletion plan is printed.'
       exit 0
       ;;
@@ -2446,7 +2446,7 @@ done
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck disable=SC1091
-source "$script_dir/base_setup" "$workdir" "$config"
+source "$script_dir/bootstrap.sh" "$workdir" "$config"
 manifest=${manifest_override:-$RESOURCE_MANIFEST}
 [[ -f "$manifest" ]] || { echo "Resource manifest not found: $manifest" >&2; exit 1; }
 
@@ -2538,10 +2538,10 @@ done < "$manifest"
 mv "$remaining_manifest" "$manifest"
 trap - EXIT
 exit "$failed"
-__EC2_ASSET_scripts_cleanup_resources__
-  chmod 755 "$root/scripts/cleanup_resources"
-  mkdir -p "$(dirname "$root/scripts/lib.sh")"
-  cat >"$root/scripts/lib.sh" <<'__EC2_ASSET_scripts_lib_sh__'
+__EC2_ASSET_scripts_cleanup_resources_sh__
+  chmod 755 "$root/scripts/cleanup_resources.sh"
+  mkdir -p "$(dirname "$root/scripts/common.sh")"
+  cat >"$root/scripts/common.sh" <<'__EC2_ASSET_scripts_common_sh__'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -2853,10 +2853,10 @@ setup_filesystem_ids() {
   local IFS=,
   printf -v "$ids_var" '%s' "${resolved_ids[*]}"
 }
-__EC2_ASSET_scripts_lib_sh__
-  chmod 755 "$root/scripts/lib.sh"
-  mkdir -p "$(dirname "$root/scripts/make_ami")"
-  cat >"$root/scripts/make_ami" <<'__EC2_ASSET_scripts_make_ami__'
+__EC2_ASSET_scripts_common_sh__
+  chmod 755 "$root/scripts/common.sh"
+  mkdir -p "$(dirname "$root/scripts/make_ami.sh")"
+  cat >"$root/scripts/make_ami.sh" <<'__EC2_ASSET_scripts_make_ami_sh__'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -2866,7 +2866,7 @@ if ! type packer >/dev/null 2>&1; then
 fi
 
 # shellcheck disable=SC1091
-source "$(dirname "$0")/base_setup" "${1:-}" "${2:-}"
+source "$(dirname "$0")/bootstrap.sh" "${1:-}" "${2:-}"
 repo_root=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 repository_revision=$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || printf unknown)
 
@@ -3152,24 +3152,24 @@ for family in "${enabled_families[@]}"; do
   fi
 done
 exit "$build_status"
-__EC2_ASSET_scripts_make_ami__
-  chmod 755 "$root/scripts/make_ami"
-  mkdir -p "$(dirname "$root/scripts/setup_ec2")"
-  cat >"$root/scripts/setup_ec2" <<'__EC2_ASSET_scripts_setup_ec2__'
+__EC2_ASSET_scripts_make_ami_sh__
+  chmod 755 "$root/scripts/make_ami.sh"
+  mkdir -p "$(dirname "$root/scripts/setup_ec2.sh")"
+  cat >"$root/scripts/setup_ec2.sh" <<'__EC2_ASSET_scripts_setup_ec2_sh__'
 #!/usr/bin/env bash
 # shellcheck disable=SC1091,SC2016
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Read by scripts/variables: this entry point also needs KEY_NAME, which
+# Read by scripts/variables.sh: this entry point also needs KEY_NAME, which
 # building an AMI or a file system does not.
 # shellcheck disable=SC2034
 REQUIRE_EC2_SETTINGS=1
-source "$script_dir/base_setup" "${1:-}" "${2:-}"
-S3FILES_IDS=$(source "$script_dir/setup_s3files")
-EFS_IDS=$("$script_dir/setup_efs")
-FSX_IDS=$("$script_dir/setup_fsx")
-IO2_IDS=$("$script_dir/setup_io2")
+source "$script_dir/bootstrap.sh" "${1:-}" "${2:-}"
+S3FILES_IDS=$(source "$script_dir/setup_s3files.sh")
+EFS_IDS=$("$script_dir/setup_efs.sh")
+FSX_IDS=$("$script_dir/setup_fsx.sh")
+IO2_IDS=$("$script_dir/setup_io2.sh")
 
 for setting in FS_MOUNT_MAX_ATTEMPTS FS_MOUNT_RETRY_INTERVAL;do
   [[ "${!setting}" =~ ^[1-9][0-9]*$ ]] || {
@@ -3595,14 +3595,14 @@ if ((user_data_size > 13107));then
   echo "Warning: user-data is $user_data_size of the 16384 bytes allowed." >&2
 fi
 echo "Generated $WORKDIR/ec2/config and $user_data_sh"
-__EC2_ASSET_scripts_setup_ec2__
-  chmod 755 "$root/scripts/setup_ec2"
-  mkdir -p "$(dirname "$root/scripts/setup_efs")"
-  cat >"$root/scripts/setup_efs" <<'__EC2_ASSET_scripts_setup_efs__'
+__EC2_ASSET_scripts_setup_ec2_sh__
+  chmod 755 "$root/scripts/setup_ec2.sh"
+  mkdir -p "$(dirname "$root/scripts/setup_efs.sh")"
+  cat >"$root/scripts/setup_efs.sh" <<'__EC2_ASSET_scripts_setup_efs_sh__'
 #!/usr/bin/env bash
 set -euo pipefail
 # shellcheck disable=SC1091
-source "$(dirname "$0")/base_setup"
+source "$(dirname "$0")/bootstrap.sh"
 
 get_efs_id() {
   local name=$1
@@ -3654,14 +3654,14 @@ create_efs() {
 
 setup_filesystem_ids efs create_efs prepare_efs_creation
 echo "$EFS_IDS"
-__EC2_ASSET_scripts_setup_efs__
-  chmod 755 "$root/scripts/setup_efs"
-  mkdir -p "$(dirname "$root/scripts/setup_fsx")"
-  cat >"$root/scripts/setup_fsx" <<'__EC2_ASSET_scripts_setup_fsx__'
+__EC2_ASSET_scripts_setup_efs_sh__
+  chmod 755 "$root/scripts/setup_efs.sh"
+  mkdir -p "$(dirname "$root/scripts/setup_fsx.sh")"
+  cat >"$root/scripts/setup_fsx.sh" <<'__EC2_ASSET_scripts_setup_fsx_sh__'
 #!/usr/bin/env bash
 set -euo pipefail
 # shellcheck disable=SC1091
-source "$(dirname "$0")/base_setup"
+source "$(dirname "$0")/bootstrap.sh"
 
 if [[ "$FSX_DEPLOYMENT_TYPE" == MULTI_AZ_* && "$SUBNET_IDS" != *,* ]]; then
   echo "FSX MULTI_AZ deployment requires at least two subnet IDs" >&2
@@ -3739,14 +3739,14 @@ create_fsx() {
 
 setup_filesystem_ids fsx create_fsx prepare_fsx_creation
 echo "$FSX_IDS"
-__EC2_ASSET_scripts_setup_fsx__
-  chmod 755 "$root/scripts/setup_fsx"
-  mkdir -p "$(dirname "$root/scripts/setup_io2")"
-  cat >"$root/scripts/setup_io2" <<'__EC2_ASSET_scripts_setup_io2__'
+__EC2_ASSET_scripts_setup_fsx_sh__
+  chmod 755 "$root/scripts/setup_fsx.sh"
+  mkdir -p "$(dirname "$root/scripts/setup_io2.sh")"
+  cat >"$root/scripts/setup_io2.sh" <<'__EC2_ASSET_scripts_setup_io2_sh__'
 #!/usr/bin/env bash
 set -euo pipefail
 # shellcheck disable=SC1091
-source "$(dirname "$0")/base_setup"
+source "$(dirname "$0")/bootstrap.sh"
 
 if [[ "$SUBNET_IDS" == *,* ]]; then
   echo "io2 requires exactly one subnet ID" >&2
@@ -3791,14 +3791,14 @@ create_io2() {
 
 setup_filesystem_ids io2 create_io2 prepare_io2_creation
 echo "$IO2_IDS"
-__EC2_ASSET_scripts_setup_io2__
-  chmod 755 "$root/scripts/setup_io2"
-  mkdir -p "$(dirname "$root/scripts/setup_s3files")"
-  cat >"$root/scripts/setup_s3files" <<'__EC2_ASSET_scripts_setup_s3files__'
+__EC2_ASSET_scripts_setup_io2_sh__
+  chmod 755 "$root/scripts/setup_io2.sh"
+  mkdir -p "$(dirname "$root/scripts/setup_s3files.sh")"
+  cat >"$root/scripts/setup_s3files.sh" <<'__EC2_ASSET_scripts_setup_s3files_sh__'
 #!/usr/bin/env bash
 set -euo pipefail
 # shellcheck disable=SC1091
-source "$(dirname "$0")/base_setup"
+source "$(dirname "$0")/bootstrap.sh"
 
 get_s3files_id() {
   local name=$1
@@ -3808,10 +3808,10 @@ get_s3files_id() {
 
 setup_filesystem_ids s3files
 echo "$S3FILES_IDS"
-__EC2_ASSET_scripts_setup_s3files__
-  chmod 755 "$root/scripts/setup_s3files"
-  mkdir -p "$(dirname "$root/scripts/variables")"
-  cat >"$root/scripts/variables" <<'__EC2_ASSET_scripts_variables__'
+__EC2_ASSET_scripts_setup_s3files_sh__
+  chmod 755 "$root/scripts/setup_s3files.sh"
+  mkdir -p "$(dirname "$root/scripts/variables.sh")"
+  cat >"$root/scripts/variables.sh" <<'__EC2_ASSET_scripts_variables_sh__'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -3819,7 +3819,7 @@ set -euo pipefail
 # empty, so that a fresh copy names all of them at once instead of failing on
 # whichever one happens to be read first.
 #   REQUIRED_SETTINGS      needed by every entry point
-#   REQUIRED_SETTINGS_EC2  needed on top of those by scripts/setup_ec2, which
+#   REQUIRED_SETTINGS_EC2  needed on top of those by scripts/setup_ec2.sh, which
 #                          writes the launch JSON and the `ec2` configuration.
 #                          Building an AMI or a file system does not need them.
 REQUIRED_SETTINGS=(REGION)
@@ -3829,7 +3829,7 @@ required_settings=("${REQUIRED_SETTINGS[@]}")
 missing=()
 for required in "${required_settings[@]}"; do
   [[ -n "${!required-}" ]] && continue
-  # A required <X>_IDS can instead be given as <X>_NAMES, which base_setup
+  # A required <X>_IDS can instead be given as <X>_NAMES, which bootstrap.sh
   # resolves once the credentials are known to work.
   alternative=''
   [[ "$required" == *_IDS ]] && alternative="${required%_IDS}_NAMES"
@@ -3877,7 +3877,7 @@ DELETE_ON_TERMINATION=${DELETE_ON_TERMINATION-true}
 VOLUME_SIZE=${VOLUME_SIZE-60}
 VOLUME_TYPE=${VOLUME_TYPE-gp3}
 ENCRYPTED=${ENCRYPTED-true}
-SCRIPTS=${SCRIPTS-./scripts/make_swap.sh,./scripts/enable_multi_processing.sh,./scripts/install_packages.sh,./scripts/set_time_zone.sh,./scripts/setup_shutdown.sh}
+SCRIPTS=${SCRIPTS-./scripts/setup_swap.sh,./scripts/setup_shared_memory.sh,./scripts/install_packages.sh,./scripts/set_timezone.sh,./scripts/setup_idle_shutdown.sh}
 SWAP_BS=${SWAP_BS-128M}
 SWAP_COUNT=${SWAP_COUNT-64}
 TIME_ZONE=${TIME_ZONE-UTC}
@@ -4011,8 +4011,8 @@ SSH_KNOWN_HOSTS=${SSH_KNOWN_HOSTS-}
 SSH_CONFIG=${SSH_CONFIG-}
 SSH_RC=${SSH_RC-}
 USER_SCRIPT_PATH=${USER_SCRIPT_PATH-}
-__EC2_ASSET_scripts_variables__
-  chmod 755 "$root/scripts/variables"
+__EC2_ASSET_scripts_variables_sh__
+  chmod 755 "$root/scripts/variables.sh"
   mkdir -p "$(dirname "$root/packer/plugins.pkr.hcl")"
   cat >"$root/packer/plugins.pkr.hcl" <<'__EC2_ASSET_packer_plugins_pkr_hcl__'
 packer {
@@ -4025,15 +4025,15 @@ packer {
 }
 __EC2_ASSET_packer_plugins_pkr_hcl__
   chmod 644 "$root/packer/plugins.pkr.hcl"
-  mkdir -p "$(dirname "$root/packer/scripts/enable_multi_processing.sh")"
-  cat >"$root/packer/scripts/enable_multi_processing.sh" <<'__EC2_ASSET_packer_scripts_enable_multi_processing_sh__'
+  mkdir -p "$(dirname "$root/packer/scripts/setup_shared_memory.sh")"
+  cat >"$root/packer/scripts/setup_shared_memory.sh" <<'__EC2_ASSET_packer_scripts_setup_shared_memory_sh__'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "${MULTI_PROCESSING:-}" = 1 ]];then
   chmod 1777 /dev/shm
 fi
-__EC2_ASSET_packer_scripts_enable_multi_processing_sh__
-  chmod 755 "$root/packer/scripts/enable_multi_processing.sh"
+__EC2_ASSET_packer_scripts_setup_shared_memory_sh__
+  chmod 755 "$root/packer/scripts/setup_shared_memory.sh"
   mkdir -p "$(dirname "$root/packer/scripts/install_packages.sh")"
   cat >"$root/packer/scripts/install_packages.sh" <<'__EC2_ASSET_packer_scripts_install_packages_sh__'
 #!/usr/bin/env bash
@@ -4132,8 +4132,8 @@ fi
 record_package_manifest
 __EC2_ASSET_packer_scripts_install_packages_sh__
   chmod 755 "$root/packer/scripts/install_packages.sh"
-  mkdir -p "$(dirname "$root/packer/scripts/make_swap.sh")"
-  cat >"$root/packer/scripts/make_swap.sh" <<'__EC2_ASSET_packer_scripts_make_swap_sh__'
+  mkdir -p "$(dirname "$root/packer/scripts/setup_swap.sh")"
+  cat >"$root/packer/scripts/setup_swap.sh" <<'__EC2_ASSET_packer_scripts_setup_swap_sh__'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ -n "${SWAP_BS:-}" ]] && [[ -n "${SWAP_COUNT:-}" ]] && [[ ! -f /swapfile ]]; then
@@ -4143,17 +4143,17 @@ if [[ -n "${SWAP_BS:-}" ]] && [[ -n "${SWAP_COUNT:-}" ]] && [[ ! -f /swapfile ]]
   swapon /swapfile
   echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
 fi
-__EC2_ASSET_packer_scripts_make_swap_sh__
-  chmod 755 "$root/packer/scripts/make_swap.sh"
-  mkdir -p "$(dirname "$root/packer/scripts/set_time_zone.sh")"
-  cat >"$root/packer/scripts/set_time_zone.sh" <<'__EC2_ASSET_packer_scripts_set_time_zone_sh__'
+__EC2_ASSET_packer_scripts_setup_swap_sh__
+  chmod 755 "$root/packer/scripts/setup_swap.sh"
+  mkdir -p "$(dirname "$root/packer/scripts/set_timezone.sh")"
+  cat >"$root/packer/scripts/set_timezone.sh" <<'__EC2_ASSET_packer_scripts_set_timezone_sh__'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ -n "${TIME_ZONE:-}" ]] && timedatectl set-timezone "$TIME_ZONE"
-__EC2_ASSET_packer_scripts_set_time_zone_sh__
-  chmod 755 "$root/packer/scripts/set_time_zone.sh"
-  mkdir -p "$(dirname "$root/packer/scripts/setup_shutdown.sh")"
-  cat >"$root/packer/scripts/setup_shutdown.sh" <<'__EC2_ASSET_packer_scripts_setup_shutdown_sh__'
+__EC2_ASSET_packer_scripts_set_timezone_sh__
+  chmod 755 "$root/packer/scripts/set_timezone.sh"
+  mkdir -p "$(dirname "$root/packer/scripts/setup_idle_shutdown.sh")"
+  cat >"$root/packer/scripts/setup_idle_shutdown.sh" <<'__EC2_ASSET_packer_scripts_setup_idle_shutdown_sh__'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ -z "${SHUTDOWN:-}" ]] && exit 0
@@ -4226,8 +4226,8 @@ elif [[ "$SHUTDOWN" == cron ]]; then
 EOF
   chmod 755 "/etc/cron.$cron_duration/shutdown"
 fi
-__EC2_ASSET_packer_scripts_setup_shutdown_sh__
-  chmod 755 "$root/packer/scripts/setup_shutdown.sh"
+__EC2_ASSET_packer_scripts_setup_idle_shutdown_sh__
+  chmod 755 "$root/packer/scripts/setup_idle_shutdown.sh"
 }
 
 # shellcheck shell=bash
@@ -4342,46 +4342,46 @@ _environment_cleanup_args() {
 make_ami() {
   # Build the configured EC2 AMIs with Packer.
   _environment_args || return
-  _environment_runtime make_ami "$__environment_command_workdir" "$__environment_command_config"
+  _environment_runtime make_ami.sh "$__environment_command_workdir" "$__environment_command_config"
 }
 
 setup() {
   # Generate EC2 launch inputs and install the default ec2 configuration.
   _environment_args || return
   _environment_preflight_config || return 1
-  _environment_runtime setup_ec2 "$__environment_command_workdir" "$__environment_command_config" || return
+  _environment_runtime setup_ec2.sh "$__environment_command_workdir" "$__environment_command_config" || return
   _environment_install_config "$__environment_command_workdir/ec2/config"
 }
 
 setup_efs() {
   # Resolve or create configured EFS file systems.
   _environment_args || return
-  _environment_runtime setup_efs "$__environment_command_workdir" "$__environment_command_config"
+  _environment_runtime setup_efs.sh "$__environment_command_workdir" "$__environment_command_config"
 }
 
 setup_fsx() {
   # Resolve or create configured FSx file systems.
   _environment_args || return
-  _environment_runtime setup_fsx "$__environment_command_workdir" "$__environment_command_config"
+  _environment_runtime setup_fsx.sh "$__environment_command_workdir" "$__environment_command_config"
 }
 
 setup_io2() {
   # Resolve or create configured io2 volumes.
   _environment_args || return
-  _environment_runtime setup_io2 "$__environment_command_workdir" "$__environment_command_config"
+  _environment_runtime setup_io2.sh "$__environment_command_workdir" "$__environment_command_config"
 }
 
 setup_s3files() {
   # Resolve configured S3 file-system identifiers.
   _environment_args || return
-  _environment_runtime setup_s3files "$__environment_command_workdir" "$__environment_command_config"
+  _environment_runtime setup_s3files.sh "$__environment_command_workdir" "$__environment_command_config"
 }
 
 cleanup_resources() {
   # Show or execute cleanup for resources recorded by environment commands.
   _environment_args || return
   _environment_cleanup_args
-  _environment_runtime cleanup_resources "${__environment_cleanup_args[@]}"
+  _environment_runtime cleanup_resources.sh "${__environment_cleanup_args[@]}"
 }
 
 init_environment() {

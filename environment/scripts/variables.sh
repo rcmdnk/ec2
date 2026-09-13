@@ -5,7 +5,7 @@ set -euo pipefail
 # empty, so that a fresh copy names all of them at once instead of failing on
 # whichever one happens to be read first.
 #   REQUIRED_SETTINGS      needed by every entry point
-#   REQUIRED_SETTINGS_EC2  needed on top of those by scripts/setup_ec2, which
+#   REQUIRED_SETTINGS_EC2  needed on top of those by scripts/setup_ec2.sh, which
 #                          writes the launch JSON and the `ec2` configuration.
 #                          Building an AMI or a file system does not need them.
 REQUIRED_SETTINGS=(REGION)
@@ -15,7 +15,7 @@ required_settings=("${REQUIRED_SETTINGS[@]}")
 missing=()
 for required in "${required_settings[@]}"; do
   [[ -n "${!required-}" ]] && continue
-  # A required <X>_IDS can instead be given as <X>_NAMES, which base_setup
+  # A required <X>_IDS can instead be given as <X>_NAMES, which bootstrap.sh
   # resolves once the credentials are known to work.
   alternative=''
   [[ "$required" == *_IDS ]] && alternative="${required%_IDS}_NAMES"
@@ -63,7 +63,7 @@ DELETE_ON_TERMINATION=${DELETE_ON_TERMINATION-true}
 VOLUME_SIZE=${VOLUME_SIZE-60}
 VOLUME_TYPE=${VOLUME_TYPE-gp3}
 ENCRYPTED=${ENCRYPTED-true}
-SCRIPTS=${SCRIPTS-./scripts/make_swap.sh,./scripts/enable_multi_processing.sh,./scripts/install_packages.sh,./scripts/set_time_zone.sh,./scripts/setup_shutdown.sh}
+SCRIPTS=${SCRIPTS-./scripts/setup_swap.sh,./scripts/setup_shared_memory.sh,./scripts/install_packages.sh,./scripts/set_timezone.sh,./scripts/setup_idle_shutdown.sh}
 SWAP_BS=${SWAP_BS-128M}
 SWAP_COUNT=${SWAP_COUNT-64}
 TIME_ZONE=${TIME_ZONE-UTC}

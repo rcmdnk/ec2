@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # shellcheck disable=SC1091
-source "$(dirname "$0")/base_setup"
+source "$(dirname "$0")/bootstrap.sh"
 
 get_s3files_id() {
   local name=$1

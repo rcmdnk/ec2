@@ -12,22 +12,22 @@ for file in "${shell_files[@]}"; do bash -n "$file"; done
 if CONFIG=environment/config.example WORKDIR="$work_dir" bash -c '
   set -euo pipefail
   source environment/config.example
-  source environment/scripts/variables' >/dev/null 2>&1; then
+  source environment/scripts/variables.sh' >/dev/null 2>&1; then
   echo 'Expected config.example to be rejected for its unset required settings.' >&2
   exit 1
 fi
 
 # Every REQUIRED setting must actually be reported, so that none of them can be
-# quietly dropped from config.example or from scripts/variables.
-mapfile -t required < <(sed -n 's/^REQUIRED_SETTINGS\(_EC2\)\{0,1\}=(\(.*\))$/\2/p' environment/scripts/variables | tr ' ' '\n')
-((${#required[@]} > 0)) || { echo 'Could not read REQUIRED_SETTINGS from scripts/variables.' >&2; exit 1; }
+# quietly dropped from config.example or from scripts/variables.sh.
+mapfile -t required < <(sed -n 's/^REQUIRED_SETTINGS\(_EC2\)\{0,1\}=(\(.*\))$/\2/p' environment/scripts/variables.sh | tr ' ' '\n')
+((${#required[@]} > 0)) || { echo 'Could not read REQUIRED_SETTINGS from scripts/variables.sh.' >&2; exit 1; }
 reported=$(CONFIG=environment/config.example WORKDIR="$work_dir" REQUIRE_EC2_SETTINGS=1 bash -c '
   source environment/config.example
-  source environment/scripts/variables' 2>&1 || true)
+  source environment/scripts/variables.sh' 2>&1 || true)
 for name in "${required[@]}"; do
   # A required <X>_IDS is reported as "<X>_IDS (or <X>_NAMES)".
   grep -qE "^ *$name( \(or [A-Z_]+\))?\$" <<<"$reported" || {
-    echo "scripts/variables did not report the missing required setting $name." >&2
+    echo "scripts/variables.sh did not report the missing required setting $name." >&2
     exit 1
   }
   grep -qE "^$name=\"\"" environment/config.example || {
@@ -37,7 +37,7 @@ for name in "${required[@]}"; do
 done
 
 # Keep only the two commonly customized EC2 filters active in a fresh template.
-# Other optional EC2 settings should inherit defaults from scripts/variables so
+# Other optional EC2 settings should inherit defaults from scripts/variables.sh so
 # that future default changes are not pinned by `ec2 init_environment` output.
 mapfile -t active_ec2_settings < <(sed -n 's/^\(EC2_[A-Z0-9_]*\)=.*/\1/p' environment/config.example | sort)
 expected_active_ec2_settings=(EC2_IMAGE_NAME_FILTER EC2_NAME_FILTER)
@@ -48,7 +48,7 @@ if [[ "${active_ec2_settings[*]}" != "${expected_active_ec2_settings[*]}" ]];the
 fi
 
 # With the required settings filled in it must load cleanly, so that every
-# variable the scripts read has a value or a default in scripts/variables.
+# variable the scripts read has a value or a default in scripts/variables.sh.
 filled=$(mktemp "${TMPDIR:-/tmp}/ec2-environment-config.XXXXXX")
 mkdir -p "$root/tmp"
 runtime_dir=$(mktemp -d "$root/tmp/ec2-environment-fs-warning.XXXXXX")
@@ -60,8 +60,8 @@ done
 if ! CONFIG="$filled" WORKDIR="$work_dir" bash -c '
   set -euo pipefail
   source "$CONFIG"
-  source environment/scripts/variables
-  source environment/scripts/lib.sh'; then
+  source environment/scripts/variables.sh
+  source environment/scripts/common.sh'; then
   echo 'config.example does not load cleanly once the required settings are set.' >&2
   exit 1
 fi
@@ -144,12 +144,12 @@ grep -q 'Setting dotfiles' "$config_dotfiles_user_data" || {
   exit 1
 }
 
-# Every upper-case variable the scripts read must be defined by scripts/variables
+# Every upper-case variable the scripts read must be defined by scripts/variables.sh
 # (or by the shell itself), so that a rename cannot leave a script reading a name
 # nothing sets any more.
 # packer/scripts/* are excluded: Packer supplies their environment.
 mapfile -t driver_files < <(find environment/scripts -type f -not -name '*.bak' -not -name '*.orig' -not -name '*~' -print)
-# The REQUIRED_SETTINGS come from the config file, not from scripts/variables.
+# The REQUIRED_SETTINGS come from the config file, not from scripts/variables.sh.
 shell_provided=" AWS_ARGS BASH_REMATCH BASH_SOURCE PWD ${required[*]} "
 defined() { grep -qE "^[[:space:]]*(local )?$1=|for $1 in" "${driver_files[@]}"; }
 undefined=()

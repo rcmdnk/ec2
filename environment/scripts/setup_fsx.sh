@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # shellcheck disable=SC1091
-source "$(dirname "$0")/base_setup"
+source "$(dirname "$0")/bootstrap.sh"
 
 if [[ "$FSX_DEPLOYMENT_TYPE" == MULTI_AZ_* && "$SUBNET_IDS" != *,* ]]; then
   echo "FSX MULTI_AZ deployment requires at least two subnet IDs" >&2

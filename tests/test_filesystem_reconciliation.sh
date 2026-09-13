@@ -4,7 +4,7 @@ set -euo pipefail
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 # shellcheck disable=SC1091
-source environment/scripts/lib.sh
+source environment/scripts/common.sh
 
 test_dir=$(mktemp -d "${TMPDIR:-/tmp}/ec2-environment-filesystems.XXXXXX")
 trap 'rm -rf "$test_dir"' EXIT

@@ -14,7 +14,7 @@
 #  The uncommented lines are the ones you have to look at:
 #
 #    * marked "# REQUIRED" and shipped empty - the scripts have no default and
-#      scripts/variables refuses to run until every one of them is set. It lists
+#      scripts/variables.sh refuses to run until every one of them is set. It lists
 #      all the missing ones at once, so you do not have to find them one by one.
 #    * the naming helpers and the AMI/filter names built from them - they work
 #      as shipped, but every AMI and `ec2` lookup is named after them, so set
@@ -53,20 +53,20 @@
 #  * Boolean values are not uniform: each one is forwarded verbatim to a
 #    different consumer (Packer, run-instances JSON, the `ec2` command, shell
 #    tests), so the accepted values are stated per entry. Do not guess.
-#  * Anything named *_IDS can be given as *_NAMES instead, and base_setup looks
+#  * Anything named *_IDS can be given as *_NAMES instead, and bootstrap.sh looks
 #    the IDs up for you. *_IDS wins when both are set. A name that matches
 #    nothing, or more than one resource, is an error rather than a guess.
 #  * Every *_IDS list must have as many entries as its *_MOUNT_POINTS list
-#    (scripts/lib.sh: compare_length).
+#    (scripts/common.sh: compare_length).
 #  * For the remaining per-file-system option lists, a single value is broadcast
 #    to all entries; otherwise the length must match the number of names
-#    (scripts/lib.sh: make_array).
+#    (scripts/common.sh: make_array).
 #
 #  -- Per-AMI-family overrides -------------------------------------------------
 #
 #  Every variable consumed by the Packer template can be overridden for a single
 #  AMI family by prefixing it with CPU_ or GPU_
-#  (scripts/make_ami: make_vars / family_value). For example:
+#  (scripts/make_ami.sh: make_vars / family_value). For example:
 #
 #      VOLUME_SIZE="60"        # applies to both families
 #      GPU_VOLUME_SIZE="200"   # GPU family only
@@ -124,18 +124,18 @@ PREFIX="dev"
 # =============================================================================
 
 # AWS CLI profile. Used for every aws call (--profile) and passed to Packer as
-# `profile`. scripts/base_setup runs `aws sso login --profile "$PROFILE"` when
+# `profile`. scripts/bootstrap.sh runs `aws sso login --profile "$PROFILE"` when
 # the credentials are missing or expired, so an SSO profile works as is.
 # Credentials are never written into the generated user-data.
 # Default: default
 #PROFILE="default"
 
-# AWS region. Required - scripts/variables aborts when it is empty. Used for
+# AWS region. Required - scripts/variables.sh aborts when it is empty. Used for
 # every aws call (--region), for Packer's `region`, and inside user-data to
 # build the FSx NFS endpoint <fs-id>.fsx.<region>.amazonaws.com.
 REGION=""   # REQUIRED
 
-# Exported by scripts/make_ami as AWS_POLL_DELAY_SECONDS / AWS_MAX_ATTEMPTS, and
+# Exported by scripts/make_ami.sh as AWS_POLL_DELAY_SECONDS / AWS_MAX_ATTEMPTS, and
 # picked up by the AWS SDK that Packer uses. They bound how long Packer waits
 # for AWS state changes such as "AMI available". The defaults allow roughly
 # 10 s x 400 = 66 minutes, which is enough for a large image with many packages.
@@ -166,20 +166,20 @@ REGION=""   # REQUIRED
 # Name tag of the VPC, looked up when VPC_ID is empty.
 #VPC_NAME=""
 
-# Subnets to deploy into, comma separated. Required by scripts/setup_ec2, and by
+# Subnets to deploy into, comma separated. Required by scripts/setup_ec2.sh, and by
 # the file system scripts when they create something. make_ami works without it:
 # Packer then picks a subnet in the default VPC. More than one may be
-# listed: scripts/setup_ec2 then writes one launch JSON per subnet per enabled
+# listed: scripts/setup_ec2.sh then writes one launch JSON per subnet per enabled
 # AMI family, so an instance can be started in whichever availability zone has
-# capacity, and scripts/setup_efs adds a mount target in every subnet listed
+# capacity, and scripts/setup_efs.sh adds a mount target in every subnet listed
 # here.
 #
 # Two of the file system kinds restrict how many entries are allowed, and both
-# checks run even when that kind is unused, because scripts/setup_ec2 invokes
+# checks run even when that kind is unused, because scripts/setup_ec2.sh invokes
 # every setup script unconditionally:
-#   * scripts/setup_io2 aborts on more than one subnet - an io2 volume has to be
+#   * scripts/setup_io2.sh aborts on more than one subnet - an io2 volume has to be
 #     created in the availability zone the instance runs in.
-#   * scripts/setup_fsx aborts when FSX_DEPLOYMENT_TYPE is SINGLE_AZ_* and more
+#   * scripts/setup_fsx.sh aborts when FSX_DEPLOYMENT_TYPE is SINGLE_AZ_* and more
 #     than one subnet is given, and when it is MULTI_AZ_* and only one is.
 SUBNET_IDS=""   # REQUIRED by setup_ec2
 
@@ -191,7 +191,7 @@ SUBNET_IDS=""   # REQUIRED by setup_ec2
 # Short label per subnet, comma separated, in the same order as SUBNET_IDS.
 # Only used to name the generated launch JSON files:
 #     $WORKDIR/ec2/cli_input_json/<AMI_NAME>-<label>.json
-# When a label is missing, scripts/setup_ec2 falls back to the subnet ID with
+# When a label is missing, scripts/setup_ec2.sh falls back to the subnet ID with
 # the "subnet-" prefix stripped, which makes for long file names. Using the
 # availability-zone letter ("a", "c", "d") keeps them readable.
 # Default: empty, i.e. every file name carries the subnet ID.
@@ -201,7 +201,7 @@ SUBNET_IDS=""   # REQUIRED by setup_ec2
 # Leave this commented out to use the first entry of SUBNET_IDS, which is the
 # normal case. Uncomment it only when the AMI must be built in a different
 # subnet from the one the instances are launched in. An empty value is *not* the
-# same as leaving it out: scripts/base_setup only fills in the default when the
+# same as leaving it out: scripts/bootstrap.sh only fills in the default when the
 # variable is undefined, so SUBNET_ID="" means "let Packer choose a subnet".
 #SUBNET_ID=""
 
@@ -320,14 +320,14 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 # own by using an absolute path and appending it here. Removing an entry simply
 # skips that step.
 #
-#   make_swap.sh               -> SWAP_BS, SWAP_COUNT
-#   enable_multi_processing.sh -> MULTI_PROCESSING
+#   setup_swap.sh              -> SWAP_BS, SWAP_COUNT
+#   setup_shared_memory.sh     -> MULTI_PROCESSING
 #   install_packages.sh        -> PACKAGES, ADDITIONAL_PACKAGES,
 #                                 FLATPAK_PACKAGES
-#   set_time_zone.sh           -> TIME_ZONE
-#   setup_shutdown.sh          -> SHUTDOWN, SHUTDOWN_DURATION,
+#   set_timezone.sh            -> TIME_ZONE
+#   setup_idle_shutdown.sh     -> SHUTDOWN, SHUTDOWN_DURATION,
 #                                 SHUTDOWN_CHECK_PROCESS
-#SCRIPTS="./scripts/make_swap.sh,./scripts/enable_multi_processing.sh,./scripts/install_packages.sh,./scripts/set_time_zone.sh,./scripts/setup_shutdown.sh"
+#SCRIPTS="./scripts/setup_swap.sh,./scripts/setup_shared_memory.sh,./scripts/install_packages.sh,./scripts/set_timezone.sh,./scripts/setup_idle_shutdown.sh"
 
 # Swap file at /swapfile, created with `dd bs=$SWAP_BS count=$SWAP_COUNT`,
 # activated and appended to /etc/fstab. 128M x 64 = 8 GiB. Set either one to an
@@ -410,8 +410,8 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 #  7. AMI families
 # =============================================================================
 #  Two independent families are supported, CPU and GPU. Each one is built by
-#  scripts/make_ami only when <FAMILY>_INSTANCE=1, and gets its own launch JSON
-#  from scripts/setup_ec2. Everything in sections 4 to 6 can be overridden per
+#  scripts/make_ami.sh only when <FAMILY>_INSTANCE=1, and gets its own launch JSON
+#  from scripts/setup_ec2.sh. Everything in sections 4 to 6 can be overridden per
 #  family with a CPU_ / GPU_ prefix.
 
 # --- CPU family --------------------------------------------------------------
@@ -421,7 +421,7 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 #CPU_INSTANCE=1
 
 # Required while CPU_INSTANCE is 1.
-# Name of the AMI to build, and the name scripts/setup_ec2 looks up with
+# Name of the AMI to build, and the name scripts/setup_ec2.sh looks up with
 # `describe-images --owners self` to find the image ID (the newest match by
 # creation date wins, and the result is cached in $WORKDIR/ami_ids).
 # Because Packer refuses to overwrite an existing AMI name, include VERSION and
@@ -492,14 +492,14 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 #  resolved independently, preserving input order. Missing EFS / FSx / io2
 #  names are created from the remaining settings if CREATE_FILE_SYSTEMS=1; if
 #  it is 0, all missing names are reported before the run aborts. Resolution and
-#  creation happen in scripts/setup_ec2, which calls scripts/setup_s3files,
+#  creation happen in scripts/setup_ec2.sh, which calls scripts/setup_s3files.sh,
 #  setup_efs, setup_fsx and setup_io2 in that order.
 #
 #  The resulting mounts are written into the generated user-data as /etc/fstab
 #  entries followed by `mount -a`, all with `nofail`, so a broken mount does not
 #  prevent the instance from booting - check `mount` after login.
 
-# 1 allows scripts/setup_ec2 to create missing EFS / FSx / io2 resources.
+# 1 allows scripts/setup_ec2.sh to create missing EFS / FSx / io2 resources.
 # 0 (recommended for day-to-day use) makes it fail instead, so a typo in a name
 # cannot silently bill you for a new file system. Creation is a one-off step:
 # set it to 1 once, then put it back to 0.
@@ -513,7 +513,7 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 
 # Every created AMI, EFS, FSx, and io2 resource receives ManagedBy plus the
 # non-empty metadata tags below. Exact created IDs are appended to the manifest,
-# which scripts/cleanup_resources consumes in dry-run mode by default.
+# which scripts/cleanup_resources.sh consumes in dry-run mode by default.
 #RESOURCE_MANAGED_BY="ec2-environment"
 #RESOURCE_PROJECT=""
 #RESOURCE_OWNER=""
@@ -625,7 +625,7 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 #  no file system yet, mounts it, and adds a UUID-based /etc/fstab entry.
 #
 #  Requires exactly one entry in SUBNET_IDS, because the volume must be created
-#  in the same availability zone as the instance. scripts/setup_io2 enforces
+#  in the same availability zone as the instance. scripts/setup_io2.sh enforces
 #  this even when io2 is unused.
 #IO2_IDS=""
 
@@ -658,7 +658,7 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 # =============================================================================
 #  9. Launch JSON and the `ec2` command
 # =============================================================================
-#  scripts/setup_ec2 writes one --cli-input-json file per subnet and enabled
+#  scripts/setup_ec2.sh writes one --cli-input-json file per subnet and enabled
 #  family to $WORKDIR/ec2/cli_input_json/<AMI_NAME>-<label>.json, holding
 #  ImageId, InstanceType, KeyName, EbsOptimized, IamInstanceProfile and a single
 #  network interface. Everything else below is copied into $WORKDIR/ec2/config,
@@ -710,7 +710,7 @@ EC2_IMAGE_NAME_FILTER="${PREFIX}"
 #EC2_SSH_USER="${EC2_USER}"
 
 # "AssociatePublicIpAddress" in the launch JSON. Must be the literal true or
-# false - scripts/setup_ec2 rejects anything else. Set true only for public
+# false - scripts/setup_ec2.sh rejects anything else. Set true only for public
 # subnets; combine with EC2_PRIVATE_IP=0 to actually connect over it.
 #EC2_PUBLIC_IP=false
 
@@ -759,7 +759,7 @@ EC2_IMAGE_NAME_FILTER="${PREFIX}"
 #EC2_MOSH_SERVER="/usr/bin/mosh-server"
 
 # URI of the generated cloud-init user-data, as the `ec2` command expects it.
-# scripts/setup_ec2 also derives the local output path from this value: it
+# scripts/setup_ec2.sh also derives the local output path from this value: it
 # strips the scheme, and a ".gz" suffix additionally triggers gzip of the
 # generated script - which is what makes it fit in the 16 KB user-data limit.
 # Use "fileb://" for the compressed form and "file://" for plain text.

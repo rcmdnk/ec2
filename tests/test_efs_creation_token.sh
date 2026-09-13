@@ -2,8 +2,8 @@
 set -euo pipefail
 
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
-# shellcheck source=environment/scripts/lib.sh
-source "$root/environment/scripts/lib.sh"
+# shellcheck source=environment/scripts/common.sh
+source "$root/environment/scripts/common.sh"
 
 token_a=$(efs_creation_token 'foo!bar')
 token_b=$(efs_creation_token 'foobar')

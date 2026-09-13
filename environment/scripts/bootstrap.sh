@@ -23,8 +23,8 @@ WORKDIR=$requested_workdir
 CONFIG=$requested_config
 export WORKDIR CONFIG
 unset requested_workdir requested_config
-source "$(dirname "$0")/variables"
-source "$(dirname "$0")/lib.sh"
+source "$(dirname "$0")/variables.sh"
+source "$(dirname "$0")/common.sh"
 mkdir -p "$WORKDIR"
 
 ensure_aws_session() {
@@ -57,7 +57,7 @@ done
 unset prefix security_group_filters
 resolve_ids FSX_ROUTE_TABLE_IDS FSX_ROUTE_TABLE_NAMES 'ec2 describe-route-tables' \
   tag:Name 'RouteTables[].RouteTableId'
-# Derived here rather than in scripts/variables, which runs before SUBNET_NAMES
+# Derived here rather than in scripts/variables.sh, which runs before SUBNET_NAMES
 # can be resolved. Unset means "use the first subnet"; an explicit empty value
 # means "let Packer choose", so this must not use the :- form.
 SUBNET_ID=${SUBNET_ID-${SUBNET_IDS%%,*}}

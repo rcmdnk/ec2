@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # shellcheck disable=SC1091
-source "$(dirname "$0")/base_setup"
+source "$(dirname "$0")/bootstrap.sh"
 
 if [[ "$SUBNET_IDS" == *,* ]]; then
   echo "io2 requires exactly one subnet ID" >&2

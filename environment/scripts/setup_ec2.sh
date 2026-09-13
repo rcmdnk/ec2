@@ -3,15 +3,15 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Read by scripts/variables: this entry point also needs KEY_NAME, which
+# Read by scripts/variables.sh: this entry point also needs KEY_NAME, which
 # building an AMI or a file system does not.
 # shellcheck disable=SC2034
 REQUIRE_EC2_SETTINGS=1
-source "$script_dir/base_setup" "${1:-}" "${2:-}"
-S3FILES_IDS=$(source "$script_dir/setup_s3files")
-EFS_IDS=$("$script_dir/setup_efs")
-FSX_IDS=$("$script_dir/setup_fsx")
-IO2_IDS=$("$script_dir/setup_io2")
+source "$script_dir/bootstrap.sh" "${1:-}" "${2:-}"
+S3FILES_IDS=$(source "$script_dir/setup_s3files.sh")
+EFS_IDS=$("$script_dir/setup_efs.sh")
+FSX_IDS=$("$script_dir/setup_fsx.sh")
+IO2_IDS=$("$script_dir/setup_io2.sh")
 
 for setting in FS_MOUNT_MAX_ATTEMPTS FS_MOUNT_RETRY_INTERVAL;do
   [[ "${!setting}" =~ ^[1-9][0-9]*$ ]] || {

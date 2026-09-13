@@ -8,7 +8,7 @@ runtime_dir=$(mktemp -d "$root/tmp/ec2-environment-resource-lifecycle.XXXXXX")
 trap 'rm -rf "$runtime_dir"' EXIT
 
 # shellcheck disable=SC1091
-source environment/scripts/lib.sh
+source environment/scripts/common.sh
 RESOURCE_MANAGED_BY=ec2-environment
 RESOURCE_PROJECT='project with spaces'
 RESOURCE_OWNER=owner@example.com

@@ -7,7 +7,7 @@ if ! type packer >/dev/null 2>&1; then
 fi
 
 # shellcheck disable=SC1091
-source "$(dirname "$0")/base_setup" "${1:-}" "${2:-}"
+source "$(dirname "$0")/bootstrap.sh" "${1:-}" "${2:-}"
 repo_root=$(CDPATH='' cd -- "$(dirname "$0")/.." && pwd)
 repository_revision=$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || printf unknown)
 

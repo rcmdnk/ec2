@@ -12,7 +12,7 @@ while (($# > 0));do
     --workdir) workdir=${2:?--workdir requires a path}; shift ;;
     --config) config=${2:?--config requires a path}; shift ;;
     --help)
-      echo 'Usage: scripts/cleanup_resources [--manifest PATH] [--workdir DIR] [--config FILE] [--execute]'
+      echo 'Usage: scripts/cleanup_resources.sh [--manifest PATH] [--workdir DIR] [--config FILE] [--execute]'
       echo 'Without --execute, only the exact-ID deletion plan is printed.'
       exit 0
       ;;
@@ -23,7 +23,7 @@ done
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck disable=SC1091
-source "$script_dir/base_setup" "$workdir" "$config"
+source "$script_dir/bootstrap.sh" "$workdir" "$config"
 manifest=${manifest_override:-$RESOURCE_MANIFEST}
 [[ -f "$manifest" ]] || { echo "Resource manifest not found: $manifest" >&2; exit 1; }
 
