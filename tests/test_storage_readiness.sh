@@ -32,15 +32,15 @@ chmod 755 "$mock_bin"/*
 
 config="$runtime_dir/config"
 cat > "$config" <<EOF
-REGION=ap-northeast-1
-CPU_AMI_NAME=storage-readiness-test
-SUBNET_IDS=subnet-storage-readiness-test
-KEY_NAME=storage-readiness-test
-EC2_SSH_KEY=/tmp/storage-readiness-test.pem
+AWS_REGION=ap-northeast-1
+CPU_OUTPUT_AMI_NAME=storage-readiness-test
+AWS_SUBNET_IDS=subnet-storage-readiness-test
+EC2_KEY_NAME=storage-readiness-test
+EC2_SSH_PRIVATE_KEY=/tmp/storage-readiness-test.pem
 S3FILES_IDS=fs-storage-readiness-test
 S3FILES_MOUNT_POINTS=$runtime_dir/mnt
-FS_MOUNT_MAX_ATTEMPTS=2
-FS_MOUNT_RETRY_INTERVAL=1
+MOUNT_READY_MAX_ATTEMPTS=2
+MOUNT_READY_RETRY_INTERVAL_SECONDS=1
 EOF
 
 work=${runtime_dir#"$root/"}/work

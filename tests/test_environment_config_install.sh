@@ -22,18 +22,18 @@ EOF
 chmod 755 "$mock_bin/aws"
 
 cat > "$environment_config" <<'EOF'
-REGION=ap-northeast-1
-CPU_AMI_NAME=environment-install-test
-SUBNET_IDS=subnet-environment-install-test
-SUBNET_LABELS=ci
-KEY_NAME=environment-install-test
+AWS_REGION=ap-northeast-1
+CPU_OUTPUT_AMI_NAME=environment-install-test
+AWS_SUBNET_IDS=subnet-environment-install-test
+EC2_SUBNET_LABELS=ci
+EC2_KEY_NAME=environment-install-test
 EC2_SSH_OPTIONS=(-o StrictHostKeyChecking=no)
 EC2_ET_OPTIONS=(--keepalive 30 --terminal-path '/opt/et terminal')
 EC2_SCP_OPTIONS=(-r -p)
 EC2_RSYNC_OPTIONS=(-a --delete '--exclude=cache dir')
-FS_USR=0
-FS_DOTFILES_FILE=
-FS_DOTFILES_DIR=
+USER_ENV_ENABLE_USR_SYMLINK=0
+USER_ENV_DOTFILES_FILE=
+USER_ENV_DOTFILES_DIR=
 EOF
 
 echo 'manual_setting=keep-me' > "$xdg_config/ec2/config"

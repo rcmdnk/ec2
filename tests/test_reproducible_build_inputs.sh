@@ -27,17 +27,17 @@ chmod 755 "$mock_bin"/*
 write_config() {
   local path=$1 source_id=${2-}
   cat > "$path" <<EOF
-REGION=ap-northeast-1
-CPU_INSTANCE=1
-GPU_INSTANCE=0
-CPU_AMI_NAME=reproducible-build-test
-CPU_AMI_FILTER=source-name-*
-CPU_AMI_OWNER=123456789012
+AWS_REGION=ap-northeast-1
+CPU_ENABLED=1
+GPU_ENABLED=0
+CPU_OUTPUT_AMI_NAME=reproducible-build-test
+CPU_SOURCE_AMI_NAME_FILTER=source-name-*
+CPU_SOURCE_AMI_OWNER=123456789012
 CPU_SOURCE_AMI_ID=$source_id
-SUBNET_IDS=subnet-build-input-test
-VPC_ID=vpc-build-input-test
-PACKAGES=git
-UPDATE_PACKAGES=0
+AWS_SUBNET_IDS=subnet-build-input-test
+AWS_VPC_ID=vpc-build-input-test
+AMI_PACKAGES=git
+AMI_UPDATE_PACKAGES=0
 EOF
 }
 

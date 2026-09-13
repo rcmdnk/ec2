@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-[[ -z "${SHUTDOWN:-}" ]] && exit 0
+[[ -z "${AMI_IDLE_SHUTDOWN_BACKEND:-}" ]] && exit 0
 cat > /usr/local/sbin/shutdown_if_idle <<EOF
 #!/usr/bin/env bash
 set -eu
@@ -10,11 +10,11 @@ has_login_user() {
 }
 
 has_keepalive_process() {
-  if [[ -z "${SHUTDOWN_CHECK_PROCESS:-}" ]]; then
+  if [[ -z "${AMI_IDLE_SHUTDOWN_KEEPALIVE_PROCESSES:-}" ]]; then
     return 1
   fi
   ps -eo uid=,comm= |
-      awk '\$1 != 0 && \$2 ~ /^(${SHUTDOWN_CHECK_PROCESS:-sshd})\$/ { found = 1 } END { exit !found }'
+      awk '\$1 != 0 && \$2 ~ /^(${AMI_IDLE_SHUTDOWN_KEEPALIVE_PROCESSES:-sshd})\$/ { found = 1 } END { exit !found }'
 }
 
 is_idle() {
@@ -36,7 +36,7 @@ if is_idle; then
 fi
 EOF
 chmod 755 /usr/local/sbin/shutdown_if_idle
-if [[ "$SHUTDOWN" == systemd ]]; then
+if [[ "$AMI_IDLE_SHUTDOWN_BACKEND" == systemd ]]; then
   cat > /etc/systemd/system/shutdown.service <<EOF
 [Unit]
 Description=Power off idle instance
@@ -54,7 +54,7 @@ EOF
 Description=Check for idle instance
 
 [Timer]
-OnCalendar=${SHUTDOWN_DURATION:-hourly}
+OnCalendar=${AMI_IDLE_SHUTDOWN_SCHEDULE:-hourly}
 
 [Install]
 WantedBy=timers.target
@@ -62,8 +62,8 @@ EOF
   systemctl daemon-reload
   systemctl enable --now shutdown.timer
   systemctl start shutdown.timer
-elif [[ "$SHUTDOWN" == cron ]]; then
-  cron_duration=${SHUTDOWN_DURATION:-hourly}
+elif [[ "$AMI_IDLE_SHUTDOWN_BACKEND" == cron ]]; then
+  cron_duration=${AMI_IDLE_SHUTDOWN_SCHEDULE:-hourly}
   cat << EOF > "/etc/cron.$cron_duration/shutdown"
 #!/usr/bin/env bash
 /usr/local/sbin/shutdown_if_idle

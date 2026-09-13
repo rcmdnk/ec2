@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # shellcheck disable=SC1091
-source "$(dirname "$0")/bootstrap.sh"
+source "$(dirname "$0")/bootstrap.sh" "${1:-}" "${2:-}" ec2
 
 if [[ "$FSX_DEPLOYMENT_TYPE" == MULTI_AZ_* && "$SUBNET_IDS" != *,* ]]; then
   echo "FSX MULTI_AZ deployment requires at least two subnet IDs" >&2
@@ -30,8 +30,8 @@ prepare_fsx_creation() {
   fi
   FSX_SECURITY_GROUP_IDS=$(make_array "$n_names" "$FSX_SECURITY_GROUP_IDS") || return 1
   FSX_STORAGE_TYPES=$(make_array "$n_names" "$FSX_STORAGE_TYPES" "SSD") || return 1
-  FSX_STORAGE_CAPACITIES=$(make_array "$n_names" "$FSX_STORAGE_CAPACITIES" "100") || return 1
-  FSX_THROUGHPUT_CAPACITIES=$(make_array "$n_names" "$FSX_THROUGHPUT_CAPACITIES" "160") || return 1
+  FSX_STORAGE_CAPACITIES_GIB=$(make_array "$n_names" "$FSX_STORAGE_CAPACITIES_GIB" "100") || return 1
+  FSX_THROUGHPUT_CAPACITIES_MIBPS=$(make_array "$n_names" "$FSX_THROUGHPUT_CAPACITIES_MIBPS" "160") || return 1
   FSX_AUTOMATIC_BACKUP_RETENTION_DAYS=$(make_array "$n_names" "$FSX_AUTOMATIC_BACKUP_RETENTION_DAYS" "30") || return 1
   FSX_ROUTE_TABLE_IDS=$(make_array "$n_names" "$FSX_ROUTE_TABLE_IDS") || return 1
 }
@@ -43,8 +43,8 @@ create_fsx() {
   local -a args
   security_group_id=$(csv_items "$FSX_SECURITY_GROUP_IDS" "$i")
   storage_type=$(csv_items "$FSX_STORAGE_TYPES" "$i")
-  storage_capacity=$(csv_items "$FSX_STORAGE_CAPACITIES" "$i")
-  throughput_capacity=$(csv_items "$FSX_THROUGHPUT_CAPACITIES" "$i")
+  storage_capacity=$(csv_items "$FSX_STORAGE_CAPACITIES_GIB" "$i")
+  throughput_capacity=$(csv_items "$FSX_THROUGHPUT_CAPACITIES_MIBPS" "$i")
   automatic_backup_retention_days=$(csv_items "$FSX_AUTOMATIC_BACKUP_RETENTION_DAYS" "$i")
   route_table_id=$(csv_items "$FSX_ROUTE_TABLE_IDS" "$i")
   [[ "$throughput_capacity" =~ ^[0-9]+$ && "$automatic_backup_retention_days" =~ ^[0-9]+$ ]] || {

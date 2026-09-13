@@ -16,15 +16,15 @@ if [[ " $* " == *" ec2 describe-images "* ]];then echo ami-generated-artifact-te
 EOF
 chmod 755 "$mock_bin/aws"
 cat > "$config" <<'EOF'
-REGION=ap-northeast-1
-CPU_AMI_NAME=generated-artifact-test
-SUBNET_IDS=subnet-generated-artifact-test
-SUBNET_LABELS=ci
-KEY_NAME=generated-artifact-test
-EC2_SSH_KEY=/tmp/generated-artifact-test.pem
-FS_USR=0
-FS_DOTFILES_FILE=
-FS_DOTFILES_DIR=
+AWS_REGION=ap-northeast-1
+CPU_OUTPUT_AMI_NAME=generated-artifact-test
+AWS_SUBNET_IDS=subnet-generated-artifact-test
+EC2_SUBNET_LABELS=ci
+EC2_KEY_NAME=generated-artifact-test
+EC2_SSH_PRIVATE_KEY=/tmp/generated-artifact-test.pem
+USER_ENV_ENABLE_USR_SYMLINK=0
+USER_ENV_DOTFILES_FILE=
+USER_ENV_DOTFILES_DIR=
 EOF
 
 work=${runtime_dir#"$root/"}/work

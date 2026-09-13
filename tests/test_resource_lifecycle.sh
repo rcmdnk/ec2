@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034  # Values are consumed by the generated resource helpers.
 set -euo pipefail
 
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
@@ -65,9 +66,9 @@ EOF
 chmod 755 "$mock_bin/aws"
 config="$runtime_dir/config"
 cat > "$config" <<'EOF'
-REGION=ap-northeast-1
-CPU_INSTANCE=0
-GPU_INSTANCE=0
+AWS_REGION=ap-northeast-1
+CPU_ENABLED=0
+GPU_ENABLED=0
 RESOURCE_MANAGED_BY=ec2-environment
 AWS_POLL_DELAY_SECONDS=1
 AWS_MAX_ATTEMPTS=2

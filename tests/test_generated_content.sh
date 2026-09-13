@@ -22,21 +22,21 @@ Host test
   LocalCommand touch $marker
 EOF
 cat > "$config" <<EOF
-REGION=ap-northeast-1
-CPU_AMI_NAME=generated-content-test
-SUBNET_IDS=subnet-generated-content-test
-KEY_NAME=generated-content-test
-EC2_SSH_KEY='/tmp/key with spaces.pem'
-EC2_SSH_USER='test-user; touch $marker'
+AWS_REGION=ap-northeast-1
+CPU_OUTPUT_AMI_NAME=generated-content-test
+AWS_SUBNET_IDS=subnet-generated-content-test
+EC2_KEY_NAME=generated-content-test
+EC2_SSH_PRIVATE_KEY='/tmp/key with spaces.pem'
+EC2_SSH_USERNAME='test-user; touch $marker'
 EC2_SUBMIT_COMMAND='echo \$(touch $marker)'
 S3FILES_IDS=fs-generated-content-test
 S3FILES_MOUNT_POINTS='$runtime_dir/mount point; touch $marker'
-FS_DIR='$runtime_dir/fs dir; touch $marker'
-FS_USR=0
-FS_DOTFILES_FILE=
-FS_DOTFILES_DIR=
-AWS_CONFIG=\$'[profile test]\nvalue=\$(touch $marker)'
-SSH_CONFIG='$ssh_input'
+USER_ENV_ROOT_DIR='$runtime_dir/fs dir; touch $marker'
+USER_ENV_ENABLE_USR_SYMLINK=0
+USER_ENV_DOTFILES_FILE=
+USER_ENV_DOTFILES_DIR=
+INSTANCE_AWS_CONFIG=\$'[profile test]\nvalue=\$(touch $marker)'
+INSTANCE_SSH_CONFIG='$ssh_input'
 EOF
 
 work=${runtime_dir#"$root/"}/work

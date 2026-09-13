@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # shellcheck disable=SC1091
-source "$(dirname "$0")/bootstrap.sh"
+source "$(dirname "$0")/bootstrap.sh" "${1:-}" "${2:-}" ec2
 
 if [[ "$SUBNET_IDS" == *,* ]]; then
   echo "io2 requires exactly one subnet ID" >&2
@@ -21,14 +21,14 @@ prepare_io2_creation() {
     echo "SUBNET_IDS must be set to create an io2 volume" >&2
     return 1
   fi
-  IO2_SIZES=$(make_array "$n_names" "$IO2_SIZES") || return 1
-  IO2_IOPSS=$(make_array "$n_names" "$IO2_IOPSS") || return 1
+  IO2_VOLUME_SIZES_GIB=$(make_array "$n_names" "$IO2_VOLUME_SIZES_GIB") || return 1
+  IO2_VOLUME_IOPS=$(make_array "$n_names" "$IO2_VOLUME_IOPS") || return 1
 }
 
 create_io2() {
   local i=$1 name=$2 id size iops availability_zone tags tag_specification
-  size=$(csv_items "$IO2_SIZES" "$i")
-  iops=$(csv_items "$IO2_IOPSS" "$i")
+  size=$(csv_items "$IO2_VOLUME_SIZES_GIB" "$i")
+  iops=$(csv_items "$IO2_VOLUME_IOPS" "$i")
 
   availability_zone=$(subnet_az "$SUBNET_IDS") || return 1
   tags=$(resource_tags_json "$name") || return 1

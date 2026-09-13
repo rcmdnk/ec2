@@ -9,9 +9,11 @@ fi
 
 requested_workdir=${1:-${WORKDIR:-my_work}}
 requested_config=${2:-${CONFIG:-./config}}
+operation=${3:-common}
 WORKDIR=$requested_workdir
 CONFIG=$requested_config
-export WORKDIR CONFIG
+ENVIRONMENT_OPERATION=$operation
+export WORKDIR CONFIG ENVIRONMENT_OPERATION
 
 if [[ ! -f "$CONFIG" ]]; then
   echo "Environment configuration file not found: $CONFIG" >&2
@@ -61,3 +63,4 @@ resolve_ids FSX_ROUTE_TABLE_IDS FSX_ROUTE_TABLE_NAMES 'ec2 describe-route-tables
 # can be resolved. Unset means "use the first subnet"; an explicit empty value
 # means "let Packer choose", so this must not use the :- form.
 SUBNET_ID=${SUBNET_ID-${SUBNET_IDS%%,*}}
+unset operation

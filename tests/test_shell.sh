@@ -40,7 +40,7 @@ done
 # Other optional EC2 settings should inherit defaults from scripts/variables.sh so
 # that future default changes are not pinned by `ec2 init_environment` output.
 mapfile -t active_ec2_settings < <(sed -n 's/^\(EC2_[A-Z0-9_]*\)=.*/\1/p' environment/config.example | sort)
-expected_active_ec2_settings=(EC2_IMAGE_NAME_FILTER EC2_NAME_FILTER)
+expected_active_ec2_settings=(EC2_IMAGE_NAME_FILTER EC2_KEY_NAME EC2_NAME_FILTER)
 if [[ "${active_ec2_settings[*]}" != "${expected_active_ec2_settings[*]}" ]];then
   echo 'config.example must activate only EC2_NAME_FILTER and EC2_IMAGE_NAME_FILTER.' >&2
   printf '  active: %s\n' "${active_ec2_settings[*]:-(none)}" >&2
@@ -66,7 +66,7 @@ if ! CONFIG="$filled" WORKDIR="$work_dir" bash -c '
   exit 1
 fi
 
-# FS persistence settings without FS_DIR must warn and be skipped while the
+# FS persistence settings without USER_ENV_ROOT_DIR must warn and be skipped while the
 # rest of setup_ec2 continues to generate its output.
 mock_bin="$runtime_dir/bin"
 runtime_config="$runtime_dir/config"
@@ -80,20 +80,20 @@ fi
 EOF
 chmod 755 "$mock_bin/aws"
 cat > "$runtime_config" <<'EOF'
-REGION=ap-northeast-1
-CPU_AMI_NAME=fs-warning-test
-SUBNET_IDS=subnet-fs-warning-test
-KEY_NAME=fs-warning-test
-EC2_SSH_KEY=/tmp/fs-warning-test.pem
-FS_DOTFILES_FILE=.bash_history
-FS_DOTFILES_DIR=.cache,.local
+AWS_REGION=ap-northeast-1
+CPU_OUTPUT_AMI_NAME=fs-warning-test
+AWS_SUBNET_IDS=subnet-fs-warning-test
+EC2_KEY_NAME=fs-warning-test
+EC2_SSH_PRIVATE_KEY=/tmp/fs-warning-test.pem
+USER_ENV_DOTFILES_FILE=.bash_history
+USER_ENV_DOTFILES_DIR=.cache,.local
 EOF
 if ! generated=$(PATH="$mock_bin:$PATH" bin/ec2 setup --workdir "$runtime_work" --environment-config "$runtime_config" --install-config 0 2>&1); then
-  echo 'setup_ec2 must continue when FS_DIR is empty.' >&2
+  echo 'setup_ec2 must continue when USER_ENV_ROOT_DIR is empty.' >&2
   echo "$generated" >&2
   exit 1
 fi
-grep -q 'Warning: FS_DIR is empty; ignoring FS settings: FS_USR FS_DOTFILES_FILE FS_DOTFILES_DIR' <<<"$generated" || {
+grep -q 'Warning: USER_ENV_ROOT_DIR is empty; ignoring user environment settings: USER_ENV_ENABLE_USR_SYMLINK USER_ENV_DOTFILES_FILE USER_ENV_DOTFILES_DIR' <<<"$generated" || {
   echo 'setup_ec2 did not report the ignored enabled FS settings.' >&2
   exit 1
 }
@@ -101,7 +101,7 @@ user_data="$runtime_dir/work/ec2/user_data.sh"
 [[ -f "$user_data" ]] || { echo 'setup_ec2 did not generate user-data after the FS warning.' >&2; exit 1; }
 # shellcheck disable=SC2016  # Match the literal variable reference in generated user-data.
 if grep -q '\$fs_dir' "$user_data"; then
-  echo 'Generated user-data must not reference fs_dir when FS_DIR is empty.' >&2
+  echo 'Generated user-data must not reference fs_dir when USER_ENV_ROOT_DIR is empty.' >&2
   exit 1
 fi
 
@@ -109,17 +109,17 @@ disabled_config="$runtime_dir/config-disabled"
 disabled_work=${runtime_dir#"$root/"}/work-disabled
 cp "$runtime_config" "$disabled_config"
 cat >> "$disabled_config" <<'EOF'
-FS_USR=0
-FS_DOTFILES_FILE=
-FS_DOTFILES_DIR=
+USER_ENV_ENABLE_USR_SYMLINK=0
+USER_ENV_DOTFILES_FILE=
+USER_ENV_DOTFILES_DIR=
 EOF
 if ! disabled_output=$(PATH="$mock_bin:$PATH" bin/ec2 setup --workdir "$disabled_work" --environment-config "$disabled_config" --install-config 0 2>&1); then
   echo 'setup_ec2 must continue when FS settings are disabled.' >&2
   echo "$disabled_output" >&2
   exit 1
 fi
-if grep -q 'Warning: FS_DIR is empty' <<<"$disabled_output"; then
-  echo 'setup_ec2 must not warn when FS_DIR and all dependent FS settings are disabled.' >&2
+if grep -q 'Warning: USER_ENV_ROOT_DIR is empty' <<<"$disabled_output"; then
+  echo 'setup_ec2 must not warn when USER_ENV_ROOT_DIR and all dependent FS settings are disabled.' >&2
   exit 1
 fi
 
@@ -127,20 +127,20 @@ config_dotfiles_config="$runtime_dir/config-dotfiles-config"
 config_dotfiles_work=${runtime_dir#"$root/"}/work-dotfiles-config
 cp "$runtime_config" "$config_dotfiles_config"
 cat >> "$config_dotfiles_config" <<'EOF'
-FS_DIR=/mnt/fs-warning-test
-FS_USR=0
-FS_DOTFILES_FILE=
-FS_DOTFILES_DIR=
-FS_DOTFILES_CONFIG_FILE=tool/config
+USER_ENV_ROOT_DIR=/mnt/fs-warning-test
+USER_ENV_ENABLE_USR_SYMLINK=0
+USER_ENV_DOTFILES_FILE=
+USER_ENV_DOTFILES_DIR=
+USER_ENV_CONFIG_DOTFILES_FILE=tool/config
 EOF
 if ! config_dotfiles_output=$(PATH="$mock_bin:$PATH" bin/ec2 setup --workdir "$config_dotfiles_work" --environment-config "$config_dotfiles_config" --install-config 0 2>&1); then
-  echo 'setup_ec2 must support FS_DOTFILES_CONFIG_FILE without home dotfile settings.' >&2
+  echo 'setup_ec2 must support USER_ENV_CONFIG_DOTFILES_FILE without home dotfile settings.' >&2
   echo "$config_dotfiles_output" >&2
   exit 1
 fi
 config_dotfiles_user_data="$runtime_dir/work-dotfiles-config/ec2/user_data.sh"
 grep -q 'Setting dotfiles' "$config_dotfiles_user_data" || {
-  echo 'FS_DOTFILES_CONFIG_FILE alone must enable dotfile setup.' >&2
+  echo 'USER_ENV_CONFIG_DOTFILES_FILE alone must enable dotfile setup.' >&2
   exit 1
 }
 
@@ -193,5 +193,6 @@ bash tests/test_environment_config_install.sh
 bash tests/test_missing_config_guidance.sh
 bash tests/test_ssh_arguments.sh
 bash tests/test_generated_bin.sh
+bash tests/test_variable_precedence.sh
 
 echo "All static checks passed."

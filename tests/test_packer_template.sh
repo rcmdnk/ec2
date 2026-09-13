@@ -17,16 +17,16 @@ exit 0
 EOF
 chmod 755 "$mock_bin/aws"
 cat > "$config" <<'EOF'
-REGION=ap-northeast-1
-CPU_INSTANCE=1
-GPU_INSTANCE=0
-CPU_AMI_NAME=packer-template-test
-SUBNET_IDS=subnet-packer-template-test
-VPC_ID=vpc-packer-template-test
+AWS_REGION=ap-northeast-1
+CPU_ENABLED=1
+GPU_ENABLED=0
+CPU_OUTPUT_AMI_NAME=packer-template-test
+AWS_SUBNET_IDS=subnet-packer-template-test
+AWS_VPC_ID=vpc-packer-template-test
 EOF
 
 work=${runtime_dir#"$root/"}/work
-PATH="$mock_bin:$PATH" PACKER_VALIDATE_ONLY=1 bin/ec2 make_ami --workdir "$work" \
+PATH="$mock_bin:$PATH" AMI_VALIDATE_ONLY=1 bin/ec2 make_ami --workdir "$work" \
   --environment-config "$config" >/dev/null
 generated="$runtime_dir/work/packer"
 python3 -m json.tool "$generated/main.json" >/dev/null

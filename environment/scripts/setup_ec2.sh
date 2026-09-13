@@ -3,17 +3,17 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Read by scripts/variables.sh: this entry point also needs KEY_NAME, which
+# Read by scripts/variables.sh: this entry point also needs EC2_KEY_NAME, which
 # building an AMI or a file system does not.
 # shellcheck disable=SC2034
 REQUIRE_EC2_SETTINGS=1
-source "$script_dir/bootstrap.sh" "${1:-}" "${2:-}"
+source "$script_dir/bootstrap.sh" "${1:-}" "${2:-}" ec2
 S3FILES_IDS=$(source "$script_dir/setup_s3files.sh")
 EFS_IDS=$("$script_dir/setup_efs.sh")
 FSX_IDS=$("$script_dir/setup_fsx.sh")
 IO2_IDS=$("$script_dir/setup_io2.sh")
 
-for setting in FS_MOUNT_MAX_ATTEMPTS FS_MOUNT_RETRY_INTERVAL;do
+for setting in MOUNT_READY_MAX_ATTEMPTS MOUNT_READY_RETRY_INTERVAL_SECONDS;do
   [[ "${!setting}" =~ ^[1-9][0-9]*$ ]] || {
     echo "$setting must be a positive integer." >&2
     exit 1
@@ -46,7 +46,7 @@ json_dir_abs=$(cd "$json_dir" && pwd)
 cpu_group=''
 gpu_group=''
 mapfile -t ids < <(csv_items "$SUBNET_IDS")
-mapfile -t labels < <(csv_items "$SUBNET_LABELS")
+mapfile -t labels < <(csv_items "$EC2_SUBNET_LABELS")
 jsons=()
 json_contents=()
 used_labels=()
@@ -63,26 +63,26 @@ for i in "${!ids[@]}";do
     label="${ids[i]#*-}"
   fi
   if [[ " ${used_labels[*]-} " == *" $label "* ]];then
-    echo "SUBNET_LABELS[$i] is '$label', which is already used by another subnet." >&2
+    echo "EC2_SUBNET_LABELS[$i] is '$label', which is already used by another subnet." >&2
     echo 'Labels name the generated launch JSON files, so they must be unique.' >&2
     exit 1
   fi
   used_labels+=("$label")
   for family in CPU GPU;do
-    enabled_var="${family}_INSTANCE"; name_var="${family}_AMI_NAME"; type_var="${family}_INSTANCE_TYPE"
+    enabled_var="${family}_ENABLED"; name_var="${family}_OUTPUT_AMI_NAME"; type_var="${family}_BUILD_INSTANCE_TYPE"
     image_id=$(get_image_id "${!enabled_var}" "${!name_var}")
     [[ -n "$image_id" ]] || continue
     json_name="${!name_var}-${label}.json"
     output="$json_dir/$json_name"
     jsons+=("$json_name")
-    public_ip=$EC2_PUBLIC_IP
-    [[ "$public_ip" == true || "$public_ip" == false ]] || { echo 'EC2_PUBLIC_IP must be true or false' >&2; exit 1; }
+    public_ip=$EC2_ASSOCIATE_PUBLIC_IP
+    [[ "$public_ip" == true || "$public_ip" == false ]] || { echo 'EC2_ASSOCIATE_PUBLIC_IP must be true or false' >&2; exit 1; }
     json_content=$({
       printf '{
     "ImageId": %s,
     "InstanceType": %s,
     "KeyName": %s,
-    "EbsOptimized": true,' "$(json_quote "$image_id")" "$(json_quote "${!type_var}")" "$(json_quote "$KEY_NAME")"
+    "EbsOptimized": true,' "$(json_quote "$image_id")" "$(json_quote "${!type_var}")" "$(json_quote "$EC2_KEY_NAME")"
       [[ -n "$iam_json" ]] && printf '
     "IamInstanceProfile": %s,' "$iam_json"
       printf '
@@ -110,22 +110,22 @@ done
   echo '# Edit the environment configuration and run `ec2 setup` again.'
   shell_assignment name_filter "$EC2_NAME_FILTER"
   shell_assignment image_name_filter "$EC2_IMAGE_NAME_FILTER"
-  shell_assignment ssh_key "$EC2_SSH_KEY"
+  shell_assignment ssh_key "$EC2_SSH_PRIVATE_KEY"
   shell_array_assignment ssh_option "${EC2_SSH_OPTIONS[@]}"
   shell_array_assignment et_option "${EC2_ET_OPTIONS[@]}"
   shell_array_assignment scp_option "${EC2_SCP_OPTIONS[@]}"
   shell_array_assignment rsync_option "${EC2_RSYNC_OPTIONS[@]}"
-  shell_assignment ssh_user "$EC2_SSH_USER"
-  shell_assignment mosh_server "$EC2_MOSH_SERVER"
-  shell_assignment private_ip "$EC2_PRIVATE_IP"
-  shell_assignment instance_type "$EC2_INSTANCE_TYPE"
-  shell_assignment spot_instance "$EC2_SPOT_INSTANCE"
+  shell_assignment ssh_user "$EC2_SSH_USERNAME"
+  shell_assignment mosh_server "$EC2_MOSH_SERVER_PATH"
+  shell_assignment private_ip "$EC2_USE_PRIVATE_IP"
+  shell_assignment instance_type "$EC2_DEFAULT_INSTANCE_TYPE"
+  shell_assignment spot_instance "$EC2_USE_SPOT_INSTANCE"
   shell_assignment submit_command "$EC2_SUBMIT_COMMAND"
   shell_assignment submit_n_retry_launch "$EC2_SUBMIT_N_RETRY_LAUNCH"
   shell_assignment submit_n_retry_ssh "$EC2_SUBMIT_N_RETRY_SSH"
   shell_assignment submit_retry_launch_interval "$EC2_SUBMIT_RETRY_LAUNCH_INTERVAL"
   shell_assignment submit_retry_ssh_interval "$EC2_SUBMIT_RETRY_SSH_INTERVAL"
-  shell_assignment user_data "$EC2_USER_DATA"
+  shell_assignment user_data "$EC2_USER_DATA_URI"
   shell_assignment cli_input_json_directory "$json_dir_abs"
   shell_assignment cli_input_json_group "$EC2_CLI_INPUT_JSON_GROUP"
   shell_assignment cli_input_json_group_cpu "$cpu_group"
@@ -133,8 +133,8 @@ done
 } > "$WORKDIR/ec2/config"
 chmod 600 "$WORKDIR/ec2/config"
 
-user_data_name=$(basename "$EC2_USER_DATA")
-user_data_sh="${EC2_USER_DATA#*:}"
+user_data_name=$(basename "$EC2_USER_DATA_URI")
+user_data_sh="${EC2_USER_DATA_URI#*:}"
 while [[ $user_data_sh == //* ]];do
   user_data_sh="${user_data_sh#/}"
 done
@@ -147,10 +147,10 @@ set -euo pipefail
 
 echo "=== Starting user script set by ec2 command ==="
 EEOF
-  shell_assignment user "$EC2_SSH_USER"
+  shell_assignment user "$EC2_SSH_USERNAME"
   shell_assignment region "$REGION"
-  shell_assignment mount_max_attempts "$FS_MOUNT_MAX_ATTEMPTS"
-  shell_assignment mount_retry_interval "$FS_MOUNT_RETRY_INTERVAL"
+  shell_assignment mount_max_attempts "$MOUNT_READY_MAX_ATTEMPTS"
+  shell_assignment mount_retry_interval "$MOUNT_READY_RETRY_INTERVAL_SECONDS"
   cat <<'EEOF'
 instance_id=""
 token=$(curl -fsS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600' || true)
@@ -185,9 +185,9 @@ EEOF
   fi
   if [[ -n "$IO2_IDS" && -n "$IO2_MOUNT_POINTS" ]];then
     n_ids=$(tr ',' '\n' <<<"$IO2_IDS" | wc -l | tr -d ' ')
-    IO2_DEVICES=$(make_array "$n_ids" "$IO2_DEVICES")
+    IO2_DEVICE_NAMES=$(make_array "$n_ids" "$IO2_DEVICE_NAMES")
     IO2_FSTYPES=$(make_array "$n_ids" "$IO2_FSTYPES")
-    mapfile -t devices < <(csv_items "$IO2_DEVICES")
+    mapfile -t devices < <(csv_items "$IO2_DEVICE_NAMES")
     mapfile -t fstypes < <(csv_items "$IO2_FSTYPES")
     IFS=, read -r -a ids <<<"$IO2_IDS"; IFS=, read -r -a mounts <<<"$IO2_MOUNT_POINTS"
     for i in "${!ids[@]}";do
@@ -204,7 +204,7 @@ done
 
 EEOF
 
-  if [[ "$ENABLE_DOCKER" == 1 ]];then
+  if [[ "$INSTANCE_ENABLE_DOCKER" == 1 ]];then
     cat <<'EEOF'
 echo "Setting docker..."
 systemctl enable --now docker 2>/dev/null || true
@@ -214,34 +214,34 @@ EEOF
   fi
 
   ignored_fs_settings=()
-  [[ "$FS_USR" == 1 ]] && ignored_fs_settings+=(FS_USR)
-  [[ -n "$FS_OPT_SCRIPTS" ]] && ignored_fs_settings+=(FS_OPT_SCRIPTS)
-  [[ -n "$FS_DOTFILES_FILE" ]] && ignored_fs_settings+=(FS_DOTFILES_FILE)
-  [[ -n "$FS_DOTFILES_DIR" ]] && ignored_fs_settings+=(FS_DOTFILES_DIR)
-  [[ -n "$FS_DOTFILES_CONFIG_FILE" ]] && ignored_fs_settings+=(FS_DOTFILES_CONFIG_FILE)
-  [[ -n "$FS_DOTFILES_CONFIG_DIR" ]] && ignored_fs_settings+=(FS_DOTFILES_CONFIG_DIR)
-  if [[ -z "$FS_DIR" && ${#ignored_fs_settings[@]} -gt 0 ]];then
-    printf 'Warning: FS_DIR is empty; ignoring FS settings: %s\n' "${ignored_fs_settings[*]}" >&2
+  [[ "$USER_ENV_ENABLE_USR_SYMLINK" == 1 ]] && ignored_fs_settings+=(USER_ENV_ENABLE_USR_SYMLINK)
+  [[ -n "$USER_ENV_INSTALLER_SCRIPTS" ]] && ignored_fs_settings+=(USER_ENV_INSTALLER_SCRIPTS)
+  [[ -n "$USER_ENV_DOTFILES_FILE" ]] && ignored_fs_settings+=(USER_ENV_DOTFILES_FILE)
+  [[ -n "$USER_ENV_DOTFILES_DIR" ]] && ignored_fs_settings+=(USER_ENV_DOTFILES_DIR)
+  [[ -n "$USER_ENV_CONFIG_DOTFILES_FILE" ]] && ignored_fs_settings+=(USER_ENV_CONFIG_DOTFILES_FILE)
+  [[ -n "$USER_ENV_CONFIG_DOTFILES_DIR" ]] && ignored_fs_settings+=(USER_ENV_CONFIG_DOTFILES_DIR)
+  if [[ -z "$USER_ENV_ROOT_DIR" && ${#ignored_fs_settings[@]} -gt 0 ]];then
+    printf 'Warning: USER_ENV_ROOT_DIR is empty; ignoring user environment settings: %s\n' "${ignored_fs_settings[*]}" >&2
   fi
 
-  if [[ -n "$FS_DIR" ]];then
+  if [[ -n "$USER_ENV_ROOT_DIR" ]];then
     cat <<'EEOF'
 echo "Setting fs dir..."
 
 EEOF
-    shell_assignment fs_dir "$FS_DIR"
-    if [[ "$FS_USR" = 1 ]];then
+    shell_assignment fs_dir "$USER_ENV_ROOT_DIR"
+    if [[ "$USER_ENV_ENABLE_USR_SYMLINK" = 1 ]];then
       cat <<'EEOF'
 sudo -u "$user" mkdir -p "$fs_dir/usr/bin"
 sudo -u "$user" ln -s "$fs_dir/usr" "/home/$user/usr"
 EEOF
     fi
 
-    mapfile -t scripts < <(csv_items "$FS_OPT_SCRIPTS")
+    mapfile -t scripts < <(csv_items "$USER_ENV_INSTALLER_SCRIPTS")
     for f in "${scripts[@]}";do
       if [ -z "$f" ];then continue; fi
       if [ ! -f "$f" ];then
-        echo "FS_OPT_SCRIPT: $f not found" >&2
+        echo "USER_ENV_INSTALLER_SCRIPT: $f not found" >&2
         exit 1
       fi
       fname=$(basename "$f")
@@ -266,11 +266,11 @@ EEOF
     done
   fi
 
-  if [[ -n "$FS_DIR" && (
-    -n "$FS_DOTFILES_FILE" ||
-    -n "$FS_DOTFILES_DIR" ||
-    -n "$FS_DOTFILES_CONFIG_FILE" ||
-    -n "$FS_DOTFILES_CONFIG_DIR"
+  if [[ -n "$USER_ENV_ROOT_DIR" && (
+    -n "$USER_ENV_DOTFILES_FILE" ||
+    -n "$USER_ENV_DOTFILES_DIR" ||
+    -n "$USER_ENV_CONFIG_DOTFILES_FILE" ||
+    -n "$USER_ENV_CONFIG_DOTFILES_DIR"
   ) ]];then
     cat <<'EEOF'
 echo "Setting dotfiles..."
@@ -278,10 +278,10 @@ echo "Setting dotfiles..."
 sudo -u "$user" mkdir -p "$fs_dir/dotfiles"
 
 EEOF
-    shell_assignment dotfiles_file_values "$(csv_items "$FS_DOTFILES_FILE")"
-    shell_assignment dotfiles_dir_values "$(csv_items "$FS_DOTFILES_DIR")"
-    shell_assignment dotfiles_config_file_values "$(csv_items "$FS_DOTFILES_CONFIG_FILE")"
-    shell_assignment dotfiles_config_dir_values "$(csv_items "$FS_DOTFILES_CONFIG_DIR")"
+    shell_assignment dotfiles_file_values "$(csv_items "$USER_ENV_DOTFILES_FILE")"
+    shell_assignment dotfiles_dir_values "$(csv_items "$USER_ENV_DOTFILES_DIR")"
+    shell_assignment dotfiles_config_file_values "$(csv_items "$USER_ENV_CONFIG_DOTFILES_FILE")"
+    shell_assignment dotfiles_config_dir_values "$(csv_items "$USER_ENV_CONFIG_DOTFILES_DIR")"
     cat <<'EEOF'
 
 mapfile -t files <<<"$dotfiles_file_values"
@@ -333,18 +333,18 @@ EEOF
   ec2_config_payload=$({
     shell_assignment name_filter "$EC2_NAME_FILTER"
     shell_assignment image_name_filter "$EC2_IMAGE_NAME_FILTER"
-    shell_assignment ssh_user "$EC2_SSH_USER"
-    shell_assignment mosh_server "$EC2_MOSH_SERVER"
-    shell_assignment private_ip "$EC2_PRIVATE_IP"
-    shell_assignment instance_type "$EC2_INSTANCE_TYPE"
-    shell_assignment spot_instance "$EC2_SPOT_INSTANCE"
+    shell_assignment ssh_user "$EC2_SSH_USERNAME"
+    shell_assignment mosh_server "$EC2_MOSH_SERVER_PATH"
+    shell_assignment private_ip "$EC2_USE_PRIVATE_IP"
+    shell_assignment instance_type "$EC2_DEFAULT_INSTANCE_TYPE"
+    shell_assignment spot_instance "$EC2_USE_SPOT_INSTANCE"
     shell_assignment submit_command "$EC2_SUBMIT_COMMAND"
     shell_assignment submit_n_retry_launch "$EC2_SUBMIT_N_RETRY_LAUNCH"
     shell_assignment submit_n_retry_ssh "$EC2_SUBMIT_N_RETRY_SSH"
     shell_assignment submit_retry_launch_interval "$EC2_SUBMIT_RETRY_LAUNCH_INTERVAL"
     shell_assignment submit_retry_ssh_interval "$EC2_SUBMIT_RETRY_SSH_INTERVAL"
-    shell_assignment user_data "fileb:///home/$EC2_SSH_USER/.config/ec2/$user_data_name"
-    shell_assignment cli_input_json_directory "/home/$EC2_SSH_USER/.config/ec2/cli_input_json"
+    shell_assignment user_data "fileb:///home/$EC2_SSH_USERNAME/.config/ec2/$user_data_name"
+    shell_assignment cli_input_json_directory "/home/$EC2_SSH_USERNAME/.config/ec2/cli_input_json"
     shell_assignment cli_input_json_group "$EC2_CLI_INPUT_JSON_GROUP"
     shell_assignment cli_input_json_group_cpu "$cpu_group"
     shell_assignment cli_input_json_group_gpu "$gpu_group"
@@ -365,48 +365,48 @@ chown -R "$user:$user" "/home/$user/.config/ec2/$user_data_name"
 
 EEOF
 
-  if [[ -n "$AWS_CONFIG" ]];then
+  if [[ -n "$INSTANCE_AWS_CONFIG" ]];then
     cat <<'EEOF'
 echo "Setting aws configuration..."
 sudo -u "$user" mkdir -p "/home/$user/.aws"
 EEOF
-    printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "/home/$user/.aws/config" >/dev/null\n' "$(base64_string "$AWS_CONFIG")"
+    printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "/home/$user/.aws/config" >/dev/null\n' "$(base64_string "$INSTANCE_AWS_CONFIG")"
     cat <<'EEOF'
 
 EEOF
   fi
 
-  if [[ -n "$SSH_CONFIG" || -n "$SSH_KNOWN_HOSTS" || -n "$SSH_RC" ]];then
+  if [[ -n "$INSTANCE_SSH_CONFIG" || -n "$INSTANCE_SSH_KNOWN_HOSTS" || -n "$INSTANCE_SSH_RC" ]];then
     cat <<'EEOF'
 echo "Setting ssh configuration..."
 sudo -u "$user" mkdir -p "/home/$user/.ssh"
 sudo -u "$user" chmod 700 "/home/$user/.ssh"
 EEOF
   fi
-  if [[ -n "$SSH_KNOWN_HOSTS" && -f "$SSH_KNOWN_HOSTS" ]];then
-    printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "/home/$user/.ssh/known_hosts" >/dev/null\n' "$(base64_file "$SSH_KNOWN_HOSTS")"
+  if [[ -n "$INSTANCE_SSH_KNOWN_HOSTS" && -f "$INSTANCE_SSH_KNOWN_HOSTS" ]];then
+    printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "/home/$user/.ssh/known_hosts" >/dev/null\n' "$(base64_file "$INSTANCE_SSH_KNOWN_HOSTS")"
     cat <<'EEOF'
 sudo -u "$user" chmod 600 "/home/$user/.ssh/known_hosts"
 
 EEOF
   fi
-  if [[ -n "$SSH_CONFIG" && -f "$SSH_CONFIG" ]];then
-    printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "/home/$user/.ssh/config" >/dev/null\n' "$(base64_file "$SSH_CONFIG")"
+  if [[ -n "$INSTANCE_SSH_CONFIG" && -f "$INSTANCE_SSH_CONFIG" ]];then
+    printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "/home/$user/.ssh/config" >/dev/null\n' "$(base64_file "$INSTANCE_SSH_CONFIG")"
     cat <<'EEOF'
 sudo -u "$user" chmod 600 "/home/$user/.ssh/config"
 
 EEOF
   fi
 
-  if [[ -n "$SSH_RC" && -f "$SSH_RC" ]];then
-    printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "/home/$user/.ssh/rc" >/dev/null\n' "$(base64_file "$SSH_RC")"
+  if [[ -n "$INSTANCE_SSH_RC" && -f "$INSTANCE_SSH_RC" ]];then
+    printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "/home/$user/.ssh/rc" >/dev/null\n' "$(base64_file "$INSTANCE_SSH_RC")"
     cat <<'EEOF'
 sudo -u "$user" chmod 600 "/home/$user/.ssh/rc"
 
 EEOF
   fi
 
-  if [[ -n "$USER_SCRIPT_PATH" && -f "$USER_SCRIPT_PATH" ]];then cat "$USER_SCRIPT_PATH";fi
+  if [[ -n "$INSTANCE_USER_DATA_EXTRA_SCRIPT" && -f "$INSTANCE_USER_DATA_EXTRA_SCRIPT" ]];then cat "$INSTANCE_USER_DATA_EXTRA_SCRIPT";fi
   cat <<'EEOF'
 
 echo "=== End user script set by ec2 command ==="
@@ -417,7 +417,7 @@ chown "$user:$user" "/home/$user/ready"
 EEOF
 } > "$user_data_sh"
 chmod 700 "$user_data_sh"
-if [[ -z "$EC2_USER_DATA" || "$EC2_USER_DATA" == *gz ]];then
+if [[ -z "$EC2_USER_DATA_URI" || "$EC2_USER_DATA_URI" == *gz ]];then
   gzip -c "$user_data_sh" > "$user_data_sh.gz"
   chmod 600 "$user_data_sh.gz"
   user_data_sent="$user_data_sh.gz"
@@ -430,7 +430,7 @@ fi
 user_data_size=$(wc -c < "$user_data_sent" | tr -d ' ')
 if ((user_data_size > 16384));then
   echo "user-data is $user_data_size bytes encoded, over the 16384 byte limit." >&2
-  echo 'Shorten USER_SCRIPT_PATH, or move the work into the AMI or FS_OPT_SCRIPTS.' >&2
+  echo 'Shorten INSTANCE_USER_DATA_EXTRA_SCRIPT, or move the work into the AMI or USER_ENV_INSTALLER_SCRIPTS.' >&2
   exit 1
 fi
 if ((user_data_size > 13107));then

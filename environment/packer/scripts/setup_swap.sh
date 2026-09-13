@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ -n "${SWAP_BS:-}" ]] && [[ -n "${SWAP_COUNT:-}" ]] && [[ ! -f /swapfile ]]; then
-  dd if=/dev/zero of=/swapfile bs="$SWAP_BS" count="$SWAP_COUNT"
+if [[ -n "${AMI_SWAP_BLOCK_SIZE:-}" ]] && [[ -n "${AMI_SWAP_BLOCK_COUNT:-}" ]] && [[ ! -f /swapfile ]]; then
+  dd if=/dev/zero of=/swapfile bs="$AMI_SWAP_BLOCK_SIZE" count="$AMI_SWAP_BLOCK_COUNT"
   chmod 600 /swapfile
   mkswap /swapfile
   swapon /swapfile

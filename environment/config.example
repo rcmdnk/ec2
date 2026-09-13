@@ -18,14 +18,14 @@
 #      all the missing ones at once, so you do not have to find them one by one.
 #    * the naming helpers and the AMI/filter names built from them - they work
 #      as shipped, but every AMI and `ec2` lookup is named after them, so set
-#      PREFIX to something unique to you before the first build.
+#      RESOURCE_NAME_PREFIX to something unique to you before the first build.
 #
 #  -- Who reads this file ------------------------------------------------------
 #
 #  ec2 environment commands source this file, apply their defaults and helpers,
 #                       and finally verify that
 #                       `aws sts get-caller-identity` works, running
-#                       `aws sso login --profile $PROFILE` once if it does not.
+#                       `aws sso login --profile $AWS_PROFILE` once if it does not.
 #  ec2 make_ami         Writes $WORKDIR/packer/main.json and
 #                       $WORKDIR/packer/variables_<family>.json, then runs
 #                       `packer validate` and `packer build` for every enabled
@@ -68,32 +68,32 @@
 #  AMI family by prefixing it with CPU_ or GPU_
 #  (scripts/make_ami.sh: make_vars / family_value). For example:
 #
-#      VOLUME_SIZE="60"        # applies to both families
+#      AMI_ROOT_VOLUME_SIZE_GIB="60"        # applies to both families
 #      GPU_VOLUME_SIZE="200"   # GPU family only
 #
 #  Supported bases: AMI_NAME, AMI_FILTER, AMI_OWNER, SOURCE_AMI_ID,
-#  INSTANCE_TYPE, PROFILE,
-#  REGION, SSH_INTERFACE, SSH_USERNAME, SECURITY_GROUP_IDS, SUBNET_ID, VPC_ID,
-#  IAM_INSTANCE_PROFILE, DEVICE_NAME, DELETE_ON_TERMINATION, VOLUME_SIZE,
-#  VOLUME_TYPE, ENCRYPTED, SCRIPTS, SWAP_BS, SWAP_COUNT, PACKAGES,
-#  FLATPAK_PACKAGES, ADDITIONAL_PACKAGES, TIME_ZONE, SHUTDOWN,
-#  SHUTDOWN_DURATION, SHUTDOWN_CHECK_PROCESS, MULTI_PROCESSING,
-#  UPDATE_PACKAGES.
+#  INSTANCE_TYPE, AWS_PROFILE,
+#  AWS_REGION, SSH_INTERFACE, SSH_USERNAME, SECURITY_GROUP_IDS, SUBNET_ID, AWS_VPC_ID,
+#  AWS_IAM_INSTANCE_PROFILE, AMI_ROOT_DEVICE_NAME, AMI_ROOT_VOLUME_DELETE_ON_TERMINATION, AMI_ROOT_VOLUME_SIZE_GIB,
+#  AMI_ROOT_VOLUME_TYPE, AMI_ROOT_VOLUME_ENCRYPTED, AMI_PROVISION_SCRIPTS, AMI_SWAP_BLOCK_SIZE, AMI_SWAP_BLOCK_COUNT, AMI_PACKAGES,
+#  AMI_FLATPAK_PACKAGES, AMI_EXTRA_PACKAGES, AMI_TIMEZONE, AMI_IDLE_SHUTDOWN_BACKEND,
+#  AMI_IDLE_SHUTDOWN_SCHEDULE, AMI_IDLE_SHUTDOWN_KEEPALIVE_PROCESSES, AMI_ENABLE_SHARED_MEMORY,
+#  AMI_UPDATE_PACKAGES.
 #
 #  -- Required settings --------------------------------------------------------
 #
 #  Needed by every command:
 #
-#      REGION              AWS region                             (section 2)
+#      AWS_REGION              AWS region                             (section 2)
 #
 #  Needed by ec2 setup only - it places instances and describes how you
 #  reach them, which building an AMI does not:
 #
-#      SUBNET_IDS          subnet(s) to deploy into               (section 3)
-#                          (or SUBNET_NAMES)
-#      KEY_NAME            EC2 key pair name                      (section 3)
+#      AWS_SUBNET_IDS          subnet(s) to deploy into               (section 3)
+#                          (or AWS_SUBNET_NAMES)
+#      EC2_KEY_NAME            EC2 key pair name                      (section 3)
 #
-#  The file system scripts also need SUBNET_IDS, but only to create something.
+#  The file system scripts also need AWS_SUBNET_IDS, but only to create something.
 #
 #  <FAMILY>_AMI_NAME is required as well for every family whose
 #  <FAMILY>_INSTANCE is 1 - CPU by default, GPU once you enable it.
@@ -109,14 +109,14 @@
 #  they and the names built from them are left active. Rename or drop them if
 #  you prefer to spell every name out.
 
-# Bump this whenever PACKAGES, SCRIPTS or the source AMI filter changes, so that
+# Bump this whenever AMI_PACKAGES, AMI_PROVISION_SCRIPTS or the source AMI filter changes, so that
 # a new AMI name - and therefore a new AMI - is produced instead of colliding
 # with the existing one. Packer fails on a duplicate AMI name.
-VERSION=1
+AMI_REVISION=1
 
 # Prefix for AMI names, file system names and the `ec2` command filters. Keep it
 # unique per person when several people share one AWS account.
-PREFIX="dev"
+RESOURCE_NAME_PREFIX="dev"
 
 
 # =============================================================================
@@ -124,16 +124,16 @@ PREFIX="dev"
 # =============================================================================
 
 # AWS CLI profile. Used for every aws call (--profile) and passed to Packer as
-# `profile`. scripts/bootstrap.sh runs `aws sso login --profile "$PROFILE"` when
+# `profile`. scripts/bootstrap.sh runs `aws sso login --profile "$AWS_PROFILE"` when
 # the credentials are missing or expired, so an SSO profile works as is.
 # Credentials are never written into the generated user-data.
 # Default: default
-#PROFILE="default"
+#AWS_PROFILE="default"
 
 # AWS region. Required - scripts/variables.sh aborts when it is empty. Used for
 # every aws call (--region), for Packer's `region`, and inside user-data to
 # build the FSx NFS endpoint <fs-id>.fsx.<region>.amazonaws.com.
-REGION=""   # REQUIRED
+AWS_REGION=""   # REQUIRED
 
 # Exported by scripts/make_ami.sh as AWS_POLL_DELAY_SECONDS / AWS_MAX_ATTEMPTS, and
 # picked up by the AWS SDK that Packer uses. They bound how long Packer waits
@@ -145,8 +145,8 @@ REGION=""   # REQUIRED
 # Number of attempts and delay (seconds) used by instance user-data while
 # waiting for requested mounts and attached block devices. Provisioning fails
 # without creating ~/ready when a required mount never becomes usable.
-#FS_MOUNT_MAX_ATTEMPTS=60
-#FS_MOUNT_RETRY_INTERVAL=2
+#MOUNT_READY_MAX_ATTEMPTS=60
+#MOUNT_READY_RETRY_INTERVAL_SECONDS=2
 
 
 # =============================================================================
@@ -159,12 +159,12 @@ REGION=""   # REQUIRED
 # because SECURITY_GROUP_IDS is always passed.
 #
 # Set it to have Packer fail early on a mismatch: it must be the VPC that owns
-# SUBNET_IDS and SECURITY_GROUP_IDS.
+# AWS_SUBNET_IDS and SECURITY_GROUP_IDS.
 # Default: empty, resolved from SUBNET_ID
-#VPC_ID=""
+#AWS_VPC_ID=""
 
-# Name tag of the VPC, looked up when VPC_ID is empty.
-#VPC_NAME=""
+# Name tag of the VPC, looked up when AWS_VPC_ID is empty.
+#AWS_VPC_NAME=""
 
 # Subnets to deploy into, comma separated. Required by scripts/setup_ec2.sh, and by
 # the file system scripts when they create something. make_ami works without it:
@@ -181,24 +181,24 @@ REGION=""   # REQUIRED
 #     created in the availability zone the instance runs in.
 #   * scripts/setup_fsx.sh aborts when FSX_DEPLOYMENT_TYPE is SINGLE_AZ_* and more
 #     than one subnet is given, and when it is MULTI_AZ_* and only one is.
-SUBNET_IDS=""   # REQUIRED by setup_ec2
+AWS_SUBNET_IDS=""   # REQUIRED by setup_ec2
 
-# Name tags of the subnets, comma separated, looked up when SUBNET_IDS is empty.
-# The resolved order follows the order written here, so SUBNET_LABELS still
+# Name tags of the subnets, comma separated, looked up when AWS_SUBNET_IDS is empty.
+# The resolved order follows the order written here, so EC2_SUBNET_LABELS still
 # lines up.
-#SUBNET_NAMES=""
+#AWS_SUBNET_NAMES=""
 
-# Short label per subnet, comma separated, in the same order as SUBNET_IDS.
+# Short label per subnet, comma separated, in the same order as AWS_SUBNET_IDS.
 # Only used to name the generated launch JSON files:
 #     $WORKDIR/ec2/cli_input_json/<AMI_NAME>-<label>.json
 # When a label is missing, scripts/setup_ec2.sh falls back to the subnet ID with
 # the "subnet-" prefix stripped, which makes for long file names. Using the
 # availability-zone letter ("a", "c", "d") keeps them readable.
 # Default: empty, i.e. every file name carries the subnet ID.
-#SUBNET_LABELS="a,d"
+#EC2_SUBNET_LABELS="a,d"
 
 # Subnet used by the Packer build instance (Packer `subnet_id`).
-# Leave this commented out to use the first entry of SUBNET_IDS, which is the
+# Leave this commented out to use the first entry of AWS_SUBNET_IDS, which is the
 # normal case. Uncomment it only when the AMI must be built in a different
 # subnet from the one the instances are launched in. An empty value is *not* the
 # same as leaving it out: scripts/bootstrap.sh only fills in the default when the
@@ -223,7 +223,7 @@ SUBNET_IDS=""   # REQUIRED by setup_ec2
 
 # Security group names, comma separated, looked up when SECURITY_GROUP_IDS is
 # empty. These are real group names (the EC2 GroupName attribute), not Name
-# tags. Group names are unique within a VPC, so set VPC_ID as well when the same
+# tags. Group names are unique within a VPC, so set AWS_VPC_ID as well when the same
 # name exists in more than one VPC.
 #SECURITY_GROUP_NAMES=""
 
@@ -237,13 +237,13 @@ SUBNET_IDS=""   # REQUIRED by setup_ec2
 #
 # The role needs at least: ec2:DescribeInstances, ec2:AttachVolume (io2),
 # elasticfilesystem client mount permissions (EFS), and whatever your own
-# USER_SCRIPT_PATH hook does.
-#IAM_INSTANCE_PROFILE=""
+# INSTANCE_USER_DATA_EXTRA_SCRIPT hook does.
+#AWS_IAM_INSTANCE_PROFILE=""
 
 # EC2 key pair name written to "KeyName" in the generated launch JSON. Required
 # for SSH access to the launched instances. Packer does not use it: it creates
 # and discards a temporary key pair of its own for the build.
-KEY_NAME=""   # REQUIRED by setup_ec2
+EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 
 
 # =============================================================================
@@ -251,7 +251,7 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 # =============================================================================
 
 # Default login user of the source AMI. Not used directly; it seeds the
-# defaults of SSH_USERNAME and EC2_SSH_USER. "ec2-user" for Amazon Linux and the
+# defaults of SSH_USERNAME and EC2_SSH_USERNAME. "ec2-user" for Amazon Linux and the
 # Deep Learning AMIs, "ubuntu" for Ubuntu images.
 # Default: ec2-user
 #EC2_USER="ec2-user"
@@ -263,7 +263,7 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 #                    auto-assigned public IP.
 #   private_dns / public_dns
 #   session_manager  Connect through SSM, no inbound rule needed. Requires an
-#                    SSM-capable IAM_INSTANCE_PROFILE on the build instance.
+#                    SSM-capable AWS_IAM_INSTANCE_PROFILE on the build instance.
 # Default: private_ip
 #SSH_INTERFACE="private_ip"
 
@@ -285,34 +285,34 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 # /dev/sda1 for most Ubuntu images. A wrong value creates a second, unused
 # volume instead of resizing the root one.
 # Default: /dev/xvda
-#DEVICE_NAME="/dev/xvda"
+#AMI_ROOT_DEVICE_NAME="/dev/xvda"
 
 # Root volume size in GiB. Must be at least the size of the source AMI's
 # snapshot. The Deep Learning AMIs need considerably more than Amazon Linux, so
 # GPU_VOLUME_SIZE is a common override.
 # Default: 60
-#VOLUME_SIZE="60"
+#AMI_ROOT_VOLUME_SIZE_GIB="60"
 
 # Root volume type: gp3, gp2, io1, io2, standard.
 # Default: gp3
-#VOLUME_TYPE="gp3"
+#AMI_ROOT_VOLUME_TYPE="gp3"
 
 # Encrypt the root volume with the account's default EBS key. "true" or "false".
 # Default: true
-#ENCRYPTED="true"
+#AMI_ROOT_VOLUME_ENCRYPTED="true"
 
 # Delete the root volume when the instance terminates. "true" or "false".
 # Keep "true" for disposable instances; persistent data belongs on the shared
 # file systems in section 8, not on the root volume.
 # Default: true
-#DELETE_ON_TERMINATION="true"
+#AMI_ROOT_VOLUME_DELETE_ON_TERMINATION="true"
 
 
 # =============================================================================
 #  6. AMI build - provisioning
 # =============================================================================
 #  ec2 make_ami extracts its built-in Packer assets to $WORKDIR/packer/ and runs
-#  Packer from there, so SCRIPTS paths are relative to that directory. Every
+#  Packer from there, so AMI_PROVISION_SCRIPTS paths are relative to that directory. Every
 #  script runs as root ("sudo -S -E sh -eux") and receives the settings below as
 #  environment variables.
 
@@ -320,36 +320,36 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 # own by using an absolute path and appending it here. Removing an entry simply
 # skips that step.
 #
-#   setup_swap.sh              -> SWAP_BS, SWAP_COUNT
-#   setup_shared_memory.sh     -> MULTI_PROCESSING
-#   install_packages.sh        -> PACKAGES, ADDITIONAL_PACKAGES,
-#                                 FLATPAK_PACKAGES
-#   set_timezone.sh            -> TIME_ZONE
-#   setup_idle_shutdown.sh     -> SHUTDOWN, SHUTDOWN_DURATION,
-#                                 SHUTDOWN_CHECK_PROCESS
-#SCRIPTS="./scripts/setup_swap.sh,./scripts/setup_shared_memory.sh,./scripts/install_packages.sh,./scripts/set_timezone.sh,./scripts/setup_idle_shutdown.sh"
+#   setup_swap.sh              -> AMI_SWAP_BLOCK_SIZE, AMI_SWAP_BLOCK_COUNT
+#   setup_shared_memory.sh     -> AMI_ENABLE_SHARED_MEMORY
+#   install_packages.sh        -> AMI_PACKAGES, AMI_EXTRA_PACKAGES,
+#                                 AMI_FLATPAK_PACKAGES
+#   set_timezone.sh            -> AMI_TIMEZONE
+#   setup_idle_shutdown.sh     -> AMI_IDLE_SHUTDOWN_BACKEND, AMI_IDLE_SHUTDOWN_SCHEDULE,
+#                                 AMI_IDLE_SHUTDOWN_KEEPALIVE_PROCESSES
+#AMI_PROVISION_SCRIPTS="./scripts/setup_swap.sh,./scripts/setup_shared_memory.sh,./scripts/install_packages.sh,./scripts/set_timezone.sh,./scripts/setup_idle_shutdown.sh"
 
-# Swap file at /swapfile, created with `dd bs=$SWAP_BS count=$SWAP_COUNT`,
+# Swap file at /swapfile, created with `dd bs=$AMI_SWAP_BLOCK_SIZE count=$AMI_SWAP_BLOCK_COUNT`,
 # activated and appended to /etc/fstab. 128M x 64 = 8 GiB. Set either one to an
 # empty string to skip swap entirely. Skipped when /swapfile already exists.
-# Remember that the swap file consumes VOLUME_SIZE.
+# Remember that the swap file consumes AMI_ROOT_VOLUME_SIZE_GIB.
 # Defaults: 128M, 64
-#SWAP_BS="128M"
-#SWAP_COUNT="64"
+#AMI_SWAP_BLOCK_SIZE="128M"
+#AMI_SWAP_BLOCK_COUNT="64"
 
 # 1 runs `chmod 777 /dev/shm`, so that unprivileged multi-process workloads
 # (PyTorch DataLoader workers, joblib, multiprocessing) can use shared memory.
 # Any other value skips it.
 # Default: 1
-#MULTI_PROCESSING=1
+#AMI_ENABLE_SHARED_MEMORY=1
 
 # System time zone, applied with `timedatectl set-timezone`. Any tz database
 # name, e.g. UTC, Asia/Tokyo, America/Los_Angeles. Empty skips the step.
 # Default: UTC
-#TIME_ZONE="UTC"
+#AMI_TIMEZONE="UTC"
 
 # Space-separated packages installed with dnf (falling back to yum). Applies to
-# both AMI families; use CPU_ADDITIONAL_PACKAGES / GPU_ADDITIONAL_PACKAGES for
+# both AMI families; use CPU_AMI_EXTRA_PACKAGES / GPU_AMI_EXTRA_PACKAGES for
 # family-specific extras.
 #
 # packer/scripts/install_packages.sh special-cases a few names:
@@ -360,31 +360,31 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 #   google-chrome                 Downloaded and installed from the direct rpm.
 #   spal, spal-release            Installs the spal-release repository package.
 #
-# Add "amazon-efs-utils" when you mount EFS, and "docker" when ENABLE_DOCKER=1.
+# Add "amazon-efs-utils" when you mount EFS, and "docker" when INSTANCE_ENABLE_DOCKER=1.
 # Only dnf/yum images are supported; the script exits with an error otherwise.
-#PACKAGES=""
+#AMI_PACKAGES=""
 
 # 1 applies dnf/yum update before package installation; 0 installs against the
 # package versions exposed by the selected source AMI and its configured repos.
 # The final NEVRA list is always recorded in
 # /var/log/ec2-environment-packages.tsv inside the built AMI.
-#UPDATE_PACKAGES=1
+#AMI_UPDATE_PACKAGES=1
 
 # Space-separated Flatpak application IDs. When non-empty, flatpak is installed,
 # the flathub remote is added, and these are installed from it. Leave empty to
 # skip Flatpak completely.
-#FLATPAK_PACKAGES=""
+#AMI_FLATPAK_PACKAGES=""
 
 # Idle auto-shutdown, installed as /usr/local/sbin/shutdown_if_idle.
 #   systemd   Install shutdown.service plus shutdown.timer and enable them.
-#   cron      Drop a script into /etc/cron.<SHUTDOWN_DURATION>/shutdown.
+#   cron      Drop a script into /etc/cron.<AMI_IDLE_SHUTDOWN_SCHEDULE>/shutdown.
 #   ""        Skip the whole step; the instance never powers itself off.
 # Any other value writes the helper script but schedules nothing, which is the
 # same as "" in practice.
 # Default: systemd
-#SHUTDOWN="systemd"
+#AMI_IDLE_SHUTDOWN_BACKEND="systemd"
 
-# How often idleness is checked. The accepted values depend on SHUTDOWN:
+# How often idleness is checked. The accepted values depend on AMI_IDLE_SHUTDOWN_BACKEND:
 #   systemd   A systemd OnCalendar= expression - hourly, daily,
 #             "*:0/30" (every 30 minutes), and so on.
 #   cron      A cron directory suffix - hourly, daily, weekly or monthly.
@@ -392,7 +392,7 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 # The check powers off only if the instance still looks idle after a further
 # 60 s, so the worst case wasted is one interval.
 # Default: hourly
-#SHUTDOWN_DURATION="hourly"
+#AMI_IDLE_SHUTDOWN_SCHEDULE="hourly"
 
 # Extended-regular-expression alternation of process names that keep the
 # instance alive, so that a detached session is not powered off. Matched against
@@ -403,7 +403,7 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 # sessions, or `ssh host command` without a tty. Leave it empty to power off
 # purely on `who`. Note that Linux truncates `comm` to 15 characters, so match
 # on the short process name.
-#SHUTDOWN_CHECK_PROCESS="sshd|screen|tmux|mosh-server"
+#AMI_IDLE_SHUTDOWN_KEEPALIVE_PROCESSES="sshd|screen|tmux|mosh-server"
 
 
 # =============================================================================
@@ -418,62 +418,62 @@ KEY_NAME=""   # REQUIRED by setup_ec2
 
 # 1 builds this AMI and generates its launch JSONs; 0 skips the family entirely.
 # Default: 1
-#CPU_INSTANCE=1
+#CPU_ENABLED=1
 
-# Required while CPU_INSTANCE is 1.
+# Required while CPU_ENABLED is 1.
 # Name of the AMI to build, and the name scripts/setup_ec2.sh looks up with
 # `describe-images --owners self` to find the image ID (the newest match by
 # creation date wins, and the result is cached in $WORKDIR/ami_ids).
-# Because Packer refuses to overwrite an existing AMI name, include VERSION and
+# Because Packer refuses to overwrite an existing AMI name, include AMI_REVISION and
 # bump it for every rebuild.
-CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
+CPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-cpu-${AMI_REVISION}"
 
 # Source AMI name filter. Wildcards are allowed. The generator resolves the
 # newest match to one exact AMI ID before invoking Packer and records that ID in
 # build-inputs-cpu.json.
-#CPU_AMI_FILTER="al2023-ami-*-x86_64" # Amazon Linux 2023
+#CPU_SOURCE_AMI_NAME_FILTER="al2023-ami-*-x86_64" # Amazon Linux 2023
 
 # Owner of the source AMI: "amazon", "self", or an account ID.
-#CPU_AMI_OWNER="amazon"
+#CPU_SOURCE_AMI_OWNER="amazon"
 
 # Optional exact source AMI. When set, this takes precedence over the filter and
 # makes repeated builds independent of newly published upstream images.
 #CPU_SOURCE_AMI_ID=""
 
 # Instance type used to build the AMI, and the InstanceType written into this
-# family's launch JSON. It must match the architecture of CPU_AMI_FILTER
+# family's launch JSON. It must match the architecture of CPU_SOURCE_AMI_NAME_FILTER
 # (x86_64 vs arm64). A larger type shortens the build but costs more per hour.
-#CPU_INSTANCE_TYPE="c8i.2xlarge"
+#CPU_BUILD_INSTANCE_TYPE="c8i.2xlarge"
 
-# Space-separated packages appended to PACKAGES for this family only.
-#CPU_ADDITIONAL_PACKAGES=""
+# Space-separated packages appended to AMI_PACKAGES for this family only.
+#CPU_AMI_EXTRA_PACKAGES=""
 
 # --- GPU family --------------------------------------------------------------
 
 # 1 builds this AMI and generates its launch JSONs; 0 skips the family entirely.
 # Default: 1
-#GPU_INSTANCE=0
+#GPU_ENABLED=0
 
-# Required once GPU_INSTANCE is 1 - uncomment it together with GPU_INSTANCE.
-#GPU_AMI_NAME="${PREFIX}-gpu-${VERSION}"
+# Required once GPU_ENABLED is 1 - uncomment it together with GPU_ENABLED.
+#GPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-gpu-${AMI_REVISION}"
 
 # The Deep Learning AMI names end with a release date, hence the trailing
 # wildcard. The newest match is resolved once before Packer starts.
-#GPU_AMI_FILTER="Deep Learning OSS Nvidia Driver AMI GPU PyTorch * (Amazon Linux 2023)*"
+#GPU_SOURCE_AMI_NAME_FILTER="Deep Learning OSS Nvidia Driver AMI GPU PyTorch * (Amazon Linux 2023)*"
 
-#GPU_AMI_OWNER="amazon"
+#GPU_SOURCE_AMI_OWNER="amazon"
 
 #GPU_SOURCE_AMI_ID=""
 
 # Must be a GPU type, otherwise the NVIDIA driver in the source AMI has no
 # device to bind to.
-#GPU_INSTANCE_TYPE="g4dn.xlarge"
+#GPU_BUILD_INSTANCE_TYPE="g4dn.xlarge"
 
-# Space-separated packages appended to PACKAGES for this family only. Useful for
+# Space-separated packages appended to AMI_PACKAGES for this family only. Useful for
 # resolving conflicts with what the Deep Learning AMI already ships, for example
-# putting openssl-devel in CPU_ADDITIONAL_PACKAGES because the GPU image already
+# putting openssl-devel in CPU_AMI_EXTRA_PACKAGES because the GPU image already
 # has openssl11-devel.
-#GPU_ADDITIONAL_PACKAGES=""
+#GPU_AMI_EXTRA_PACKAGES=""
 
 
 # =============================================================================
@@ -535,12 +535,12 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 #  Mounted as: <id>:/  on  <mount point>  type efs
 #              (_netdev,tls,noresvport,nofail)
 #  The efs type and the tls option come from amazon-efs-utils, so keep
-#  "amazon-efs-utils" in PACKAGES.
+#  "amazon-efs-utils" in AMI_PACKAGES.
 #EFS_IDS=""
 
 # Looked up by the Name tag. When creation is enabled, a new file system is
 # created with --backup --encrypted, tagged with this name, and a mount target
-# is added in every subnet of SUBNET_IDS.
+# is added in every subnet of AWS_SUBNET_IDS.
 #EFS_NAMES=""
 
 #EFS_MOUNT_POINTS="/mnt/efs"
@@ -566,10 +566,10 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 #EFS_THROUGHPUT_MODES="bursting"
 
 # --- FSx for OpenZFS ---------------------------------------------------------
-#  Mounted as: <id>.fsx.<REGION>.amazonaws.com:/fsx/  on  <mount point>
+#  Mounted as: <id>.fsx.<AWS_REGION>.amazonaws.com:/fsx/  on  <mount point>
 #              type nfs4 (noatime,nfsvers=4.2,nconnect=16,_netdev,nofail)
 #  Much faster than EFS for many small files, which makes it a good home for
-#  FS_DIR below.
+#  USER_ENV_ROOT_DIR below.
 #FSX_IDS=""
 
 # Looked up by the Name tag.
@@ -586,24 +586,24 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 #FSX_SECURITY_GROUP_NAMES=""
 
 # SINGLE_AZ_1, SINGLE_AZ_2, MULTI_AZ_1. SINGLE_AZ_* requires exactly one entry
-# in SUBNET_IDS; MULTI_AZ_* requires at least two. The first subnet becomes
+# in AWS_SUBNET_IDS; MULTI_AZ_* requires at least two. The first subnet becomes
 # PreferredSubnetId.
 # Default: SINGLE_AZ_1
 #FSX_DEPLOYMENT_TYPE="SINGLE_AZ_1"
 
-# SSD or INTELLIGENT_TIERING. FSX_STORAGE_CAPACITIES is only sent for SSD;
+# SSD or INTELLIGENT_TIERING. FSX_STORAGE_CAPACITIES_GIB is only sent for SSD;
 # INTELLIGENT_TIERING sizes itself.
 # Default: SSD
 #FSX_STORAGE_TYPES="SSD"
 
 # Size in GiB per name, or a single value for all. SSD accepts 64 to 524288.
 # Default: 100
-#FSX_STORAGE_CAPACITIES="100"
+#FSX_STORAGE_CAPACITIES_GIB="100"
 
 # Throughput in MB/s per name, or a single value for all. Must be an integer
 # from the values the deployment type allows (64, 128, 256, 512, 1024, ...).
 # Default: 160
-#FSX_THROUGHPUT_CAPACITIES="160"
+#FSX_THROUGHPUT_CAPACITIES_MIBPS="160"
 
 # Daily automatic backup retention in days, per name or a single value for all.
 # Must be an integer; 0 disables automatic backups.
@@ -624,7 +624,7 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 #  matching the volume ID against the disk serial, runs mkfs when the disk has
 #  no file system yet, mounts it, and adds a UUID-based /etc/fstab entry.
 #
-#  Requires exactly one entry in SUBNET_IDS, because the volume must be created
+#  Requires exactly one entry in AWS_SUBNET_IDS, because the volume must be created
 #  in the same availability zone as the instance. scripts/setup_io2.sh enforces
 #  this even when io2 is unused.
 #IO2_IDS=""
@@ -636,18 +636,18 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 
 # Size in GiB per name, or a single value for all.
 # Default: 100
-#IO2_SIZES="100"
+#IO2_VOLUME_SIZES_GIB="100"
 
 # Provisioned IOPS per name, or a single value for all. io2 allows 100 to 64000,
 # capped at 500 IOPS per GiB.
 # Default: 3000
-#IO2_IOPSS="3000"
+#IO2_VOLUME_IOPS="3000"
 
 # Requested device name per volume, or a single value for all. Nitro instances
 # rename it to /dev/nvme*, which is why the mount step resolves the real path
 # from the volume serial instead of trusting this value.
 # Default: /dev/sdf
-#IO2_DEVICES="/dev/sdf"
+#IO2_DEVICE_NAMES="/dev/sdf"
 
 # File system created on a blank volume, per volume or a single value for all:
 # xfs, ext4. Existing file systems are detected with blkid and left alone.
@@ -668,19 +668,19 @@ CPU_AMI_NAME="${PREFIX}-cpu-${VERSION}"
 
 # Substring the `ec2` command uses to find *your* instances by Name tag. Keep it
 # narrow enough that you never operate on someone else's instance.
-EC2_NAME_FILTER="${PREFIX}"
+EC2_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 
 # Substring the `ec2` command uses to list *your* AMIs.
-EC2_IMAGE_NAME_FILTER="${PREFIX}"
+EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 
-# Optional local path to the private key matching KEY_NAME, typically
-# ~/.ssh/<KEY_NAME>.pem. When empty, ssh/scp/mosh/et use the usual OpenSSH
+# Optional local path to the private key matching EC2_KEY_NAME, typically
+# ~/.ssh/<EC2_KEY_NAME>.pem. When empty, ssh/scp/mosh/et use the usual OpenSSH
 # identity selection, including ssh-agent and ~/.ssh/config. The ec2 command
 # normally connects by IP address, so any Host rule must match that address or
 # pattern.
 # This value is written to $WORKDIR/ec2/config only, never into user-data or the
 # config installed on the instance.
-#EC2_SSH_KEY=""
+#EC2_SSH_PRIVATE_KEY=""
 
 # Additional SSH arguments copied to the generated ec2 config. Each array
 # element is preserved as one argument for ssh/scp and rsync's SSH transport,
@@ -700,36 +700,36 @@ EC2_IMAGE_NAME_FILTER="${PREFIX}"
 
 # Native rsync arguments. The default archive mode supports recursive directory
 # synchronization while preserving metadata. Do not set -e/--rsh here; ec2
-# constructs it from EC2_SSH_OPTIONS and EC2_SSH_KEY.
+# constructs it from EC2_SSH_OPTIONS and EC2_SSH_PRIVATE_KEY.
 #EC2_RSYNC_OPTIONS=(-a)
 
 # Login user on the launched instances. Also the user whose home directory the
 # generated user-data sets up: dotfiles, ~/.aws, ~/.ssh, ~/.config/ec2,
 # ~/ready.
 # Default: value of EC2_USER
-#EC2_SSH_USER="${EC2_USER}"
+#EC2_SSH_USERNAME="${EC2_USER}"
 
 # "AssociatePublicIpAddress" in the launch JSON. Must be the literal true or
 # false - scripts/setup_ec2.sh rejects anything else. Set true only for public
-# subnets; combine with EC2_PRIVATE_IP=0 to actually connect over it.
-#EC2_PUBLIC_IP=false
+# subnets; combine with EC2_USE_PRIVATE_IP=0 to actually connect over it.
+#EC2_ASSOCIATE_PUBLIC_IP=false
 
 # Tells the `ec2` command to connect to the private address. 1 or 0. Note the
-# different value style from EC2_PUBLIC_IP: this one is a flag for the `ec2`
+# different value style from EC2_ASSOCIATE_PUBLIC_IP: this one is a flag for the `ec2`
 # command, not a field in the launch JSON.
 # Default: 1
-#EC2_PRIVATE_IP=1
+#EC2_USE_PRIVATE_IP=1
 
 # Default instance type for the `ec2` command when it is not taking the type
 # from a launch JSON. Handy for a small "just give me a shell" instance that is
-# cheaper than CPU_INSTANCE_TYPE.
-#EC2_INSTANCE_TYPE="t3.medium"
+# cheaper than CPU_BUILD_INSTANCE_TYPE.
+#EC2_DEFAULT_INSTANCE_TYPE="t3.medium"
 
 # Request spot instances. 1 or 0. Much cheaper, but the instance can be
 # reclaimed at any time, so pair it with the retry settings below and keep your
 # state on the shared file systems.
 # Default: 0
-#EC2_SPOT_INSTANCE=0
+#EC2_USE_SPOT_INSTANCE=0
 
 # Enable the `ec2` command's submit mode, which launches an instance, runs a
 # command over SSH and shuts down afterwards. 1 or 0.
@@ -752,11 +752,11 @@ EC2_IMAGE_NAME_FILTER="${PREFIX}"
 #EC2_CLI_INPUT_JSON_GROUP="cpu"
 
 # Path to mosh-server on the instance, passed to the `ec2` command. Point it at
-# the distribution package (/usr/bin/mosh-server, needs "mosh" in PACKAGES) or
+# the distribution package (/usr/bin/mosh-server, needs "mosh" in AMI_PACKAGES) or
 # at a copy on a shared file system, for example
-# "${FS_DIR}/usr/bin/mosh-server" when you install mosh through FS_OPT_SCRIPTS.
+# "${USER_ENV_ROOT_DIR}/usr/bin/mosh-server" when you install mosh through USER_ENV_INSTALLER_SCRIPTS.
 # Default: /usr/bin/mosh-server
-#EC2_MOSH_SERVER="/usr/bin/mosh-server"
+#EC2_MOSH_SERVER_PATH="/usr/bin/mosh-server"
 
 # URI of the generated cloud-init user-data, as the `ec2` command expects it.
 # scripts/setup_ec2.sh also derives the local output path from this value: it
@@ -764,7 +764,7 @@ EC2_IMAGE_NAME_FILTER="${PREFIX}"
 # generated script - which is what makes it fit in the 16 KB user-data limit.
 # Use "fileb://" for the compressed form and "file://" for plain text.
 # Default: fileb://$WORKDIR/ec2/user_data.sh.gz (made absolute automatically)
-#EC2_USER_DATA="fileb://${WORKDIR}/ec2/user_data.sh.gz"
+#EC2_USER_DATA_URI="fileb://${WORKDIR}/ec2/user_data.sh.gz"
 
 
 # =============================================================================
@@ -772,91 +772,91 @@ EC2_IMAGE_NAME_FILTER="${PREFIX}"
 # =============================================================================
 #  Everything below is rendered into $WORKDIR/ec2/user_data.sh and runs as root
 #  through cloud-init on first boot, in this order: mounts (section 8), docker,
-#  FS_DIR, FS_OPT_SCRIPTS, dotfiles, ~/.config/ec2, ~/.aws, ~/.ssh, and finally
-#  your own USER_SCRIPT_PATH. The script ends by copying
+#  USER_ENV_ROOT_DIR, USER_ENV_INSTALLER_SCRIPTS, dotfiles, ~/.config/ec2, ~/.aws, ~/.ssh, and finally
+#  your own INSTANCE_USER_DATA_EXTRA_SCRIPT. The script ends by copying
 #  /var/log/cloud-init-output.log to ~/ready, which is the marker to poll for
 #  when you want to know that setup has finished.
 #
 #  SECURITY: user-data is readable by anyone who can reach the instance metadata
 #  service on the instance, and a copy is left in the home directory. Never put
 #  access keys, API keys or private keys in any of these settings. Use
-#  IAM_INSTANCE_PROFILE and the AWS credential chain instead.
+#  AWS_IAM_INSTANCE_PROFILE and the AWS credential chain instead.
 
-# 1 runs `systemctl enable --now docker` and adds EC2_SSH_USER to the docker
-# group. Requires "docker" in PACKAGES. 0 skips it.
+# 1 runs `systemctl enable --now docker` and adds EC2_SSH_USERNAME to the docker
+# group. Requires "docker" in AMI_PACKAGES. 0 skips it.
 # Default: 0
-#ENABLE_DOCKER=0
+#INSTANCE_ENABLE_DOCKER=0
 
 # Directory on a shared file system that holds the things you want to survive
 # instance termination: locally built tools and your dotfiles. Normally one of
 # the mount points from section 8, for example "/mnt/fsx/fs2".
 #
-# Leave empty to disable FS_USR, FS_OPT_SCRIPTS and all FS_DOTFILES_* handling -
+# Leave empty to disable USER_ENV_ENABLE_USR_SYMLINK, USER_ENV_INSTALLER_SCRIPTS and all FS_DOTFILES_* handling -
 # they all live under this directory. setup_ec2 warns about the enabled settings
 # it ignores, then continues generating the remaining configuration.
-#FS_DIR=""
+#USER_ENV_ROOT_DIR=""
 
-# 1 creates $FS_DIR/usr/bin and symlinks it as ~/usr, so that software you build
-# with --prefix=$HOME/usr persists across instances. Requires FS_DIR.
+# 1 creates $USER_ENV_ROOT_DIR/usr/bin and symlinks it as ~/usr, so that software you build
+# with --prefix=$HOME/usr persists across instances. Requires USER_ENV_ROOT_DIR.
 # Default: 1
-#FS_USR=1
+#USER_ENV_ENABLE_USR_SYMLINK=1
 
 # Comma-separated local installer scripts to copy onto the shared file system
-# and run once per boot. Requires FS_DIR. For each entry:
+# and run once per boot. Requires USER_ENV_ROOT_DIR. For each entry:
 #
 #   * The file name must be install_<name> with no extension, because <NAME>_OPT
 #     is derived from it by uppercasing; a dot would produce an invalid variable
 #     name.
 #   * You must also define <NAME>_OPT in this config, even if empty - it is
 #     expanded without a default.
-#   * The script is copied to $FS_DIR/opt/bin/install_<name>, made executable,
-#     and run as EC2_SSH_USER with three arguments:
-#         "$FS_DIR/opt"  "$FS_DIR/usr"  $<NAME>_OPT
+#   * The script is copied to $USER_ENV_ROOT_DIR/opt/bin/install_<name>, made executable,
+#     and run as EC2_SSH_USERNAME with three arguments:
+#         "$USER_ENV_ROOT_DIR/opt"  "$USER_ENV_ROOT_DIR/usr"  $<NAME>_OPT
 #     so it should install into argument 2 and build in argument 1.
 #
 # Example:
-#   FS_OPT_SCRIPTS="./my_work/install_mosh,./my_work/install_neovim"
+#   USER_ENV_INSTALLER_SCRIPTS="./my_work/install_mosh,./my_work/install_neovim"
 #   MOSH_OPT="1.4.0"
 #   NEOVIM_OPT="v0.10.2"
-#FS_OPT_SCRIPTS=""
+#USER_ENV_INSTALLER_SCRIPTS=""
 
 # Dotfiles kept on the shared file system. Each entry is created under
-# $FS_DIR/dotfiles/ (touch for files, mkdir -p for directories) and symlinked
+# $USER_ENV_ROOT_DIR/dotfiles/ (touch for files, mkdir -p for directories) and symlinked
 # into the home directory, replacing whatever was there unless it is already a
-# symlink. Requires FS_DIR.
+# symlink. Requires USER_ENV_ROOT_DIR.
 #
 # Use this for state you want to keep - .bash_history, caches, tool state - not
 # for files that belong in such an own dotfiles.
 # Example:
-#    FS_DOTFILES_FILE=".bash_history"
-#    FS_DOTFILES_DIR=".cache,.local"
-#FS_DOTFILES_FILE=""
-#FS_DOTFILES_DIR=""
+#    USER_ENV_DOTFILES_FILE=".bash_history"
+#    USER_ENV_DOTFILES_DIR=".cache,.local"
+#USER_ENV_DOTFILES_FILE=""
+#USER_ENV_DOTFILES_DIR=""
 
 # Same, but relative to ~/.config/ instead of the home directory.
-#FS_DOTFILES_CONFIG_FILE=""
-#FS_DOTFILES_CONFIG_DIR=""
+#USER_ENV_CONFIG_DOTFILES_FILE=""
+#USER_ENV_CONFIG_DOTFILES_DIR=""
 
 # Literal contents of ~/.aws/config on the instance, written with `echo -e`, so
 # use a real multi-line string. Profiles only - no credentials.
 # Example:
-#   AWS_CONFIG="[profile reader]
+#   INSTANCE_AWS_CONFIG="[profile reader]
 #   role_arn = arn:aws:iam::123456789012:role/some-reader
 #   credential_source = Ec2InstanceMetadata"
-#AWS_CONFIG=""
+#INSTANCE_AWS_CONFIG=""
 
 # Local files whose contents are copied to ~/.ssh/known_hosts, ~/.ssh/config and
 # ~/.ssh/rc on the instance (mode 600, ~/.ssh is 700). A missing file is skipped
 # silently. ~/.ssh/rc runs on every incoming SSH connection, which makes it a
 # convenient place for per-session environment setup - and a bad place for
 # anything slow. Do not point any of these at a private key.
-#SSH_KNOWN_HOSTS=""
-#SSH_CONFIG=""
-#SSH_RC=""
+#INSTANCE_SSH_KNOWN_HOSTS=""
+#INSTANCE_SSH_CONFIG=""
+#INSTANCE_SSH_RC=""
 
 # Local shell script appended verbatim to the end of the generated user-data, so
 # it runs as root after everything above. This is the hook for site-specific
 # setup: cloning repositories, installing language runtimes, registering
 # monitoring agents. Review it before every launch - it ends up inside the
 # instance metadata. A missing file is skipped silently.
-#USER_SCRIPT_PATH=""
+#INSTANCE_USER_DATA_EXTRA_SCRIPT=""

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# PACKAGES, ADDITIONAL_PACKAGES, and UPDATE_PACKAGES come from the Packer template's
+# AMI_PACKAGES, AMI_EXTRA_PACKAGES, and AMI_UPDATE_PACKAGES come from the Packer template's
 # environment_vars, so an unset one means the template is out of sync.
 # shellcheck disable=SC2153
-read -r -a packages <<<"${PACKAGES} ${ADDITIONAL_PACKAGES}"
+read -r -a packages <<<"${AMI_PACKAGES} ${AMI_EXTRA_PACKAGES}"
 
 remove_package() {
   local package=$1 remaining=()
@@ -19,14 +19,14 @@ record_package_manifest() {
     > /var/log/ec2-environment-packages.tsv
 }
 
-if [[ -z "${packages[*]}" && -z "${FLATPAK_PACKAGES:-}" ]];then
+if [[ -z "${packages[*]}" && -z "${AMI_FLATPAK_PACKAGES:-}" ]];then
   record_package_manifest
   exit 0
 fi
 
 if command -v dnf >/dev/null 2>&1; then
   # shellcheck disable=SC2153  # Supplied by the Packer environment_vars list.
-  [[ "$UPDATE_PACKAGES" == 1 ]] && dnf update -y
+  [[ "$AMI_UPDATE_PACKAGES" == 1 ]] && dnf update -y
   dnf install -y 'dnf-command(config-manager)'
 
   install_spal=0
@@ -71,20 +71,20 @@ if command -v dnf >/dev/null 2>&1; then
     dnf install -y "${packages[@]}"
   fi
 
-  if [ "${FLATPAK_PACKAGES:-}" ]; then
+  if [ "${AMI_FLATPAK_PACKAGES:-}" ]; then
     dnf install -y flatpak
     flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
     # shellcheck disable=SC2086
-    flatpak install -y flathub $FLATPAK_PACKAGES
+    flatpak install -y flathub $AMI_FLATPAK_PACKAGES
   fi
 
 elif command -v yum >/dev/null 2>&1; then
   # Plain install only. None of the special cases above apply here: the extra
   # repositories (gh, terraform, lazygit), the versioned kernel packages, the
-  # google-chrome rpm and FLATPAK_PACKAGES are all dnf-only. Listing any of them
-  # in PACKAGES on a yum image either fails or silently installs nothing.
+  # google-chrome rpm and AMI_FLATPAK_PACKAGES are all dnf-only. Listing any of them
+  # in AMI_PACKAGES on a yum image either fails or silently installs nothing.
   # shellcheck disable=SC2153  # Supplied by the Packer environment_vars list.
-  [[ "$UPDATE_PACKAGES" == 1 ]] && yum update -y
+  [[ "$AMI_UPDATE_PACKAGES" == 1 ]] && yum update -y
   yum install -y "${packages[@]}"
 else
   echo 'This template supports dnf or yum based images.' >&2
