@@ -343,19 +343,20 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 # =============================================================================
 #  6. AMI build - provisioning
 # =============================================================================
-#  ec2 make_ami extracts its built-in Packer assets to $WORKDIR/packer/ and runs
-#  Packer from there, so additional AMI_PROVISION_SCRIPTS paths are relative to that directory. Every
-#  script runs as root ("sudo -S -E sh -eux") and receives the settings below as
-#  environment variables.
-
-# Built-in AMI provisioning features. Enabled features register their internal
-# Packer script automatically; users do not need to know the script filenames.
+# Built-in AMI provisioning features. Set these flags first to describe the
+# capabilities wanted in the image; the corresponding internal Packer scripts
+# are registered automatically.
 # Default: 1 for all features below.
 #AMI_ENABLE_SWAP=1
 #AMI_ENABLE_SHARED_MEMORY=1
 #AMI_ENABLE_PACKAGES=1
 #AMI_ENABLE_TIMEZONE=1
 #AMI_ENABLE_IDLE_SHUTDOWN=1
+
+#  ec2 make_ami extracts its built-in Packer assets to $WORKDIR/packer/ and runs
+#  Packer from there, so additional AMI_PROVISION_SCRIPTS paths are relative to that directory. Every
+#  script runs as root ("sudo -S -E sh -eux") and receives the settings below as
+#  environment variables.
 
 # Optional comma-separated user scripts appended after enabled built-in features.
 # Paths are relative to the Packer working directory.
@@ -372,9 +373,6 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 # 1 runs `chmod 777 /dev/shm`, so that unprivileged multi-process workloads
 # (PyTorch DataLoader workers, joblib, multiprocessing) can use shared memory.
 # Any other value skips it.
-# Default: 1
-#AMI_ENABLE_SHARED_MEMORY=1
-
 # System time zone, applied with `timedatectl set-timezone`. Any tz database
 # name, e.g. UTC, Asia/Tokyo, America/Los_Angeles. Empty skips the step.
 # Default: UTC
