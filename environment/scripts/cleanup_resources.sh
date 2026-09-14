@@ -86,18 +86,20 @@ delete_efs() {
 }
 
 delete_ami() {
-  local id=$1 snapshot_ids snapshot
+  local id=$1 snapshot_ids snapshot failed=0
   mapfile -t snapshot_ids < <(aws "${AWS_ARGS[@]}" ec2 describe-images --image-ids "$id" \
     --query 'Images[0].BlockDeviceMappings[].Ebs.SnapshotId' --output text 2>/dev/null | \
     tr '\t' '\n' | awk 'NF && $0 != "None"')
   aws "${AWS_ARGS[@]}" ec2 deregister-image --image-id "$id"
   for snapshot in "${snapshot_ids[@]}"; do
     if verify_managed_resource snapshot "$snapshot"; then
-      aws "${AWS_ARGS[@]}" ec2 delete-snapshot --snapshot-id "$snapshot"
+      aws "${AWS_ARGS[@]}" ec2 delete-snapshot --snapshot-id "$snapshot" || failed=1
     else
       echo "Leaving snapshot $snapshot because its ManagedBy tag could not be verified." >&2
+      failed=1
     fi
   done
+  return "$failed"
 }
 
 delete_resource() {
