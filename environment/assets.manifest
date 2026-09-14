@@ -8,6 +8,10 @@
 755 scripts/setup_fsx.sh
 755 scripts/setup_io2.sh
 755 scripts/setup_s3files.sh
+755 scripts/mount_s3files.sh
+755 scripts/mount_efs.sh
+755 scripts/mount_fsx.sh
+755 scripts/mount_io2.sh
 755 scripts/variables.sh
 644 packer/plugins.pkr.hcl
 755 packer/scripts/setup_shared_memory.sh

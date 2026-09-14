@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1091,SC2016
+# shellcheck disable=SC1090,SC1091,SC2016
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -197,34 +197,14 @@ mount_required() {
 EEOF
   for filesystem_provider in "${filesystem_providers[@]}"; do
     mount_script="$WORKDIR/ec2/mounts/$filesystem_provider.sh"
-    [[ -f "$mount_script" ]] && cat "$mount_script"
+    if [[ -f "$mount_script" ]]; then
+      # Custom providers can supply a generated user-data fragment here.
+      source "$mount_script"
+    elif [[ -f "$script_dir/mount_$filesystem_provider.sh" ]]; then
+      # Built-in providers use the same provider hook contract.
+      source "$script_dir/mount_$filesystem_provider.sh"
+    fi
   done
-  if [[ " ${filesystem_providers[*]} " == *" s3files "* && -n "$S3FILES_IDS" && -n "$S3FILES_MOUNT_POINTS" ]];then
-    IFS=, read -r -a ids <<<"$S3FILES_IDS"; IFS=, read -r -a mounts <<<"$S3FILES_MOUNT_POINTS"
-    for i in "${!ids[@]}";do printf 'mount_entry %q %q s3files %q\n' "${ids[i]}:/" "${mounts[i]}" '_netdev,nofail'; done
-  fi
-  if [[ " ${filesystem_providers[*]} " == *" efs "* && -n "$EFS_IDS" && -n "$EFS_MOUNT_POINTS" ]];then
-    IFS=, read -r -a ids <<<"$EFS_IDS"; IFS=, read -r -a mounts <<<"$EFS_MOUNT_POINTS"
-    for i in "${!ids[@]}";do printf 'mount_entry %q %q efs %q\n' "${ids[i]}:/" "${mounts[i]}" '_netdev,tls,noresvport,nofail'; done
-  fi
-  if [[ " ${filesystem_providers[*]} " == *" fsx "* && -n "$FSX_IDS" && -n "$FSX_MOUNT_POINTS" ]];then
-    IFS=, read -r -a ids <<<"$FSX_IDS"; IFS=, read -r -a mounts <<<"$FSX_MOUNT_POINTS"
-    for i in "${!ids[@]}";do printf 'mount_entry %q %q nfs4 %q\n' "${ids[i]}.fsx.${REGION}.amazonaws.com:/fsx/" "${mounts[i]}" 'noatime,nfsvers=4.2,nconnect=16,_netdev,nofail'; done
-  fi
-  if [[ " ${filesystem_providers[*]} " == *" io2 "* && -n "$IO2_IDS" && -n "$IO2_MOUNT_POINTS" ]];then
-    n_ids=$(tr ',' '\n' <<<"$IO2_IDS" | wc -l | tr -d ' ')
-    IO2_DEVICE_NAMES=$(make_array "$n_ids" "$IO2_DEVICE_NAMES")
-    IO2_FSTYPES=$(make_array "$n_ids" "$IO2_FSTYPES")
-    mapfile -t devices < <(csv_items "$IO2_DEVICE_NAMES")
-    mapfile -t fstypes < <(csv_items "$IO2_FSTYPES")
-    IFS=, read -r -a ids <<<"$IO2_IDS"; IFS=, read -r -a mounts <<<"$IO2_MOUNT_POINTS"
-    for i in "${!ids[@]}";do
-      # shellcheck disable=SC2016
-      printf '[[ -n "\$instance_id" ]] || { echo "Could not determine the EC2 instance ID required to attach %q." >&2; exit 1; }; aws ec2 attach-volume --region "\$region" --volume-id %q --instance-id "\$instance_id" --device %q >/dev/null; aws ec2 wait volume-in-use --region "\$region" --volume-ids %q\n' "${ids[i]}" "${ids[i]}" "${devices[i]}" "${ids[i]}"
-      # shellcheck disable=SC2016
-      printf 'io2_mount=%q; io2_type=%q; mkdir -p "\$io2_mount"; io2_path=""; for ((attempt=1; attempt<=mount_max_attempts; attempt++));do io2_path=\$(lsblk -nrpo PATH,SERIAL | awk -v serial=%q '\''\$2 == serial {print \$1; exit}'\''); [[ -n "\$io2_path" ]] && break; ((attempt == mount_max_attempts)) || sleep "\$mount_retry_interval"; done; [[ -n "\$io2_path" ]] || { echo "Attached volume %q did not appear as a block device." >&2; exit 1; }; [[ -n "\$(blkid -o value -s TYPE "\$io2_path" || true)" ]] || mkfs -t "\$io2_type" -f "\$io2_path"; uuid=\$(blkid -o value -s UUID "\$io2_path"); grep -qF " \$io2_mount " /etc/fstab || echo "UUID=\$uuid \$io2_mount \$io2_type defaults,nofail 0 2" >> /etc/fstab; required_mounts+=("\$io2_mount")\n' "${mounts[i]}" "${fstypes[i]}" "${ids[i]//-/}" "${ids[i]}"
-    done
-  fi
   cat <<'EEOF'
 for required_mount in "${required_mounts[@]}";do
   mount_required "$required_mount"
