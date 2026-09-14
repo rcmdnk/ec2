@@ -92,8 +92,10 @@ make_vars() {
     local provision_family=$1 script_list=() extra_script
     [[ "$(family_value "$provision_family" AMI_ENABLE_SWAP)" == 1 ]] && script_list+=(./scripts/setup_swap.sh)
     [[ "$(family_value "$provision_family" AMI_ENABLE_SHARED_MEMORY)" == 1 ]] && script_list+=(./scripts/setup_shared_memory.sh)
-    [[ "$(family_value "$provision_family" AMI_ENABLE_PACKAGES)" == 1 ]] && script_list+=(./scripts/install_packages.sh)
-    [[ "$(family_value "$provision_family" AMI_ENABLE_TIMEZONE)" == 1 ]] && script_list+=(./scripts/set_timezone.sh)
+    [[ -n "$(family_value "$provision_family" AMI_PACKAGES)" ||
+      -n "$(family_value "$provision_family" AMI_FLATPAK_PACKAGES)" ||
+      "$(family_value "$provision_family" AMI_UPDATE_PACKAGES)" == 1 ]] && script_list+=(./scripts/install_packages.sh)
+    [[ -n "$(family_value "$provision_family" AMI_TIMEZONE)" ]] && script_list+=(./scripts/set_timezone.sh)
     [[ "$(family_value "$provision_family" AMI_ENABLE_IDLE_SHUTDOWN)" == 1 ]] && script_list+=(./scripts/setup_idle_shutdown.sh)
     IFS=, read -r -a extra_scripts <<<"$(family_value "$provision_family" AMI_PROVISION_SCRIPTS)"
     for extra_script in "${extra_scripts[@]}"; do

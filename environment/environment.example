@@ -343,16 +343,6 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 # =============================================================================
 #  6. AMI build - provisioning
 # =============================================================================
-# Built-in AMI provisioning features. Set these flags first to describe the
-# capabilities wanted in the image; the corresponding internal Packer scripts
-# are registered automatically.
-# Defaults: swap 0, shared memory 0, packages 1, timezone 1, idle shutdown 0.
-#AMI_ENABLE_SWAP=0
-#AMI_ENABLE_SHARED_MEMORY=0
-#AMI_ENABLE_PACKAGES=1
-#AMI_ENABLE_TIMEZONE=1
-#AMI_ENABLE_IDLE_SHUTDOWN=0
-
 #  ec2 make_ami extracts its built-in Packer assets to $WORKDIR/packer/ and runs
 #  Packer from there, so additional AMI_PROVISION_SCRIPTS paths are relative to that directory. Every
 #  script runs as root ("sudo -S -E sh -eux") and receives the settings below as
@@ -365,18 +355,22 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 # Swap file at /swapfile, created with `dd bs=$AMI_SWAP_BLOCK_SIZE count=$AMI_SWAP_BLOCK_COUNT`,
 # activated and appended to /etc/fstab. 128M x 64 = 8 GiB. Set either one to an
 # empty string to skip swap entirely. Skipped when /swapfile already exists.
+# Set AMI_ENABLE_SWAP=1 to enable this feature; it defaults to 0.
 # Remember that the swap file consumes AMI_ROOT_VOLUME_SIZE_GIB.
 # Defaults: 128M, 64
+#AMI_ENABLE_SWAP=0
 #AMI_SWAP_BLOCK_SIZE="128M"
 #AMI_SWAP_BLOCK_COUNT="64"
 
-# 1 runs `chmod 777 /dev/shm`, so that unprivileged multi-process workloads
-# (PyTorch DataLoader workers, joblib, multiprocessing) can use shared memory.
+# 1 ensures `/dev/shm` has mode 1777, so that unprivileged multi-process
+# workloads (PyTorch DataLoader workers, joblib, multiprocessing) can use it.
 # Any other value skips it.
+#AMI_ENABLE_SHARED_MEMORY=0
+
 # System time zone, applied with `timedatectl set-timezone`. Any tz database
-# name, e.g. UTC, Asia/Tokyo, America/Los_Angeles. Empty skips the step.
-# Default: UTC
-#AMI_TIMEZONE="UTC"
+# name, e.g. UTC, Asia/Tokyo, America/Los_Angeles. A non-empty value
+# automatically enables the step; empty (the default) skips it.
+#AMI_TIMEZONE=""
 
 # Space-separated packages installed with the selected package manager. Applies to
 # both AMI families; use CPU_AMI_EXTRA_PACKAGES / GPU_AMI_EXTRA_PACKAGES for
@@ -404,6 +398,8 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 # package versions exposed by the selected source AMI and its configured repos.
 # The final NEVRA list is always recorded in
 # /var/log/ec2-environment-packages.tsv inside the built AMI.
+# The package setup runs automatically when AMI_PACKAGES or
+# AMI_FLATPAK_PACKAGES is non-empty, or when AMI_UPDATE_PACKAGES=1.
 #AMI_UPDATE_PACKAGES=1
 
 # Space-separated Flatpak application IDs. When non-empty, flatpak is installed,
@@ -412,12 +408,14 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 #AMI_FLATPAK_PACKAGES=""
 
 # Idle auto-shutdown, installed as /usr/local/sbin/shutdown_if_idle.
+# Set AMI_ENABLE_IDLE_SHUTDOWN=1 to enable this feature; it defaults to 0.
 #   systemd   Install shutdown.service plus shutdown.timer and enable them.
 #   cron      Drop a script into /etc/cron.<AMI_IDLE_SHUTDOWN_SCHEDULE>/shutdown.
 #   ""        Skip the whole step; the instance never powers itself off.
 # Any other value writes the helper script but schedules nothing, which is the
 # same as "" in practice.
-# Default: systemd
+# Default backend: systemd
+#AMI_ENABLE_IDLE_SHUTDOWN=0
 #AMI_IDLE_SHUTDOWN_BACKEND="systemd"
 
 # How often idleness is checked. The accepted values depend on AMI_IDLE_SHUTDOWN_BACKEND:

@@ -57,9 +57,11 @@ done < environment/assets.manifest
 cat >> "$config" <<'EOF'
 AMI_ENABLE_SWAP=0
 AMI_ENABLE_SHARED_MEMORY=0
-AMI_ENABLE_PACKAGES=0
-AMI_ENABLE_TIMEZONE=0
 AMI_ENABLE_IDLE_SHUTDOWN=0
+AMI_PACKAGES=
+AMI_FLATPAK_PACKAGES=
+AMI_UPDATE_PACKAGES=0
+AMI_TIMEZONE=
 AMI_PROVISION_SCRIPTS=./scripts/custom-provision.sh
 EOF
 feature_work=${runtime_dir#"$root/"}/work-features
@@ -68,6 +70,24 @@ PATH="$mock_bin:$PATH" AMI_VALIDATE_ONLY=1 bin/ec2 make_ami --workdir "$feature_
 grep -q '"scripts": "\./scripts/custom-provision.sh"' \
   "$feature_work/packer/variables_cpu.json" || {
   echo 'AMI feature flags and additional provisioning scripts were not composed correctly.' >&2
+  exit 1
+}
+
+cat >> "$config" <<'EOF'
+AMI_PACKAGES=git
+AMI_TIMEZONE=Asia/Tokyo
+EOF
+automatic_work=${runtime_dir#"$root/"}/work-automatic
+PATH="$mock_bin:$PATH" AMI_VALIDATE_ONLY=1 bin/ec2 make_ami --workdir "$automatic_work" \
+  --environment-config "$config" --install-config 0 >/dev/null
+grep -q './scripts/install_packages.sh' \
+  "$automatic_work/packer/variables_cpu.json" || {
+  echo 'AMI_PACKAGES did not enable package provisioning.' >&2
+  exit 1
+}
+grep -q './scripts/set_timezone.sh' \
+  "$automatic_work/packer/variables_cpu.json" || {
+  echo 'AMI_TIMEZONE did not enable timezone provisioning.' >&2
   exit 1
 }
 
