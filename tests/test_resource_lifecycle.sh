@@ -51,7 +51,10 @@ mkdir -p "$mock_bin"
 cat > "$mock_bin/aws" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> '$aws_log'
-if [[ "\$*" == *ManagedBy* ]];then
+if [[ "\$*" == *"vol-missing"* ]];then
+  echo 'An error occurred (InvalidVolume.NotFound) when calling the DescribeVolumes operation: volume does not exist' >&2
+  exit 255
+elif [[ "\$*" == *ManagedBy* ]];then
   [[ " \$* " == *" vol-unmanaged "* ]] && echo somebody-else || echo ec2-environment
 elif [[ " \$* " == *" efs describe-mount-targets "* ]];then
   if [[ " \$* " == *" length(MountTargets) "* ]];then
@@ -113,6 +116,17 @@ if PATH="$mock_bin:$PATH" bin/ec2 cleanup_resources --workdir "$runtime_dir/work
 fi
 grep -q 'vol-unmanaged' "$cleanup_manifest" || {
   echo 'A refused resource must remain in the manifest.' >&2
+  exit 1
+}
+
+cat > "$cleanup_manifest" <<'EOF'
+type	id	name	created_at
+io2	vol-missing	missing	2026-09-10T00:00:00Z
+EOF
+PATH="$mock_bin:$PATH" bin/ec2 cleanup_resources --workdir "$runtime_dir/work" \
+  --environment-config "$config" --manifest "$cleanup_manifest" --execute 1 >/dev/null
+[[ $(wc -l < "$cleanup_manifest" | tr -d ' ') == 1 ]] || {
+  echo 'Already absent resources must be removed from the manifest.' >&2
   exit 1
 }
 
