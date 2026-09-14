@@ -2388,7 +2388,7 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 #  10. On-instance setup (generated user-data)
 # =============================================================================
 #  Everything below is rendered into $WORKDIR/ec2/user_data.sh and runs as root
-#  through cloud-init on first boot, in this order: mounts (section 8), docker,
+#  through cloud-init on first boot, in this order: mounts (section 8), systemd services,
 #  USER_ENV_ROOT_DIR, USER_ENV_INSTALLER_SCRIPTS, dotfiles, ~/.config/ec2, ~/.aws, ~/.ssh, and finally
 #  your own INSTANCE_USER_DATA_EXTRA_SCRIPT. The script ends by copying
 #  /var/log/cloud-init-output.log to ~/ready, which is the marker to poll for
@@ -2399,8 +2399,14 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 #  access keys, API keys or private keys in any of these settings. Use
 #  AWS_IAM_INSTANCE_PROFILE and the AWS credential chain instead.
 
-# 1 runs `systemctl enable --now docker` and adds EC2_SSH_USERNAME to the docker
-# group. Requires "docker" in AMI_PACKAGES. 0 skips it.
+# Comma-separated systemd services to enable and start on first boot. Service
+# names may contain letters, numbers, `_`, `.`, `@`, `:`, and `-`.
+# Default: empty
+#INSTANCE_SYSTEMD_SERVICES=""
+
+# Deprecated compatibility option. When set to 1, docker is added to
+# INSTANCE_SYSTEMD_SERVICES and EC2_SSH_USERNAME is added to the docker group.
+# Prefer INSTANCE_SYSTEMD_SERVICES="docker" for new configurations.
 # Default: 0
 #INSTANCE_ENABLE_DOCKER=0
 
@@ -3559,6 +3565,20 @@ for filesystem_provider in "${filesystem_providers[@]}"; do
   printf -v "$provider_var" '%s' "$("$provider_script")"
 done
 
+systemd_services=()
+IFS=, read -r -a configured_systemd_services <<<"$INSTANCE_SYSTEMD_SERVICES"
+for systemd_service in "${configured_systemd_services[@]}"; do
+  [[ -z "$systemd_service" ]] && continue
+  [[ "$systemd_service" =~ ^[a-zA-Z0-9_.@:-]+$ ]] || {
+    echo "Invalid INSTANCE_SYSTEMD_SERVICES entry: $systemd_service" >&2
+    exit 1
+  }
+  systemd_services+=("$systemd_service")
+done
+if [[ "$INSTANCE_ENABLE_DOCKER" == 1 ]]; then
+  systemd_services+=(docker)
+fi
+
 for setting in MOUNT_READY_MAX_ATTEMPTS MOUNT_READY_RETRY_INTERVAL_SECONDS;do
   [[ "${!setting}" =~ ^[1-9][0-9]*$ ]] || {
     echo "$setting must be a positive integer." >&2
@@ -3747,13 +3767,17 @@ done
 
 EEOF
 
-  if [[ "$INSTANCE_ENABLE_DOCKER" == 1 ]];then
-    cat <<'EEOF'
-echo "Setting docker..."
-systemctl enable --now docker 2>/dev/null || true
+  if ((${#systemd_services[@]} > 0)); then
+    echo 'echo "Enabling systemd services..."'
+    for systemd_service in "${systemd_services[@]}"; do
+      printf 'systemctl enable --now %q 2>/dev/null || true\n' "$systemd_service"
+    done
+    if [[ "$INSTANCE_ENABLE_DOCKER" == 1 ]]; then
+      cat <<'EEOF'
 usermod -a -G docker "$user" 2>/dev/null || true
 
 EEOF
+    fi
   fi
 
   ignored_fs_settings=()
@@ -4594,6 +4618,7 @@ USER_ENV_CONFIG_DOTFILES_FILE=${USER_ENV_CONFIG_DOTFILES_FILE-}
 USER_ENV_CONFIG_DOTFILES_DIR=${USER_ENV_CONFIG_DOTFILES_DIR-}
 
 INSTANCE_ENABLE_DOCKER=${INSTANCE_ENABLE_DOCKER-0}
+INSTANCE_SYSTEMD_SERVICES=${INSTANCE_SYSTEMD_SERVICES-}
 INSTANCE_AWS_CONFIG=${INSTANCE_AWS_CONFIG-}
 INSTANCE_SSH_KNOWN_HOSTS=${INSTANCE_SSH_KNOWN_HOSTS-}
 INSTANCE_SSH_CONFIG=${INSTANCE_SSH_CONFIG-}

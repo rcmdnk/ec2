@@ -24,6 +24,20 @@ for filesystem_provider in "${filesystem_providers[@]}"; do
   printf -v "$provider_var" '%s' "$("$provider_script")"
 done
 
+systemd_services=()
+IFS=, read -r -a configured_systemd_services <<<"$INSTANCE_SYSTEMD_SERVICES"
+for systemd_service in "${configured_systemd_services[@]}"; do
+  [[ -z "$systemd_service" ]] && continue
+  [[ "$systemd_service" =~ ^[a-zA-Z0-9_.@:-]+$ ]] || {
+    echo "Invalid INSTANCE_SYSTEMD_SERVICES entry: $systemd_service" >&2
+    exit 1
+  }
+  systemd_services+=("$systemd_service")
+done
+if [[ "$INSTANCE_ENABLE_DOCKER" == 1 ]]; then
+  systemd_services+=(docker)
+fi
+
 for setting in MOUNT_READY_MAX_ATTEMPTS MOUNT_READY_RETRY_INTERVAL_SECONDS;do
   [[ "${!setting}" =~ ^[1-9][0-9]*$ ]] || {
     echo "$setting must be a positive integer." >&2
@@ -212,13 +226,17 @@ done
 
 EEOF
 
-  if [[ "$INSTANCE_ENABLE_DOCKER" == 1 ]];then
-    cat <<'EEOF'
-echo "Setting docker..."
-systemctl enable --now docker 2>/dev/null || true
+  if ((${#systemd_services[@]} > 0)); then
+    echo 'echo "Enabling systemd services..."'
+    for systemd_service in "${systemd_services[@]}"; do
+      printf 'systemctl enable --now %q 2>/dev/null || true\n' "$systemd_service"
+    done
+    if [[ "$INSTANCE_ENABLE_DOCKER" == 1 ]]; then
+      cat <<'EEOF'
 usermod -a -G docker "$user" 2>/dev/null || true
 
 EEOF
+    fi
   fi
 
   ignored_fs_settings=()

@@ -36,6 +36,7 @@ USER_ENV_ENABLE_USR_SYMLINK=0
 USER_ENV_DOTFILES_FILE=
 USER_ENV_DOTFILES_DIR=
 INSTANCE_AWS_CONFIG=\$'[profile test]\nvalue=\$(touch $marker)'
+INSTANCE_SYSTEMD_SERVICES=chronyd,amazon-ssm-agent
 INSTANCE_SSH_CONFIG='$ssh_input'
 EOF
 
@@ -50,6 +51,8 @@ generated_user_data="$runtime_dir/work/ec2/user_data.sh"
   exit 1
 }
 bash -n "$generated_user_data"
+grep -q 'systemctl enable --now chronyd' "$generated_user_data"
+grep -q 'systemctl enable --now amazon-ssm-agent' "$generated_user_data"
 
 # Sourcing the generated client config must restore values, not interpret them
 # as additional shell syntax.
