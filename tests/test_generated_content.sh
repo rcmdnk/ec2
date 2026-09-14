@@ -10,8 +10,9 @@ mock_bin="$runtime_dir/bin"
 marker="$runtime_dir/unexpected-command"
 ssh_input="$runtime_dir/ssh-config"
 aws_input="$runtime_dir/aws-config"
+local_home="$runtime_dir/local-home"
 config="$runtime_dir/config"
-mkdir -p "$mock_bin"
+mkdir -p "$mock_bin" "$local_home"
 
 cat > "$mock_bin/aws" <<'EOF'
 #!/usr/bin/env bash
@@ -26,6 +27,7 @@ cat > "$aws_input" <<EOF
 [profile test]
 value=\$(touch $marker)
 EOF
+printf 'local rc\n' > "$local_home/.localrc"
 cat > "$config" <<EOF
 AWS_REGION=ap-northeast-1
 CPU_OUTPUT_AMI_NAME=generated-content-test
@@ -41,13 +43,13 @@ USER_ENV_ENABLE_USR_SYMLINK=0
 USER_ENV_DOTFILES_FILE=
 USER_ENV_DOTFILES_DIR=
 INSTANCE_SYSTEMD_SERVICES=chronyd,amazon-ssm-agent
-INSTANCE_COPY_FILES='$ssh_input,$aws_input'
-INSTANCE_COPY_DESTINATIONS='~/.ssh/config,~/.aws/config'
-INSTANCE_COPY_PERMISSIONS='600,640'
+INSTANCE_COPY_FILES='$ssh_input,$aws_input,~/.localrc'
+INSTANCE_COPY_DESTINATIONS='~/.ssh/config,~/.aws/config,'
+INSTANCE_COPY_PERMISSIONS='600,640,644'
 EOF
 
 work=${runtime_dir#"$root/"}/work
-PATH="$mock_bin:$PATH" bin/ec2 setup --workdir "$work" \
+HOME="$local_home" PATH="$mock_bin:$PATH" bin/ec2 setup --workdir "$work" \
   --environment-config "$config" --install-config 0 >/dev/null
 generated_config="$runtime_dir/work/ec2/config"
 generated_user_data="$runtime_dir/work/ec2/user_data.sh"
@@ -61,8 +63,10 @@ grep -q 'systemctl enable --now chronyd' "$generated_user_data"
 grep -q 'systemctl enable --now amazon-ssm-agent' "$generated_user_data"
 grep -q 'copy_destination=/home/"\$user"/.ssh/config' "$generated_user_data"
 grep -q 'copy_destination=/home/"\$user"/.aws/config' "$generated_user_data"
+grep -q 'copy_destination=/home/"\$user"/.localrc' "$generated_user_data"
 grep -q 'chmod 600 "\$copy_destination"' "$generated_user_data"
 grep -q 'chmod 640 "\$copy_destination"' "$generated_user_data"
+grep -q 'chmod 644 "\$copy_destination"' "$generated_user_data"
 
 # Sourcing the generated client config must restore values, not interpret them
 # as additional shell syntax.
