@@ -1695,6 +1695,10 @@ AWS_REGION=""   # REQUIRED
 # Default: cleanup
 #AMI_PACKER_ON_ERROR="cleanup"
 
+# Optional external Packer JSON template. When set, this replaces the generated
+# default template; it must use the variables written to variables_<family>.json.
+#AMI_PACKER_TEMPLATE_FILE=""
+
 # Behavior when an AMI with the configured output name already exists:
 #   build   Start a new build (default, preserving existing behavior).
 #   reuse   Skip Packer and use the newest self-owned AMI with that name.
@@ -3099,6 +3103,14 @@ cp -R "$(dirname "$0")/../packer/." "$WORKDIR/packer/"
 cd "$WORKDIR/packer"
 
 make_main() {
+  if [[ -n "$AMI_PACKER_TEMPLATE_FILE" ]]; then
+    [[ -f "$AMI_PACKER_TEMPLATE_FILE" ]] || {
+      echo "Packer template file not found: $AMI_PACKER_TEMPLATE_FILE" >&2
+      return 1
+    }
+    cp "$AMI_PACKER_TEMPLATE_FILE" main.json
+    return 0
+  fi
   cat > "main.json" <<EOF
 {
   "variables": {
@@ -4363,6 +4375,7 @@ validate_positive_integer AMI_PROGRESS_POLL_DELAY_SECONDS "$AMI_PROGRESS_POLL_DE
 validate_positive_integer AMI_PROGRESS_MAX_ATTEMPTS "$AMI_PROGRESS_MAX_ATTEMPTS"
 validate_bool AMI_VALIDATE_ONLY "$AMI_VALIDATE_ONLY"
 AMI_PACKER_ON_ERROR=${AMI_PACKER_ON_ERROR-cleanup}
+AMI_PACKER_TEMPLATE_FILE=${AMI_PACKER_TEMPLATE_FILE-}
 validate_choice AMI_PACKER_ON_ERROR "$AMI_PACKER_ON_ERROR" cleanup abort ask
 AMI_EXISTING_IMAGE_ACTION=${AMI_EXISTING_IMAGE_ACTION-build}
 validate_choice AMI_EXISTING_IMAGE_ACTION "$AMI_EXISTING_IMAGE_ACTION" build reuse fail

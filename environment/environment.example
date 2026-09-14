@@ -157,6 +157,10 @@ AWS_REGION=""   # REQUIRED
 # Default: cleanup
 #AMI_PACKER_ON_ERROR="cleanup"
 
+# Optional external Packer JSON template. When set, this replaces the generated
+# default template; it must use the variables written to variables_<family>.json.
+#AMI_PACKER_TEMPLATE_FILE=""
+
 # Behavior when an AMI with the configured output name already exists:
 #   build   Start a new build (default, preserving existing behavior).
 #   reuse   Skip Packer and use the newest self-owned AMI with that name.

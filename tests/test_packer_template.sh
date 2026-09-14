@@ -16,6 +16,10 @@ if [[ " $* " == *" ec2 describe-images "* ]];then echo ami-packer-template-test;
 exit 0
 EOF
 chmod 755 "$mock_bin/aws"
+template="$runtime_dir/custom-template.json"
+cat > "$template" <<'EOF'
+{"builders":[],"provisioners":[]}
+EOF
 cat > "$config" <<'EOF'
 AWS_REGION=ap-northeast-1
 CPU_ENABLED=1
@@ -49,5 +53,14 @@ while read -r mode relative;do
     exit 1
   }
 done < environment/assets.manifest
+
+printf 'AMI_PACKER_TEMPLATE_FILE=%s\n' "$template" >> "$config"
+external_work=${runtime_dir#"$root/"}/work-external
+PATH="$mock_bin:$PATH" AMI_VALIDATE_ONLY=1 bin/ec2 make_ami --workdir "$external_work" \
+  --environment-config "$config" --install-config 0 >/dev/null
+cmp -s "$template" "$external_work/packer/main.json" || {
+  echo 'AMI_PACKER_TEMPLATE_FILE was not used as the Packer template.' >&2
+  exit 1
+}
 
 echo 'Packer template tests passed.'

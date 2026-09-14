@@ -18,6 +18,14 @@ cp -R "$(dirname "$0")/../packer/." "$WORKDIR/packer/"
 cd "$WORKDIR/packer"
 
 make_main() {
+  if [[ -n "$AMI_PACKER_TEMPLATE_FILE" ]]; then
+    [[ -f "$AMI_PACKER_TEMPLATE_FILE" ]] || {
+      echo "Packer template file not found: $AMI_PACKER_TEMPLATE_FILE" >&2
+      return 1
+    }
+    cp "$AMI_PACKER_TEMPLATE_FILE" main.json
+    return 0
+  fi
   cat > "main.json" <<EOF
 {
   "variables": {
