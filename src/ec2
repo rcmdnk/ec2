@@ -783,7 +783,7 @@ ssh () {
     return $?
   elif [ "$__connection_method" = "ec2_instance_connect" ];then
     if [ "$cmd" != "ssh" ] || [ -n "${__execute_command:-}" ];then
-      echo 'EC2_CONNECTION_METHOD=ec2_instance_connect supports interactive `ec2 ssh` only.' >&2
+      echo "EC2_CONNECTION_METHOD=ec2_instance_connect supports interactive \`ec2 ssh\` only." >&2
       return 2
     fi
     if [ -z "${__ssh_key:-}" ] || [ ! -f "$__ssh_key" ];then
