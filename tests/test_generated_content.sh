@@ -43,9 +43,11 @@ USER_ENV_ENABLE_USR_SYMLINK=0
 USER_ENV_DOTFILES_FILE=
 USER_ENV_DOTFILES_DIR=
 INSTANCE_SYSTEMD_SERVICES=chronyd,amazon-ssm-agent
-INSTANCE_COPY_FILES='$ssh_input,$aws_input,~/.localrc'
-INSTANCE_COPY_DESTINATIONS='~/.ssh/config,~/.aws/config,'
-INSTANCE_COPY_PERMISSIONS='600,640,'
+INSTANCE_COPY_ENTRIES=(
+  "$ssh_input|~/.ssh/config|600"
+  "$aws_input|~/.aws/config|640"
+  "~/.localrc||"
+)
 EOF
 
 work=${runtime_dir#"$root/"}/work

@@ -65,40 +65,18 @@ json_dir="$WORKDIR/ec2/cli_input_json"
 mkdir -p "$json_dir"
 mkdir -p "$WORKDIR/ec2/mounts"
 
-copy_files=()
-copy_destinations=()
-copy_permissions=()
-csv_items_preserve_empty() {
-  local value=$1
-  CSV_ITEMS=()
-  while [[ "$value" == *,* ]]; do
-    CSV_ITEMS+=("${value%%,*}")
-    value=${value#*,}
-  done
-  CSV_ITEMS+=("$value")
-}
-if [[ -n "$INSTANCE_COPY_FILES" ]]; then
-  csv_items_preserve_empty "$INSTANCE_COPY_FILES"
-  copy_files=("${CSV_ITEMS[@]}")
-  csv_items_preserve_empty "$INSTANCE_COPY_DESTINATIONS"
-  if [[ -n "$INSTANCE_COPY_DESTINATIONS" && ${#CSV_ITEMS[@]} -ne ${#copy_files[@]} ]]; then
-    echo 'INSTANCE_COPY_DESTINATIONS must have one entry per INSTANCE_COPY_FILES item.' >&2
+copy_entries=("${INSTANCE_COPY_ENTRIES[@]}")
+for copy_entry in "${copy_entries[@]}"; do
+  IFS='|' read -r copy_source copy_destination copy_permission copy_extra <<<"$copy_entry"
+  [[ -n "$copy_source" && -z "${copy_extra:-}" ]] || {
+    echo "INSTANCE_COPY_ENTRIES must use source|destination|permission: $copy_entry" >&2
     exit 1
-  fi
-  copy_destinations=("${CSV_ITEMS[@]}")
-  csv_items_preserve_empty "$INSTANCE_COPY_PERMISSIONS"
-  if [[ -n "$INSTANCE_COPY_PERMISSIONS" && ${#CSV_ITEMS[@]} -ne 1 && ${#CSV_ITEMS[@]} -ne ${#copy_files[@]} ]]; then
-    echo 'INSTANCE_COPY_PERMISSIONS must have one entry or one entry per INSTANCE_COPY_FILES item.' >&2
+  }
+  [[ -z "${copy_permission:-}" || "$copy_permission" =~ ^[0-7]{3,4}$ ]] || {
+    echo "Invalid permission in INSTANCE_COPY_ENTRIES entry: $copy_permission" >&2
     exit 1
-  fi
-  copy_permissions=("${CSV_ITEMS[@]}")
-  for copy_permission in "${copy_permissions[@]}"; do
-    [[ -z "$copy_permission" || "$copy_permission" =~ ^[0-7]{3,4}$ ]] || {
-      echo "Invalid INSTANCE_COPY_PERMISSIONS entry: $copy_permission" >&2
-      exit 1
-    }
-  done
-fi
+  }
+done
 # The `ec2` command is run from anywhere, so it needs an absolute path.
 json_dir_abs=$(cd "$json_dir" && pwd)
 cpu_group=''
@@ -418,8 +396,8 @@ chown -R "$user:$user" "/home/$user/.config/ec2/$user_data_name"
 
 EEOF
 
-  for ((copy_index=0; copy_index<${#copy_files[@]}; copy_index++)); do
-    copy_source=${copy_files[copy_index]}
+  for copy_entry in "${copy_entries[@]}"; do
+    IFS='|' read -r copy_source copy_destination copy_permission copy_extra <<<"$copy_entry"
     case "$copy_source" in
       '~') copy_source="$HOME" ;;
       '~/'*) copy_source="$HOME/${copy_source:2}" ;;
@@ -427,16 +405,13 @@ EEOF
       '${HOME}/'*) copy_source="$HOME/${copy_source#'${HOME}/'}" ;;
     esac
     [[ -f "$copy_source" ]] || continue
-    copy_destination=${copy_destinations[copy_index]-}
-    [[ -n "$copy_destination" ]] || copy_destination=${copy_files[copy_index]}
+    [[ -n "$copy_destination" ]] || copy_destination=$copy_source
     case "$copy_destination" in
       '~') printf 'copy_destination=/home/"$user"\n' ;;
       '~/'*) printf 'copy_destination=/home/"$user"/%q\n' "${copy_destination:2}" ;;
       /*) printf 'copy_destination=%q\n' "$copy_destination" ;;
       *) printf 'copy_destination=/home/"$user"/%q\n' "$copy_destination" ;;
     esac
-    copy_permission=${copy_permissions[0]-600}
-    (( ${#copy_permissions[@]} > 1 )) && copy_permission=${copy_permissions[copy_index]}
     if [[ -z "$copy_permission" ]]; then
       copy_permission=$(stat -f '%Lp' "$copy_source" 2>/dev/null || stat -c '%a' "$copy_source")
     fi

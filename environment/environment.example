@@ -917,21 +917,23 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 #USER_ENV_CONFIG_DOTFILES_FILE=""
 #USER_ENV_CONFIG_DOTFILES_DIR=""
 
-# Local files copied to the instance during first-boot setup. The three lists
-# correspond by position and are comma-separated. A destination or permission
-# may be empty; an empty destination keeps the source path and an empty
-# permission preserves the local file mode. One permission value is applied to
-# every file.
+# Local files copied to the instance during first-boot setup. Each array entry
+# is one mapping in the form source|destination|permission. The destination
+# and permission may be empty; an empty destination keeps the source path and
+# an empty permission preserves the local file mode.
 # `~` in a source means the local home directory; in a destination it means the
 # remote EC2_SSH_USERNAME home directory. Parent directories are created.
+# The file contents are embedded in EC2 user-data (Base64 is encoding, not
+# encryption). User-data can be read from inside the instance and by AWS
+# principals with suitable permissions, so treat this as an explicit setting
+# for copying credentials and private keys.
 # Example:
-#   INSTANCE_COPY_FILES="${HOME}/.ssh/known_hosts,${HOME}/.ssh/config,~/.localrc"
-#   INSTANCE_COPY_DESTINATIONS="~/.ssh/known_hosts,~/.ssh/config,"
-#   INSTANCE_COPY_PERMISSIONS="600,600,644"
-# Do not copy private keys into an AMI unless that is explicitly intended.
-#INSTANCE_COPY_FILES=""
-#INSTANCE_COPY_DESTINATIONS=""
-#INSTANCE_COPY_PERMISSIONS=""
+#   INSTANCE_COPY_ENTRIES=(
+#     "${HOME}/.ssh/known_hosts|~/.ssh/known_hosts|"
+#     "${HOME}/.ssh/config|~/.ssh/config|600"
+#     "~/.localrc||644"
+#   )
+#INSTANCE_COPY_ENTRIES=()
 
 # Local shell script appended verbatim to the end of the generated user-data, so
 # it runs as root after everything above. This is the hook for site-specific
