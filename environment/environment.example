@@ -252,7 +252,7 @@ AWS_SUBNET_IDS=""   # REQUIRED by setup_ec2
 # empty. These are real group names (the EC2 GroupName attribute), not Name
 # tags. Group names are unique within a VPC, so set AWS_VPC_ID as well when the same
 # name exists in more than one VPC.
-#SECURITY_GROUP_NAMES=""
+#AWS_SECURITY_GROUP_NAMES=""
 
 # Name of the IAM instance profile, used both for the launched instances
 # ("IamInstanceProfile" in the generated launch JSON) and for the Packer build

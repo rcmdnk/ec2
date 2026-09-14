@@ -194,9 +194,9 @@ trap cleanup_all_builds EXIT
 trap 'exit 130' INT TERM HUP
 
 monitor_ami_progress() {
-  local family=$1 build_output=$2 packer_pid=$3 ami_id='' snapshot_id='' state='' progress='' stage elapsed
+  local family=$1 build_output=$2 packer_pid=$3 ami_id='' snapshot_id='' state='' progress='' stage elapsed snapshot_status
   local start_seconds=$SECONDS
-  local -a snapshot_ids
+  local -a snapshot_ids snapshot_statuses
 
   while kill -0 "$packer_pid" 2>/dev/null; do
     elapsed=$((SECONDS - start_seconds))
@@ -208,9 +208,11 @@ monitor_ami_progress() {
         --query 'Images[0].BlockDeviceMappings[].Ebs.SnapshotId' --output text 2>/dev/null | \
         tr '\t' '\n' | awk 'NF && $0 != "None"')
       if ((${#snapshot_ids[@]} > 0)); then
-        for snapshot_id in "${snapshot_ids[@]}"; do
-          read -r state progress < <(aws "${AWS_ARGS[@]}" ec2 describe-snapshots --snapshot-ids "$snapshot_id" \
-            --query 'Snapshots[0].[State,Progress]' --output text 2>/dev/null || true)
+        mapfile -t snapshot_statuses < <(aws "${AWS_ARGS[@]}" ec2 describe-snapshots \
+          --snapshot-ids "${snapshot_ids[@]}" \
+          --query 'Snapshots[].[SnapshotId,State,Progress]' --output text 2>/dev/null || true)
+        for snapshot_status in "${snapshot_statuses[@]}"; do
+          read -r snapshot_id state progress <<<"$snapshot_status"
           printf '%s: AMI %s snapshot=%s progress=%s state=%s elapsed=%ss\n' \
             "$family" "$ami_id" "$snapshot_id" "${progress:-unknown}" "${state:-unknown}" "$elapsed"
         done
