@@ -48,7 +48,15 @@ mock_bin="$runtime_dir/bin"
 aws_log="$runtime_dir/aws.log"
 mount_target_deleted="$runtime_dir/mount-target-deleted"
 transient_error="$runtime_dir/transient-error"
+hook_dir="$runtime_dir/cleanup-hooks"
+hook_log="$runtime_dir/hook.log"
 mkdir -p "$mock_bin"
+mkdir -p "$hook_dir"
+cat > "$hook_dir/custom.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s:%s\n' "\$1" "\$2" >> '$hook_log'
+EOF
+chmod 755 "$hook_dir/custom.sh"
 cat > "$mock_bin/aws" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> '$aws_log'
@@ -81,6 +89,7 @@ RESOURCE_MANAGED_BY=ec2-environment
 AWS_POLL_DELAY_SECONDS=1
 AWS_MAX_ATTEMPTS=2
 EOF
+printf 'EC2_FILESYSTEM_CLEANUP_HOOK_DIR=%s\n' "$hook_dir" >> "$config"
 
 cleanup_manifest="$runtime_dir/cleanup.tsv"
 cat > "$cleanup_manifest" <<'EOF'
@@ -143,6 +152,21 @@ PATH="$mock_bin:$PATH" bin/ec2 cleanup_resources --workdir "$runtime_dir/work" \
   --environment-config "$config" --manifest "$cleanup_manifest" --execute 1 >/dev/null
 [[ -e "$transient_error" && $(wc -l < "$cleanup_manifest" | tr -d ' ') == 1 ]] || {
   echo 'Transient AWS errors must be retried before cleanup continues.' >&2
+  exit 1
+}
+
+cat > "$cleanup_manifest" <<'EOF'
+type	id	name	created_at
+custom	custom-id	custom-name	2026-09-10T00:00:00Z
+EOF
+PATH="$mock_bin:$PATH" bin/ec2 cleanup_resources --workdir "$runtime_dir/work" \
+  --environment-config "$config" --manifest "$cleanup_manifest" --execute 1 >/dev/null
+grep -q '^custom-id:custom-name$' "$hook_log" || {
+  echo 'Configured filesystem cleanup hooks were not invoked.' >&2
+  exit 1
+}
+[[ $(wc -l < "$cleanup_manifest" | tr -d ' ') == 1 ]] || {
+  echo 'A successful filesystem cleanup hook must remove its manifest row.' >&2
   exit 1
 }
 

@@ -146,7 +146,12 @@ delete_ami() {
 }
 
 delete_resource() {
-  local type=$1 id=$2 verify_status
+  local type=$1 id=$2 name=${3-} verify_status hook
+  hook="${EC2_FILESYSTEM_CLEANUP_HOOK_DIR:+$EC2_FILESYSTEM_CLEANUP_HOOK_DIR/$type.sh}"
+  if [[ -n "$hook" && -x "$hook" ]]; then
+    "$hook" "$id" "$name"
+    return $?
+  fi
   if verify_managed_resource "$type" "$id"; then
     verify_status=0
   else
@@ -184,7 +189,7 @@ printf 'type\tid\tname\tcreated_at\n' > "$remaining_manifest"
 failed=0
 while IFS=$'\t' read -r type id name created_at;do
   [[ "$type" == type || -z "$type" ]] && continue
-  if delete_resource "$type" "$id";then
+  if delete_resource "$type" "$id" "$name";then
     echo "Deleted $type $id."
   else
     printf '%s\t%s\t%s\t%s\n' "$type" "$id" "$name" "$created_at" >> "$remaining_manifest"

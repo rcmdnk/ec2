@@ -558,6 +558,11 @@ CPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-cpu-${AMI_REVISION}"
 # Default: s3files,efs,fsx,io2
 #EC2_FILESYSTEM_PROVIDERS="s3files,efs,fsx,io2"
 
+# Optional directory containing executable <provider>.sh cleanup hooks. A hook
+# receives the resource ID and name, and must verify ownership before deleting
+# or accepting an already-absent resource. Non-zero status keeps the manifest row.
+#EC2_FILESYSTEM_CLEANUP_HOOK_DIR=""
+
 # Print the missing-resource creation plan without creating anything. This is
 # useful with CREATE_FILE_SYSTEMS=1 before an apply run; generated launch files
 # omit IDs for resources that only appeared in the dry-run plan.
