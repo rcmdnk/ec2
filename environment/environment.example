@@ -77,7 +77,7 @@
 #  AMI_BUILD_SSH_INTERFACE, AMI_BUILD_SSH_USERNAME, AMI_BUILD_SECURITY_GROUP_IDS,
 #  AMI_BUILD_SUBNET_ID, AMI_BUILD_VPC_ID, AMI_BUILD_IAM_INSTANCE_PROFILE,
 #  AMI_ROOT_DEVICE_NAME, AMI_ROOT_VOLUME_DELETE_ON_TERMINATION, AMI_ROOT_VOLUME_SIZE_GIB,
-#  AMI_ROOT_VOLUME_TYPE, AMI_ROOT_VOLUME_ENCRYPTED, AMI_PROVISION_SCRIPTS, AMI_SWAP_BLOCK_SIZE, AMI_SWAP_BLOCK_COUNT, AMI_PACKAGES,
+#  AMI_ROOT_VOLUME_TYPE, AMI_ROOT_VOLUME_ENCRYPTED, AMI_ENABLE_SWAP, AMI_SWAP_BLOCK_SIZE, AMI_SWAP_BLOCK_COUNT, AMI_PACKAGES,
 #  AMI_FLATPAK_PACKAGES, AMI_EXTRA_PACKAGES, AMI_TIMEZONE, AMI_IDLE_SHUTDOWN_BACKEND,
 #  AMI_IDLE_SHUTDOWN_SCHEDULE, AMI_IDLE_SHUTDOWN_KEEPALIVE_PROCESSES, AMI_ENABLE_SHARED_MEMORY,
 #  AMI_UPDATE_PACKAGES.
@@ -344,22 +344,22 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 #  6. AMI build - provisioning
 # =============================================================================
 #  ec2 make_ami extracts its built-in Packer assets to $WORKDIR/packer/ and runs
-#  Packer from there, so AMI_PROVISION_SCRIPTS paths are relative to that directory. Every
+#  Packer from there, so additional AMI_PROVISION_SCRIPTS paths are relative to that directory. Every
 #  script runs as root ("sudo -S -E sh -eux") and receives the settings below as
 #  environment variables.
 
-# Comma-separated list of provisioning scripts, executed in this order. Add your
-# own by using an absolute path and appending it here. Removing an entry simply
-# skips that step.
-#
-#   setup_swap.sh              -> AMI_SWAP_BLOCK_SIZE, AMI_SWAP_BLOCK_COUNT
-#   setup_shared_memory.sh     -> AMI_ENABLE_SHARED_MEMORY
-#   install_packages.sh        -> AMI_PACKAGES, AMI_EXTRA_PACKAGES,
-#                                 AMI_FLATPAK_PACKAGES
-#   set_timezone.sh            -> AMI_TIMEZONE
-#   setup_idle_shutdown.sh     -> AMI_IDLE_SHUTDOWN_BACKEND, AMI_IDLE_SHUTDOWN_SCHEDULE,
-#                                 AMI_IDLE_SHUTDOWN_KEEPALIVE_PROCESSES
-#AMI_PROVISION_SCRIPTS="./scripts/setup_swap.sh,./scripts/setup_shared_memory.sh,./scripts/install_packages.sh,./scripts/set_timezone.sh,./scripts/setup_idle_shutdown.sh"
+# Built-in AMI provisioning features. Enabled features register their internal
+# Packer script automatically; users do not need to know the script filenames.
+# Default: 1 for all features below.
+#AMI_ENABLE_SWAP=1
+#AMI_ENABLE_SHARED_MEMORY=1
+#AMI_ENABLE_PACKAGES=1
+#AMI_ENABLE_TIMEZONE=1
+#AMI_ENABLE_IDLE_SHUTDOWN=1
+
+# Optional comma-separated user scripts appended after enabled built-in features.
+# Paths are relative to the Packer working directory.
+#AMI_PROVISION_SCRIPTS=""
 
 # Swap file at /swapfile, created with `dd bs=$AMI_SWAP_BLOCK_SIZE count=$AMI_SWAP_BLOCK_COUNT`,
 # activated and appended to /etc/fstab. 128M x 64 = 8 GiB. Set either one to an

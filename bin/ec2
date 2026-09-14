@@ -1886,18 +1886,18 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 #  script runs as root ("sudo -S -E sh -eux") and receives the settings below as
 #  environment variables.
 
-# Comma-separated list of provisioning scripts, executed in this order. Add your
-# own by using an absolute path and appending it here. Removing an entry simply
-# skips that step.
-#
-#   setup_swap.sh              -> AMI_SWAP_BLOCK_SIZE, AMI_SWAP_BLOCK_COUNT
-#   setup_shared_memory.sh     -> AMI_ENABLE_SHARED_MEMORY
-#   install_packages.sh        -> AMI_PACKAGES, AMI_EXTRA_PACKAGES,
-#                                 AMI_FLATPAK_PACKAGES
-#   set_timezone.sh            -> AMI_TIMEZONE
-#   setup_idle_shutdown.sh     -> AMI_IDLE_SHUTDOWN_BACKEND, AMI_IDLE_SHUTDOWN_SCHEDULE,
-#                                 AMI_IDLE_SHUTDOWN_KEEPALIVE_PROCESSES
-#AMI_PROVISION_SCRIPTS="./scripts/setup_swap.sh,./scripts/setup_shared_memory.sh,./scripts/install_packages.sh,./scripts/set_timezone.sh,./scripts/setup_idle_shutdown.sh"
+# Built-in AMI provisioning features. Enabled features register their internal
+# Packer script automatically; users do not need to know the script filenames.
+# Default: 1 for all features below.
+#AMI_ENABLE_SWAP=1
+#AMI_ENABLE_SHARED_MEMORY=1
+#AMI_ENABLE_PACKAGES=1
+#AMI_ENABLE_TIMEZONE=1
+#AMI_ENABLE_IDLE_SHUTDOWN=1
+
+# Optional comma-separated user scripts appended after enabled built-in features.
+# Paths are relative to the Packer working directory.
+#AMI_PROVISION_SCRIPTS=""
 
 # Swap file at /swapfile, created with `dd bs=$AMI_SWAP_BLOCK_SIZE count=$AMI_SWAP_BLOCK_COUNT`,
 # activated and appended to /etc/fstab. 128M x 64 = 8 GiB. Set either one to an
@@ -3183,6 +3183,20 @@ make_vars() {
       printf '%s' "${!fallback-}"
     fi
   }
+  provision_scripts() {
+    local provision_family=$1 script_list=() extra_script
+    [[ "$(family_value "$provision_family" AMI_ENABLE_SWAP)" == 1 ]] && script_list+=(./scripts/setup_swap.sh)
+    [[ "$(family_value "$provision_family" AMI_ENABLE_SHARED_MEMORY)" == 1 ]] && script_list+=(./scripts/setup_shared_memory.sh)
+    [[ "$(family_value "$provision_family" AMI_ENABLE_PACKAGES)" == 1 ]] && script_list+=(./scripts/install_packages.sh)
+    [[ "$(family_value "$provision_family" AMI_ENABLE_TIMEZONE)" == 1 ]] && script_list+=(./scripts/set_timezone.sh)
+    [[ "$(family_value "$provision_family" AMI_ENABLE_IDLE_SHUTDOWN)" == 1 ]] && script_list+=(./scripts/setup_idle_shutdown.sh)
+    IFS=, read -r -a extra_scripts <<<"$(family_value "$provision_family" AMI_PROVISION_SCRIPTS)"
+    for extra_script in "${extra_scripts[@]}"; do
+      [[ -n "$extra_script" ]] && script_list+=("$extra_script")
+    done
+    local IFS=,
+    printf '%s' "${script_list[*]}"
+  }
   source_ami=$(family_value "$family" SOURCE_AMI_ID)
   if [[ -z "$source_ami" ]];then
     source_ami=$(aws "${AWS_ARGS[@]}" ec2 describe-images \
@@ -3219,7 +3233,7 @@ make_vars() {
   "volume_size": $(json_quote "$(family_value "$family" AMI_ROOT_VOLUME_SIZE_GIB)"),
   "volume_type": $(json_quote "$(family_value "$family" AMI_ROOT_VOLUME_TYPE)"),
   "encrypted": $(json_quote "$(family_value "$family" AMI_ROOT_VOLUME_ENCRYPTED)"),
-  "scripts": $(json_quote "$(family_value "$family" AMI_PROVISION_SCRIPTS)"),
+  "scripts": $(json_quote "$(provision_scripts "$family")"),
   "swap_block_size": $(json_quote "$(family_value "$family" AMI_SWAP_BLOCK_SIZE)"),
   "swap_block_count": $(json_quote "$(family_value "$family" AMI_SWAP_BLOCK_COUNT)"),
   "packages": $(json_quote "$(family_value "$family" AMI_PACKAGES)"),
@@ -4383,6 +4397,14 @@ validate_positive_integer MOUNT_READY_MAX_ATTEMPTS "$MOUNT_READY_MAX_ATTEMPTS"
 validate_positive_integer MOUNT_READY_RETRY_INTERVAL_SECONDS "$MOUNT_READY_RETRY_INTERVAL_SECONDS"
 validate_positive_integer AMI_PROGRESS_POLL_DELAY_SECONDS "$AMI_PROGRESS_POLL_DELAY_SECONDS"
 validate_positive_integer AMI_PROGRESS_MAX_ATTEMPTS "$AMI_PROGRESS_MAX_ATTEMPTS"
+AMI_ENABLE_SWAP=${AMI_ENABLE_SWAP-1}
+AMI_ENABLE_PACKAGES=${AMI_ENABLE_PACKAGES-1}
+AMI_ENABLE_TIMEZONE=${AMI_ENABLE_TIMEZONE-1}
+AMI_ENABLE_IDLE_SHUTDOWN=${AMI_ENABLE_IDLE_SHUTDOWN-1}
+validate_bool AMI_ENABLE_SWAP "$AMI_ENABLE_SWAP"
+validate_bool AMI_ENABLE_PACKAGES "$AMI_ENABLE_PACKAGES"
+validate_bool AMI_ENABLE_TIMEZONE "$AMI_ENABLE_TIMEZONE"
+validate_bool AMI_ENABLE_IDLE_SHUTDOWN "$AMI_ENABLE_IDLE_SHUTDOWN"
 validate_bool AMI_VALIDATE_ONLY "$AMI_VALIDATE_ONLY"
 AMI_PACKER_ON_ERROR=${AMI_PACKER_ON_ERROR-cleanup}
 AMI_PACKER_TEMPLATE_FILE=${AMI_PACKER_TEMPLATE_FILE-}
@@ -4414,7 +4436,7 @@ AMI_ROOT_VOLUME_DELETE_ON_TERMINATION=${AMI_ROOT_VOLUME_DELETE_ON_TERMINATION-tr
 AMI_ROOT_VOLUME_SIZE_GIB=${AMI_ROOT_VOLUME_SIZE_GIB-60}
 AMI_ROOT_VOLUME_TYPE=${AMI_ROOT_VOLUME_TYPE-gp3}
 AMI_ROOT_VOLUME_ENCRYPTED=${AMI_ROOT_VOLUME_ENCRYPTED-true}
-AMI_PROVISION_SCRIPTS=${AMI_PROVISION_SCRIPTS-./scripts/setup_swap.sh,./scripts/setup_shared_memory.sh,./scripts/install_packages.sh,./scripts/set_timezone.sh,./scripts/setup_idle_shutdown.sh}
+AMI_PROVISION_SCRIPTS=${AMI_PROVISION_SCRIPTS-}
 AMI_SWAP_BLOCK_SIZE=${AMI_SWAP_BLOCK_SIZE-128M}
 AMI_SWAP_BLOCK_COUNT=${AMI_SWAP_BLOCK_COUNT-64}
 AMI_TIMEZONE=${AMI_TIMEZONE-UTC}

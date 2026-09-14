@@ -54,6 +54,23 @@ while read -r mode relative;do
   }
 done < environment/assets.manifest
 
+cat >> "$config" <<'EOF'
+AMI_ENABLE_SWAP=0
+AMI_ENABLE_SHARED_MEMORY=0
+AMI_ENABLE_PACKAGES=0
+AMI_ENABLE_TIMEZONE=0
+AMI_ENABLE_IDLE_SHUTDOWN=0
+AMI_PROVISION_SCRIPTS=./scripts/custom-provision.sh
+EOF
+feature_work=${runtime_dir#"$root/"}/work-features
+PATH="$mock_bin:$PATH" AMI_VALIDATE_ONLY=1 bin/ec2 make_ami --workdir "$feature_work" \
+  --environment-config "$config" --install-config 0 >/dev/null
+grep -q '"scripts": "\./scripts/custom-provision.sh"' \
+  "$feature_work/packer/variables_cpu.json" || {
+  echo 'AMI feature flags and additional provisioning scripts were not composed correctly.' >&2
+  exit 1
+}
+
 printf 'AMI_PACKER_TEMPLATE_FILE=%s\n' "$template" >> "$config"
 external_work=${runtime_dir#"$root/"}/work-external
 PATH="$mock_bin:$PATH" AMI_VALIDATE_ONLY=1 bin/ec2 make_ami --workdir "$external_work" \
