@@ -34,9 +34,6 @@ for systemd_service in "${configured_systemd_services[@]}"; do
   }
   systemd_services+=("$systemd_service")
 done
-if [[ "$INSTANCE_ENABLE_DOCKER" == 1 ]]; then
-  systemd_services+=(docker)
-fi
 
 for setting in MOUNT_READY_MAX_ATTEMPTS MOUNT_READY_RETRY_INTERVAL_SECONDS;do
   [[ "${!setting}" =~ ^[1-9][0-9]*$ ]] || {
@@ -231,12 +228,6 @@ EEOF
     for systemd_service in "${systemd_services[@]}"; do
       printf 'systemctl enable --now %q 2>/dev/null || true\n' "$systemd_service"
     done
-    if [[ "$INSTANCE_ENABLE_DOCKER" == 1 ]]; then
-      cat <<'EEOF'
-usermod -a -G docker "$user" 2>/dev/null || true
-
-EEOF
-    fi
   fi
 
   ignored_fs_settings=()

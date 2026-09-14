@@ -1928,7 +1928,7 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 #   google-chrome                 Downloaded and installed from the direct rpm.
 #   spal, spal-release            Installs the spal-release repository package.
 #
-# Add "amazon-efs-utils" when you mount EFS, and "docker" when INSTANCE_ENABLE_DOCKER=1.
+# Add "amazon-efs-utils" when you mount EFS, and "docker" when using Docker.
 # dnf/yum support the repository-backed special packages above; apt supports
 # ordinary packages and Flatpak. The script exits for unsupported special names.
 #AMI_PACKAGES=""
@@ -2404,11 +2404,6 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # Default: empty
 #INSTANCE_SYSTEMD_SERVICES=""
 
-# Deprecated compatibility option. When set to 1, docker is added to
-# INSTANCE_SYSTEMD_SERVICES and EC2_SSH_USERNAME is added to the docker group.
-# Prefer INSTANCE_SYSTEMD_SERVICES="docker" for new configurations.
-# Default: 0
-#INSTANCE_ENABLE_DOCKER=0
 
 # Directory on a shared file system that holds the things you want to survive
 # instance termination: locally built tools and your dotfiles. Normally one of
@@ -3575,9 +3570,6 @@ for systemd_service in "${configured_systemd_services[@]}"; do
   }
   systemd_services+=("$systemd_service")
 done
-if [[ "$INSTANCE_ENABLE_DOCKER" == 1 ]]; then
-  systemd_services+=(docker)
-fi
 
 for setting in MOUNT_READY_MAX_ATTEMPTS MOUNT_READY_RETRY_INTERVAL_SECONDS;do
   [[ "${!setting}" =~ ^[1-9][0-9]*$ ]] || {
@@ -3772,12 +3764,6 @@ EEOF
     for systemd_service in "${systemd_services[@]}"; do
       printf 'systemctl enable --now %q 2>/dev/null || true\n' "$systemd_service"
     done
-    if [[ "$INSTANCE_ENABLE_DOCKER" == 1 ]]; then
-      cat <<'EEOF'
-usermod -a -G docker "$user" 2>/dev/null || true
-
-EEOF
-    fi
   fi
 
   ignored_fs_settings=()
@@ -4617,7 +4603,6 @@ USER_ENV_DOTFILES_DIR=${USER_ENV_DOTFILES_DIR-}
 USER_ENV_CONFIG_DOTFILES_FILE=${USER_ENV_CONFIG_DOTFILES_FILE-}
 USER_ENV_CONFIG_DOTFILES_DIR=${USER_ENV_CONFIG_DOTFILES_DIR-}
 
-INSTANCE_ENABLE_DOCKER=${INSTANCE_ENABLE_DOCKER-0}
 INSTANCE_SYSTEMD_SERVICES=${INSTANCE_SYSTEMD_SERVICES-}
 INSTANCE_AWS_CONFIG=${INSTANCE_AWS_CONFIG-}
 INSTANCE_SSH_KNOWN_HOSTS=${INSTANCE_SSH_KNOWN_HOSTS-}
