@@ -60,7 +60,13 @@ managed_tag() {
 
 verify_managed_resource() {
   local type=$1 id=$2 actual
-  actual=$(managed_tag "$type" "$id") || return 1
+  if ! actual=$(managed_tag "$type" "$id" 2>&1); then
+    if [[ "$actual" =~ NotFound|not[[:space:]]exist|does[[:space:]]not[[:space:]]exist|InvalidInstanceID\.NotFound ]]; then
+      return 2
+    fi
+    echo "Could not inspect $type $id: $actual" >&2
+    return 1
+  fi
   [[ "$actual" == "$RESOURCE_MANAGED_BY" ]] || {
     echo "Refusing to delete $type $id: ManagedBy is '$actual', expected '$RESOURCE_MANAGED_BY'." >&2
     return 1
@@ -86,25 +92,45 @@ delete_efs() {
 }
 
 delete_ami() {
-  local id=$1 snapshot_ids snapshot failed=0
+  local id=$1 snapshot_ids snapshot verify_status failed=0
   mapfile -t snapshot_ids < <(aws "${AWS_ARGS[@]}" ec2 describe-images --image-ids "$id" \
     --query 'Images[0].BlockDeviceMappings[].Ebs.SnapshotId' --output text 2>/dev/null | \
     tr '\t' '\n' | awk 'NF && $0 != "None"')
   aws "${AWS_ARGS[@]}" ec2 deregister-image --image-id "$id"
   for snapshot in "${snapshot_ids[@]}"; do
     if verify_managed_resource snapshot "$snapshot"; then
-      aws "${AWS_ARGS[@]}" ec2 delete-snapshot --snapshot-id "$snapshot" || failed=1
+      verify_status=0
     else
+      verify_status=$?
+    fi
+    case $verify_status in
+      0)
+      aws "${AWS_ARGS[@]}" ec2 delete-snapshot --snapshot-id "$snapshot" || failed=1
+        ;;
+      2)
+        echo "Snapshot $snapshot is already absent."
+        ;;
+      *)
       echo "Leaving snapshot $snapshot because its ManagedBy tag could not be verified." >&2
       failed=1
-    fi
+        ;;
+    esac
   done
   return "$failed"
 }
 
 delete_resource() {
-  local type=$1 id=$2
-  verify_managed_resource "$type" "$id" || return 1
+  local type=$1 id=$2 verify_status
+  if verify_managed_resource "$type" "$id"; then
+    verify_status=0
+  else
+    verify_status=$?
+  fi
+  case $verify_status in
+    2) echo "$type $id is already absent."; return 0 ;;
+    0) ;;
+    *) return 1 ;;
+  esac
   case $type in
     ami) delete_ami "$id" ;;
     instance) aws "${AWS_ARGS[@]}" ec2 terminate-instances --instance-ids "$id" ;;

@@ -153,6 +153,8 @@ export AWS_POLL_DELAY_SECONDS
 export AWS_MAX_ATTEMPTS
 
 terminal_state=''
+family_pids=()
+sso_pid=''
 if [[ -t 0 && -r /dev/tty ]]; then
   terminal_state=$(stty -g </dev/tty 2>/dev/null || true)
 fi
@@ -162,7 +164,34 @@ restore_terminal() {
     stty "$terminal_state" </dev/tty 2>/dev/null || true
   fi
 }
-trap restore_terminal EXIT
+# shellcheck disable=SC2317  # Called indirectly by EXIT/INT/TERM/HUP traps.
+cleanup_family_processes() {
+  local status=$?
+  trap - EXIT INT TERM HUP
+  [[ -z "${monitor_pid:-}" ]] || kill "$monitor_pid" 2>/dev/null || true
+  [[ -z "${packer_pid:-}" ]] || kill "$packer_pid" 2>/dev/null || true
+  [[ -z "${monitor_pid:-}" ]] || wait "$monitor_pid" 2>/dev/null || true
+  [[ -z "${packer_pid:-}" ]] || wait "$packer_pid" 2>/dev/null || true
+  return "$status"
+}
+
+# shellcheck disable=SC2317  # Called indirectly by the EXIT trap.
+cleanup_all_builds() {
+  local status=$?
+  trap - EXIT INT TERM HUP
+  [[ -z "${sso_pid:-}" ]] || kill "$sso_pid" 2>/dev/null || true
+  for pid in "${family_pids[@]}"; do
+    kill "$pid" 2>/dev/null || true
+  done
+  for pid in "${family_pids[@]}"; do
+    wait "$pid" 2>/dev/null || true
+  done
+  restore_terminal
+  exit "$status"
+}
+
+trap cleanup_all_builds EXIT
+trap 'exit 130' INT TERM HUP
 
 monitor_ami_progress() {
   local family=$1 build_output=$2 packer_pid=$3 ami_id='' snapshot_id='' state='' progress='' stage elapsed
@@ -247,6 +276,7 @@ run_family() {
     return "$build_status"
   fi
 
+  trap cleanup_family_processes EXIT INT TERM HUP
   packer build -on-error="$AMI_PACKER_ON_ERROR" -var-file="$variables_file" main.json \
     </dev/null >>"$build_output" 2>&1 &
   packer_pid=$!
@@ -328,12 +358,10 @@ if ((${#enabled_families[@]} == 0 && ${#reused_families[@]} == 0)); then
   exit 0
 fi
 
-declare -a family_pids=()
 for family in "${enabled_families[@]}"; do
   run_family "$family" &
   family_pids+=("$!")
 done
-sso_pid=''
 if ((${#family_pids[@]} > 0)); then
   aws_auth_watch "${family_pids[@]}" &
   sso_pid=$!
