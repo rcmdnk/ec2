@@ -346,9 +346,9 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 # Built-in AMI provisioning features. Set these flags first to describe the
 # capabilities wanted in the image; the corresponding internal Packer scripts
 # are registered automatically.
-# Defaults: swap 0, shared memory 1, packages 1, timezone 1, idle shutdown 0.
+# Defaults: swap 0, shared memory 0, packages 1, timezone 1, idle shutdown 0.
 #AMI_ENABLE_SWAP=0
-#AMI_ENABLE_SHARED_MEMORY=1
+#AMI_ENABLE_SHARED_MEMORY=0
 #AMI_ENABLE_PACKAGES=1
 #AMI_ENABLE_TIMEZONE=1
 #AMI_ENABLE_IDLE_SHUTDOWN=0
