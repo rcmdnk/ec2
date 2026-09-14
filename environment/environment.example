@@ -157,6 +157,11 @@ AWS_REGION=""   # REQUIRED
 # Default: cleanup
 #AMI_PACKER_ON_ERROR="cleanup"
 
+# Interval in seconds for the progress display while Packer is running.
+# This controls only status polling and does not change Packer's AWS SDK polling.
+# Default: 15
+#AMI_PROGRESS_POLL_DELAY_SECONDS=15
+
 # Number of attempts and delay (seconds) used by instance user-data while
 # waiting for requested mounts and attached block devices. Provisioning fails
 # without creating ~/ready when a required mount never becomes usable.

@@ -165,24 +165,33 @@ restore_terminal() {
 trap restore_terminal EXIT
 
 monitor_ami_progress() {
-  local family=$1 build_output=$2 packer_pid=$3 ami_id='' snapshot_id='' state='' progress=''
+  local family=$1 build_output=$2 packer_pid=$3 ami_id='' snapshot_id='' state='' progress='' stage elapsed
+  local start_seconds=$SECONDS
+  local -a snapshot_ids
 
   while kill -0 "$packer_pid" 2>/dev/null; do
+    elapsed=$((SECONDS - start_seconds))
+    stage=$(sed -n 's/^==> amazon-ebs: //p' "$build_output" | tail -n 1)
+    stage=${stage:-Packer build in progress}
     ami_id=$(sed -n 's/.*AMI: \(ami-[[:alnum:]]*\).*/\1/p' "$build_output" | tail -n 1)
     if [[ -n "$ami_id" ]]; then
-      snapshot_id=$(aws "${AWS_ARGS[@]}" ec2 describe-images --image-ids "$ami_id" \
-        --query 'Images[0].BlockDeviceMappings[0].Ebs.SnapshotId' --output text 2>/dev/null || true)
-      if [[ -n "$snapshot_id" && "$snapshot_id" != None ]]; then
-        state=$(aws "${AWS_ARGS[@]}" ec2 describe-snapshots --snapshot-ids "$snapshot_id" \
-          --query 'Snapshots[0].State' --output text 2>/dev/null || true)
-        progress=$(aws "${AWS_ARGS[@]}" ec2 describe-snapshots --snapshot-ids "$snapshot_id" \
-          --query 'Snapshots[0].Progress' --output text 2>/dev/null || true)
-        printf '%s: AMI %s snapshot %s (%s)\n' "$family" "$ami_id" "${progress:-unknown}" "${state:-unknown}"
+      mapfile -t snapshot_ids < <(aws "${AWS_ARGS[@]}" ec2 describe-images --image-ids "$ami_id" \
+        --query 'Images[0].BlockDeviceMappings[].Ebs.SnapshotId' --output text 2>/dev/null | \
+        tr '\t' '\n' | awk 'NF && $0 != "None"')
+      if ((${#snapshot_ids[@]} > 0)); then
+        for snapshot_id in "${snapshot_ids[@]}"; do
+          read -r state progress < <(aws "${AWS_ARGS[@]}" ec2 describe-snapshots --snapshot-ids "$snapshot_id" \
+            --query 'Snapshots[0].[State,Progress]' --output text 2>/dev/null || true)
+          printf '%s: AMI %s snapshot=%s progress=%s state=%s elapsed=%ss\n' \
+            "$family" "$ami_id" "$snapshot_id" "${progress:-unknown}" "${state:-unknown}" "$elapsed"
+        done
+      else
+        printf '%s: AMI %s elapsed=%ss stage=%s\n' "$family" "$ami_id" "$elapsed" "$stage"
       fi
     else
-      printf '%s: Packer build in progress...\n' "$family"
+      printf '%s: elapsed=%ss stage=%s\n' "$family" "$elapsed" "$stage"
     fi
-    sleep 15
+    sleep "$AMI_PROGRESS_POLL_DELAY_SECONDS"
   done
 }
 
