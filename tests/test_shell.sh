@@ -150,7 +150,7 @@ grep -q 'Setting dotfiles' "$config_dotfiles_user_data" || {
 # packer/scripts/* are excluded: Packer supplies their environment.
 mapfile -t driver_files < <(find environment/scripts -type f -not -name '*.bak' -not -name '*.orig' -not -name '*~' -print)
 # The REQUIRED_SETTINGS come from the config file, not from scripts/variables.sh.
-shell_provided=" AWS_ARGS BASH_REMATCH BASH_SOURCE PWD SECONDS TMPDIR ${required[*]} "
+shell_provided=" AWS_ARGS BASH_REMATCH BASH_SOURCE HOME PWD SECONDS TMPDIR ${required[*]} "
 defined() { grep -qE "^[[:space:]]*(local )?$1=|for $1 in" "${driver_files[@]}"; }
 undefined=()
 

@@ -9,6 +9,7 @@ trap 'rm -rf "$runtime_dir"' EXIT
 mock_bin="$runtime_dir/bin"
 marker="$runtime_dir/unexpected-command"
 ssh_input="$runtime_dir/ssh-config"
+aws_input="$runtime_dir/aws-config"
 config="$runtime_dir/config"
 mkdir -p "$mock_bin"
 
@@ -20,6 +21,10 @@ chmod 755 "$mock_bin/aws"
 cat > "$ssh_input" <<EOF
 Host test
   LocalCommand touch $marker
+EOF
+cat > "$aws_input" <<EOF
+[profile test]
+value=\$(touch $marker)
 EOF
 cat > "$config" <<EOF
 AWS_REGION=ap-northeast-1
@@ -35,9 +40,10 @@ USER_ENV_ROOT_DIR='$runtime_dir/fs dir; touch $marker'
 USER_ENV_ENABLE_USR_SYMLINK=0
 USER_ENV_DOTFILES_FILE=
 USER_ENV_DOTFILES_DIR=
-INSTANCE_AWS_CONFIG=\$'[profile test]\nvalue=\$(touch $marker)'
 INSTANCE_SYSTEMD_SERVICES=chronyd,amazon-ssm-agent
-INSTANCE_SSH_CONFIG='$ssh_input'
+INSTANCE_COPY_FILES='$ssh_input,$aws_input'
+INSTANCE_COPY_DESTINATIONS='~/.ssh/config,~/.aws/config'
+INSTANCE_COPY_PERMISSIONS='600,640'
 EOF
 
 work=${runtime_dir#"$root/"}/work
@@ -53,6 +59,10 @@ generated_user_data="$runtime_dir/work/ec2/user_data.sh"
 bash -n "$generated_user_data"
 grep -q 'systemctl enable --now chronyd' "$generated_user_data"
 grep -q 'systemctl enable --now amazon-ssm-agent' "$generated_user_data"
+grep -q 'copy_destination=/home/"\$user"/.ssh/config' "$generated_user_data"
+grep -q 'copy_destination=/home/"\$user"/.aws/config' "$generated_user_data"
+grep -q 'chmod 600 "\$copy_destination"' "$generated_user_data"
+grep -q 'chmod 640 "\$copy_destination"' "$generated_user_data"
 
 # Sourcing the generated client config must restore values, not interpret them
 # as additional shell syntax.

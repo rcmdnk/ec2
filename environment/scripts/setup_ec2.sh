@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1090,SC1091,SC2016
+# shellcheck disable=SC1090,SC1091,SC2016,SC2088
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,6 +64,41 @@ get_image_id() {
 json_dir="$WORKDIR/ec2/cli_input_json"
 mkdir -p "$json_dir"
 mkdir -p "$WORKDIR/ec2/mounts"
+
+copy_files=()
+copy_destinations=()
+copy_permissions=()
+csv_items_preserve_empty() {
+  local value=$1
+  CSV_ITEMS=()
+  while [[ "$value" == *,* ]]; do
+    CSV_ITEMS+=("${value%%,*}")
+    value=${value#*,}
+  done
+  CSV_ITEMS+=("$value")
+}
+if [[ -n "$INSTANCE_COPY_FILES" ]]; then
+  csv_items_preserve_empty "$INSTANCE_COPY_FILES"
+  copy_files=("${CSV_ITEMS[@]}")
+  csv_items_preserve_empty "$INSTANCE_COPY_DESTINATIONS"
+  if [[ -n "$INSTANCE_COPY_DESTINATIONS" && ${#CSV_ITEMS[@]} -ne ${#copy_files[@]} ]]; then
+    echo 'INSTANCE_COPY_DESTINATIONS must have one entry per INSTANCE_COPY_FILES item.' >&2
+    exit 1
+  fi
+  copy_destinations=("${CSV_ITEMS[@]}")
+  csv_items_preserve_empty "$INSTANCE_COPY_PERMISSIONS"
+  if [[ -n "$INSTANCE_COPY_PERMISSIONS" && ${#CSV_ITEMS[@]} -ne 1 && ${#CSV_ITEMS[@]} -ne ${#copy_files[@]} ]]; then
+    echo 'INSTANCE_COPY_PERMISSIONS must have one entry or one entry per INSTANCE_COPY_FILES item.' >&2
+    exit 1
+  fi
+  copy_permissions=("${CSV_ITEMS[@]}")
+  for copy_permission in "${copy_permissions[@]}"; do
+    [[ -z "$copy_permission" || "$copy_permission" =~ ^[0-7]{3,4}$ ]] || {
+      echo "Invalid INSTANCE_COPY_PERMISSIONS entry: $copy_permission" >&2
+      exit 1
+    }
+  done
+fi
 # The `ec2` command is run from anywhere, so it needs an absolute path.
 json_dir_abs=$(cd "$json_dir" && pwd)
 cpu_group=''
@@ -383,46 +418,30 @@ chown -R "$user:$user" "/home/$user/.config/ec2/$user_data_name"
 
 EEOF
 
-  if [[ -n "$INSTANCE_AWS_CONFIG" ]];then
-    cat <<'EEOF'
-echo "Setting aws configuration..."
-sudo -u "$user" mkdir -p "/home/$user/.aws"
-EEOF
-    printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "/home/$user/.aws/config" >/dev/null\n' "$(base64_string "$INSTANCE_AWS_CONFIG")"
-    cat <<'EEOF'
-
-EEOF
-  fi
-
-  if [[ -n "$INSTANCE_SSH_CONFIG" || -n "$INSTANCE_SSH_KNOWN_HOSTS" || -n "$INSTANCE_SSH_RC" ]];then
-    cat <<'EEOF'
-echo "Setting ssh configuration..."
-sudo -u "$user" mkdir -p "/home/$user/.ssh"
-sudo -u "$user" chmod 700 "/home/$user/.ssh"
-EEOF
-  fi
-  if [[ -n "$INSTANCE_SSH_KNOWN_HOSTS" && -f "$INSTANCE_SSH_KNOWN_HOSTS" ]];then
-    printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "/home/$user/.ssh/known_hosts" >/dev/null\n' "$(base64_file "$INSTANCE_SSH_KNOWN_HOSTS")"
-    cat <<'EEOF'
-sudo -u "$user" chmod 600 "/home/$user/.ssh/known_hosts"
-
-EEOF
-  fi
-  if [[ -n "$INSTANCE_SSH_CONFIG" && -f "$INSTANCE_SSH_CONFIG" ]];then
-    printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "/home/$user/.ssh/config" >/dev/null\n' "$(base64_file "$INSTANCE_SSH_CONFIG")"
-    cat <<'EEOF'
-sudo -u "$user" chmod 600 "/home/$user/.ssh/config"
-
-EEOF
-  fi
-
-  if [[ -n "$INSTANCE_SSH_RC" && -f "$INSTANCE_SSH_RC" ]];then
-    printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "/home/$user/.ssh/rc" >/dev/null\n' "$(base64_file "$INSTANCE_SSH_RC")"
-    cat <<'EEOF'
-sudo -u "$user" chmod 600 "/home/$user/.ssh/rc"
-
-EEOF
-  fi
+  for ((copy_index=0; copy_index<${#copy_files[@]}; copy_index++)); do
+    copy_source=${copy_files[copy_index]}
+    case "$copy_source" in
+      '~') copy_source="$HOME" ;;
+      '~/'*) copy_source="$HOME/${copy_source:2}" ;;
+      '${HOME}') copy_source="$HOME" ;;
+      '${HOME}/'*) copy_source="$HOME/${copy_source#'${HOME}/'}" ;;
+    esac
+    [[ -f "$copy_source" ]] || continue
+    copy_destination=${copy_destinations[copy_index]-}
+    [[ -n "$copy_destination" ]] || copy_destination=${copy_files[copy_index]}
+    case "$copy_destination" in
+      '~') printf 'copy_destination=/home/"$user"\n' ;;
+      '~/'*) printf 'copy_destination=/home/"$user"/%q\n' "${copy_destination:2}" ;;
+      /*) printf 'copy_destination=%q\n' "$copy_destination" ;;
+      *) printf 'copy_destination=/home/"$user"/%q\n' "$copy_destination" ;;
+    esac
+    copy_permission=${copy_permissions[0]-600}
+    (( ${#copy_permissions[@]} > 1 )) && copy_permission=${copy_permissions[copy_index]}
+    printf 'echo Copying %q to "$copy_destination"...\n' "$copy_source"
+    printf 'sudo -u "$user" mkdir -p "$(dirname -- "$copy_destination")"\n'
+    printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "$copy_destination" >/dev/null\n' "$(base64_file "$copy_source")"
+    printf 'sudo -u "$user" chmod %q "$copy_destination"\n' "${copy_permission:-600}"
+  done
 
   if [[ -n "$INSTANCE_USER_DATA_EXTRA_SCRIPT" && -f "$INSTANCE_USER_DATA_EXTRA_SCRIPT" ]];then cat "$INSTANCE_USER_DATA_EXTRA_SCRIPT";fi
   cat <<'EEOF'
