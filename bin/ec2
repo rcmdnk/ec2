@@ -1884,12 +1884,12 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 # Built-in AMI provisioning features. Set these flags first to describe the
 # capabilities wanted in the image; the corresponding internal Packer scripts
 # are registered automatically.
-# Default: 1 for all features below.
-#AMI_ENABLE_SWAP=1
+# Defaults: swap 0, shared memory 1, packages 1, timezone 1, idle shutdown 0.
+#AMI_ENABLE_SWAP=0
 #AMI_ENABLE_SHARED_MEMORY=1
 #AMI_ENABLE_PACKAGES=1
 #AMI_ENABLE_TIMEZONE=1
-#AMI_ENABLE_IDLE_SHUTDOWN=1
+#AMI_ENABLE_IDLE_SHUTDOWN=0
 
 #  ec2 make_ami extracts its built-in Packer assets to $WORKDIR/packer/ and runs
 #  Packer from there, so additional AMI_PROVISION_SCRIPTS paths are relative to that directory. Every
@@ -4403,10 +4403,10 @@ validate_positive_integer MOUNT_READY_MAX_ATTEMPTS "$MOUNT_READY_MAX_ATTEMPTS"
 validate_positive_integer MOUNT_READY_RETRY_INTERVAL_SECONDS "$MOUNT_READY_RETRY_INTERVAL_SECONDS"
 validate_positive_integer AMI_PROGRESS_POLL_DELAY_SECONDS "$AMI_PROGRESS_POLL_DELAY_SECONDS"
 validate_positive_integer AMI_PROGRESS_MAX_ATTEMPTS "$AMI_PROGRESS_MAX_ATTEMPTS"
-AMI_ENABLE_SWAP=${AMI_ENABLE_SWAP-1}
+AMI_ENABLE_SWAP=${AMI_ENABLE_SWAP-0}
 AMI_ENABLE_PACKAGES=${AMI_ENABLE_PACKAGES-1}
 AMI_ENABLE_TIMEZONE=${AMI_ENABLE_TIMEZONE-1}
-AMI_ENABLE_IDLE_SHUTDOWN=${AMI_ENABLE_IDLE_SHUTDOWN-1}
+AMI_ENABLE_IDLE_SHUTDOWN=${AMI_ENABLE_IDLE_SHUTDOWN-0}
 validate_bool AMI_ENABLE_SWAP "$AMI_ENABLE_SWAP"
 validate_bool AMI_ENABLE_PACKAGES "$AMI_ENABLE_PACKAGES"
 validate_bool AMI_ENABLE_TIMEZONE "$AMI_ENABLE_TIMEZONE"

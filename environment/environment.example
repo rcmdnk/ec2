@@ -346,12 +346,12 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 # Built-in AMI provisioning features. Set these flags first to describe the
 # capabilities wanted in the image; the corresponding internal Packer scripts
 # are registered automatically.
-# Default: 1 for all features below.
-#AMI_ENABLE_SWAP=1
+# Defaults: swap 0, shared memory 1, packages 1, timezone 1, idle shutdown 0.
+#AMI_ENABLE_SWAP=0
 #AMI_ENABLE_SHARED_MEMORY=1
 #AMI_ENABLE_PACKAGES=1
 #AMI_ENABLE_TIMEZONE=1
-#AMI_ENABLE_IDLE_SHUTDOWN=1
+#AMI_ENABLE_IDLE_SHUTDOWN=0
 
 #  ec2 make_ami extracts its built-in Packer assets to $WORKDIR/packer/ and runs
 #  Packer from there, so additional AMI_PROVISION_SCRIPTS paths are relative to that directory. Every
