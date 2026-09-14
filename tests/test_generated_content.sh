@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016  # Match literal variable references in generated user-data.
 set -euo pipefail
 
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
