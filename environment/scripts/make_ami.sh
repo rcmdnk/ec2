@@ -164,12 +164,19 @@ restore_terminal() {
     stty "$terminal_state" </dev/tty 2>/dev/null || true
   fi
 }
+# shellcheck disable=SC2317  # Called indirectly by the EXIT trap.
+terminate_process_group() {
+  local pid=$1
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+  kill -TERM -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+}
+
 # shellcheck disable=SC2317  # Called indirectly by EXIT/INT/TERM/HUP traps.
 cleanup_family_processes() {
   local status=$?
   trap - EXIT INT TERM HUP
   [[ -z "${monitor_pid:-}" ]] || kill "$monitor_pid" 2>/dev/null || true
-  [[ -z "${packer_pid:-}" ]] || kill "$packer_pid" 2>/dev/null || true
+  [[ -z "${packer_pid:-}" ]] || terminate_process_group "$packer_pid"
   [[ -z "${monitor_pid:-}" ]] || wait "$monitor_pid" 2>/dev/null || true
   [[ -z "${packer_pid:-}" ]] || wait "$packer_pid" 2>/dev/null || true
   return "$status"
@@ -279,9 +286,11 @@ run_family() {
   fi
 
   trap cleanup_family_processes EXIT INT TERM HUP
+  set -m
   packer build -on-error="$AMI_PACKER_ON_ERROR" -var-file="$variables_file" main.json \
     </dev/null >>"$build_output" 2>&1 &
   packer_pid=$!
+  set +m
   monitor_ami_progress "$family" "$build_output" "$packer_pid" &
   monitor_pid=$!
 

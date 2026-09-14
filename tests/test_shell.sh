@@ -185,6 +185,7 @@ bash tests/test_filesystem_reconciliation.sh
 bash tests/test_storage_readiness.sh
 bash tests/test_efs_creation_token.sh
 bash tests/test_ami_failure_cleanup.sh
+bash tests/test_process_cleanup.sh
 bash tests/test_generated_artifacts.sh
 bash tests/test_generated_content.sh
 bash tests/test_reproducible_build_inputs.sh
