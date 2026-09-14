@@ -278,6 +278,8 @@ make_main
 packer init .
 
 enabled_families=()
+reused_families=()
+declare -A existing_ami_ids=()
 # shellcheck disable=SC2153  # The uppercase setting is loaded from the environment config.
 IFS=, read -r -a ami_families <<<"$AMI_FAMILIES"
 for family in "${ami_families[@]}"; do
@@ -286,12 +288,43 @@ for family in "${ami_families[@]}"; do
     make_vars "$family"
     [[ -f "variables_${family,,}.json" ]] || { echo "Packer variables not generated: $PWD/variables_${family,,}.json" >&2; exit 1; }
     write_build_manifest "$family" "variables_${family,,}.json"
+    if [[ "$AMI_EXISTING_IMAGE_ACTION" != build ]]; then
+      existing_ami_ids[$family]=$(aws "${AWS_ARGS[@]}" ec2 describe-images --owners self \
+        --filters "Name=name,Values=$(family_value "$family" OUTPUT_AMI_NAME)" \
+        --query 'Images | sort_by(@,&CreationDate)[-1].ImageId' --output text 2>/dev/null || true)
+      [[ "${existing_ami_ids[$family]}" == None ]] && existing_ami_ids[$family]=''
+    fi
     enabled_families+=("$family")
   fi
 done
 unset ami_families
 
-if ((${#enabled_families[@]} == 0)); then
+if [[ "$AMI_EXISTING_IMAGE_ACTION" == fail ]]; then
+  for family in "${enabled_families[@]}"; do
+    if [[ -n "${existing_ami_ids[$family]-}" ]]; then
+      echo "An AMI named '$(family_value "$family" OUTPUT_AMI_NAME)' already exists: ${existing_ami_ids[$family]}" >&2
+      echo 'Set AMI_EXISTING_IMAGE_ACTION=reuse to use it, or build to retain the current behavior.' >&2
+      exit 1
+    fi
+  done
+fi
+
+if [[ "$AMI_EXISTING_IMAGE_ACTION" == reuse ]]; then
+  build_families=()
+  for family in "${enabled_families[@]}"; do
+    if [[ -n "${existing_ami_ids[$family]-}" ]]; then
+      printf '0\t%s\t\n' "${existing_ami_ids[$family]}" > ".build-${family,,}.result"
+      reused_families+=("$family")
+      echo "$family: reusing existing AMI ${existing_ami_ids[$family]}"
+    else
+      build_families+=("$family")
+    fi
+  done
+  enabled_families=("${build_families[@]}")
+  unset build_families
+fi
+
+if ((${#enabled_families[@]} == 0 && ${#reused_families[@]} == 0)); then
   exit 0
 fi
 
@@ -300,8 +333,11 @@ for family in "${enabled_families[@]}"; do
   run_family "$family" &
   family_pids+=("$!")
 done
-    aws_auth_watch "${family_pids[@]}" &
-sso_pid=$!
+sso_pid=''
+if ((${#family_pids[@]} > 0)); then
+  aws_auth_watch "${family_pids[@]}" &
+  sso_pid=$!
+fi
 
 build_status=0
 for pid in "${family_pids[@]}"; do
@@ -309,10 +345,13 @@ for pid in "${family_pids[@]}"; do
     build_status=1
   fi
 done
-kill "$sso_pid" 2>/dev/null || true
-wait "$sso_pid" 2>/dev/null || true
+if [[ -n "$sso_pid" ]]; then
+  kill "$sso_pid" 2>/dev/null || true
+  wait "$sso_pid" 2>/dev/null || true
+fi
 
-for family in "${enabled_families[@]}"; do
+families_to_record=("${enabled_families[@]}" "${reused_families[@]}")
+for family in "${families_to_record[@]}"; do
   result_file=".build-${family,,}.result"
   IFS=$'\t' read -r family_status ami_id build_instance_id < "$result_file"
   ami_name=$(family_value "$family" OUTPUT_AMI_NAME)

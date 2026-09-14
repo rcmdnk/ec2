@@ -85,4 +85,20 @@ if grep -q 'describe-images' "$aws_log";then
   exit 1
 fi
 
+cat >> "$config" <<'EOF'
+AMI_EXISTING_IMAGE_ACTION=reuse
+EOF
+reuse_work=${runtime_dir#"$root/"}/work-reuse
+: > "$packer_log"
+PATH="$mock_bin:$PATH" bin/ec2 make_ami --workdir "$reuse_work" \
+  --environment-config "$config" >/dev/null
+grep -q $'^0\tami-resolved-source' "$reuse_work/packer/.build-cpu.result" || {
+  echo 'AMI reuse did not record the existing AMI.' >&2
+  exit 1
+}
+if grep -q '^build ' "$packer_log"; then
+  echo 'AMI reuse must not start a Packer build.' >&2
+  exit 1
+fi
+
 echo 'Reproducible build input tests passed.'

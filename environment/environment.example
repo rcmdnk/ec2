@@ -157,6 +157,13 @@ AWS_REGION=""   # REQUIRED
 # Default: cleanup
 #AMI_PACKER_ON_ERROR="cleanup"
 
+# Behavior when an AMI with the configured output name already exists:
+#   build   Start a new build (default, preserving existing behavior).
+#   reuse   Skip Packer and use the newest self-owned AMI with that name.
+#   fail    Abort before starting any AMI build.
+# Default: build
+#AMI_EXISTING_IMAGE_ACTION="build"
+
 # Interval in seconds for the progress display while Packer is running.
 # This controls only status polling and does not change Packer's AWS SDK polling.
 # Default: 15
