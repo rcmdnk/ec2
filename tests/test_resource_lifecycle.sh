@@ -47,12 +47,17 @@ grep -q 'create test name=two' <<<"$plan"
 mock_bin="$runtime_dir/bin"
 aws_log="$runtime_dir/aws.log"
 mount_target_deleted="$runtime_dir/mount-target-deleted"
+transient_error="$runtime_dir/transient-error"
 mkdir -p "$mock_bin"
 cat > "$mock_bin/aws" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> '$aws_log'
 if [[ "\$*" == *"vol-missing"* ]];then
   echo 'An error occurred (InvalidVolume.NotFound) when calling the DescribeVolumes operation: volume does not exist' >&2
+  exit 255
+elif [[ "\$*" == *"vol-transient"* && ! -e '$transient_error' ]];then
+  touch '$transient_error'
+  echo 'An error occurred (ThrottlingException) while describing volume' >&2
   exit 255
 elif [[ "\$*" == *ManagedBy* ]];then
   [[ " \$* " == *" vol-unmanaged "* ]] && echo somebody-else || echo ec2-environment
@@ -127,6 +132,17 @@ PATH="$mock_bin:$PATH" bin/ec2 cleanup_resources --workdir "$runtime_dir/work" \
   --environment-config "$config" --manifest "$cleanup_manifest" --execute 1 >/dev/null
 [[ $(wc -l < "$cleanup_manifest" | tr -d ' ') == 1 ]] || {
   echo 'Already absent resources must be removed from the manifest.' >&2
+  exit 1
+}
+
+cat > "$cleanup_manifest" <<'EOF'
+type	id	name	created_at
+io2	vol-transient	transient	2026-09-10T00:00:00Z
+EOF
+PATH="$mock_bin:$PATH" bin/ec2 cleanup_resources --workdir "$runtime_dir/work" \
+  --environment-config "$config" --manifest "$cleanup_manifest" --execute 1 >/dev/null
+[[ -e "$transient_error" && $(wc -l < "$cleanup_manifest" | tr -d ' ') == 1 ]] || {
+  echo 'Transient AWS errors must be retried before cleanup continues.' >&2
   exit 1
 }
 

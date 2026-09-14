@@ -2557,31 +2557,57 @@ source "$script_dir/bootstrap.sh" "$workdir" "$config"
 manifest=${manifest_override:-$RESOURCE_MANIFEST}
 [[ -f "$manifest" ]] || { echo "Resource manifest not found: $manifest" >&2; exit 1; }
 
+aws_error_is_retryable() {
+  [[ "$1" =~ RequestLimitExceeded|Throttl|TooManyRequests|ServiceUnavailable|Internal(Error|Failure)|RequestTimeout|PriorRequestNotComplete|SlowDown|temporar|timed[[:space:]]out|connection[[:space:]](reset|closed) ]]
+}
+
+aws_retry() {
+  local attempt=1 status error_file error
+  while :; do
+    error_file=$(mktemp "${TMPDIR:-/tmp}/ec2-aws-error.XXXXXX")
+    status=0
+    aws "$@" 2>"$error_file" || status=$?
+    if ((status == 0)); then
+      cat "$error_file" >&2
+      rm -f "$error_file"
+      return 0
+    fi
+    error=$(<"$error_file")
+    rm -f "$error_file"
+    if ((attempt >= AWS_MAX_ATTEMPTS)) || ! aws_error_is_retryable "$error"; then
+      printf '%s\n' "$error" >&2
+      return "$status"
+    fi
+    sleep "$AWS_POLL_DELAY_SECONDS"
+    ((attempt++))
+  done
+}
+
 managed_tag() {
   local type=$1 id=$2
   case $type in
     ami)
-      aws "${AWS_ARGS[@]}" ec2 describe-images --image-ids "$id" \
+      aws_retry "${AWS_ARGS[@]}" ec2 describe-images --image-ids "$id" \
         --query "Images[0].Tags[?Key=='ManagedBy'].Value | [0]" --output text
       ;;
     instance)
-      aws "${AWS_ARGS[@]}" ec2 describe-instances --instance-ids "$id" \
+      aws_retry "${AWS_ARGS[@]}" ec2 describe-instances --instance-ids "$id" \
         --query "Reservations[0].Instances[0].Tags[?Key=='ManagedBy'].Value | [0]" --output text
       ;;
     snapshot)
-      aws "${AWS_ARGS[@]}" ec2 describe-snapshots --snapshot-ids "$id" \
+      aws_retry "${AWS_ARGS[@]}" ec2 describe-snapshots --snapshot-ids "$id" \
         --query "Snapshots[0].Tags[?Key=='ManagedBy'].Value | [0]" --output text
       ;;
     efs)
-      aws "${AWS_ARGS[@]}" efs describe-file-systems --file-system-id "$id" \
+      aws_retry "${AWS_ARGS[@]}" efs describe-file-systems --file-system-id "$id" \
         --query "FileSystems[0].Tags[?Key=='ManagedBy'].Value | [0]" --output text
       ;;
     fsx)
-      aws "${AWS_ARGS[@]}" fsx describe-file-systems --file-system-ids "$id" \
+      aws_retry "${AWS_ARGS[@]}" fsx describe-file-systems --file-system-ids "$id" \
         --query "FileSystems[0].Tags[?Key=='ManagedBy'].Value | [0]" --output text
       ;;
     io2)
-      aws "${AWS_ARGS[@]}" ec2 describe-volumes --volume-ids "$id" \
+      aws_retry "${AWS_ARGS[@]}" ec2 describe-volumes --volume-ids "$id" \
         --query "Volumes[0].Tags[?Key=='ManagedBy'].Value | [0]" --output text
       ;;
     *) return 2 ;;
@@ -2606,27 +2632,27 @@ verify_managed_resource() {
 delete_efs() {
   local id=$1 target remaining attempt
   local -a targets
-  mapfile -t targets < <(aws "${AWS_ARGS[@]}" efs describe-mount-targets --file-system-id "$id" \
+  mapfile -t targets < <(aws_retry "${AWS_ARGS[@]}" efs describe-mount-targets --file-system-id "$id" \
     --query 'MountTargets[].MountTargetId' --output text | tr '\t' '\n' | awk 'NF && $0 != "None"')
   for target in "${targets[@]}";do
-    aws "${AWS_ARGS[@]}" efs delete-mount-target --mount-target-id "$target"
+    aws_retry "${AWS_ARGS[@]}" efs delete-mount-target --mount-target-id "$target"
   done
   for ((attempt=1; attempt<=AWS_MAX_ATTEMPTS; attempt++));do
-    remaining=$(aws "${AWS_ARGS[@]}" efs describe-mount-targets --file-system-id "$id" \
+    remaining=$(aws_retry "${AWS_ARGS[@]}" efs describe-mount-targets --file-system-id "$id" \
       --query 'length(MountTargets)' --output text)
     [[ "$remaining" == 0 ]] && break
     ((attempt == AWS_MAX_ATTEMPTS)) || sleep "$AWS_POLL_DELAY_SECONDS"
   done
   [[ "$remaining" == 0 ]] || { echo "Timed out deleting mount targets for $id." >&2; return 1; }
-  aws "${AWS_ARGS[@]}" efs delete-file-system --file-system-id "$id"
+  aws_retry "${AWS_ARGS[@]}" efs delete-file-system --file-system-id "$id"
 }
 
 delete_ami() {
   local id=$1 snapshot_ids snapshot verify_status failed=0
-  mapfile -t snapshot_ids < <(aws "${AWS_ARGS[@]}" ec2 describe-images --image-ids "$id" \
+  mapfile -t snapshot_ids < <(aws_retry "${AWS_ARGS[@]}" ec2 describe-images --image-ids "$id" \
     --query 'Images[0].BlockDeviceMappings[].Ebs.SnapshotId' --output text 2>/dev/null | \
     tr '\t' '\n' | awk 'NF && $0 != "None"')
-  aws "${AWS_ARGS[@]}" ec2 deregister-image --image-id "$id"
+  aws_retry "${AWS_ARGS[@]}" ec2 deregister-image --image-id "$id"
   for snapshot in "${snapshot_ids[@]}"; do
     if verify_managed_resource snapshot "$snapshot"; then
       verify_status=0
@@ -2635,7 +2661,7 @@ delete_ami() {
     fi
     case $verify_status in
       0)
-      aws "${AWS_ARGS[@]}" ec2 delete-snapshot --snapshot-id "$snapshot" || failed=1
+      aws_retry "${AWS_ARGS[@]}" ec2 delete-snapshot --snapshot-id "$snapshot" || failed=1
         ;;
       2)
         echo "Snapshot $snapshot is already absent."
@@ -2663,11 +2689,11 @@ delete_resource() {
   esac
   case $type in
     ami) delete_ami "$id" ;;
-    instance) aws "${AWS_ARGS[@]}" ec2 terminate-instances --instance-ids "$id" ;;
-    snapshot) aws "${AWS_ARGS[@]}" ec2 delete-snapshot --snapshot-id "$id" ;;
+    instance) aws_retry "${AWS_ARGS[@]}" ec2 terminate-instances --instance-ids "$id" ;;
+    snapshot) aws_retry "${AWS_ARGS[@]}" ec2 delete-snapshot --snapshot-id "$id" ;;
     efs) delete_efs "$id" ;;
-    fsx) aws "${AWS_ARGS[@]}" fsx delete-file-system --file-system-id "$id" --open-zfs-configuration SkipFinalBackup=true ;;
-    io2) aws "${AWS_ARGS[@]}" ec2 delete-volume --volume-id "$id" ;;
+    fsx) aws_retry "${AWS_ARGS[@]}" fsx delete-file-system --file-system-id "$id" --open-zfs-configuration SkipFinalBackup=true ;;
+    io2) aws_retry "${AWS_ARGS[@]}" ec2 delete-volume --volume-id "$id" ;;
     *) echo "Unsupported manifest resource type: $type" >&2; return 1 ;;
   esac
 }
