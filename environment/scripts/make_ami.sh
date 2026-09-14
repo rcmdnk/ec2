@@ -201,11 +201,17 @@ trap cleanup_all_builds EXIT
 trap 'exit 130' INT TERM HUP
 
 monitor_ami_progress() {
-  local family=$1 build_output=$2 packer_pid=$3 ami_id='' snapshot_id='' state='' progress='' stage elapsed snapshot_status
+  local family=$1 build_output=$2 packer_pid=$3 ami_id='' snapshot_id='' state='' progress='' stage elapsed snapshot_status attempts=0
   local start_seconds=$SECONDS
   local -a snapshot_ids snapshot_statuses
 
   while kill -0 "$packer_pid" 2>/dev/null; do
+    attempts=$((attempts + 1))
+    if ((attempts > AMI_PROGRESS_MAX_ATTEMPTS)); then
+      printf '%s: AMI progress timed out after %ss (%s attempts); Packer is still running.\n' \
+        "$family" "$((attempts * AMI_PROGRESS_POLL_DELAY_SECONDS))" "$AMI_PROGRESS_MAX_ATTEMPTS" >&2
+      return 124
+    fi
     elapsed=$((SECONDS - start_seconds))
     stage=$(sed -n 's/^==> amazon-ebs: //p' "$build_output" | tail -n 1)
     stage=${stage:-Packer build in progress}
@@ -217,7 +223,7 @@ monitor_ami_progress() {
       if ((${#snapshot_ids[@]} > 0)); then
         mapfile -t snapshot_statuses < <(aws "${AWS_ARGS[@]}" ec2 describe-snapshots \
           --snapshot-ids "${snapshot_ids[@]}" \
-          --query 'Snapshots[].[SnapshotId,State,Progress]' --output text 2>/dev/null || true)
+          --query 'Snapshots[].[SnapshotId,State,Progress]' --output text)
         for snapshot_status in "${snapshot_statuses[@]}"; do
           read -r snapshot_id state progress <<<"$snapshot_status"
           printf '%s: AMI %s snapshot=%s progress=%s state=%s elapsed=%ss\n' \

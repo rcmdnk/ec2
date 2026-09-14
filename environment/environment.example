@@ -168,6 +168,7 @@ AWS_REGION=""   # REQUIRED
 # This controls only status polling and does not change Packer's AWS SDK polling.
 # Default: 15
 #AMI_PROGRESS_POLL_DELAY_SECONDS=15
+#AMI_PROGRESS_MAX_ATTEMPTS=400
 
 # Number of attempts and delay (seconds) used by instance user-data while
 # waiting for requested mounts and attached block devices. Provisioning fails
