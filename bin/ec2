@@ -4053,6 +4053,30 @@ if ((${#missing[@]} > 0)); then
 fi
 unset missing required required_settings alternative
 
+validate_choice() {
+  local name=$1 value=$2 allowed
+  shift 2
+  for allowed in "$@"; do
+    [[ "$value" == "$allowed" ]] && return 0
+  done
+  echo "$name must be one of: $* (got '$value')." >&2
+  exit 1
+}
+
+validate_bool() {
+  local name=$1 value=$2
+  [[ "$value" == 0 || "$value" == 1 || "$value" == true || "$value" == false ]] && return 0
+  echo "$name must be 0, 1, true, or false (got '$value')." >&2
+  exit 1
+}
+
+validate_positive_integer() {
+  local name=$1 value=$2
+  [[ "$value" =~ ^[1-9][0-9]*$ ]] && return 0
+  echo "$name must be a positive integer (got '$value')." >&2
+  exit 1
+}
+
 AWS_PROFILE="${AWS_PROFILE-default}"
 AWS_REGION="${AWS_REGION-}"
 AWS_AUTH_COMMAND="${AWS_AUTH_COMMAND-}"
@@ -4065,6 +4089,7 @@ AWS_SECURITY_GROUP_NAMES="${AWS_SECURITY_GROUP_NAMES-}"
 AWS_IAM_INSTANCE_PROFILE="${AWS_IAM_INSTANCE_PROFILE-}"
 EC2_DEFAULT_USERNAME="${EC2_DEFAULT_USERNAME-ec2-user}"
 EC2_CONNECTION_METHOD="${EC2_CONNECTION_METHOD-ssh}"
+validate_choice EC2_CONNECTION_METHOD "$EC2_CONNECTION_METHOD" ssh ssm
 
 # Operation-specific settings override the common AWS settings. The normalized
 # names below are internal implementation details; config files should use the
@@ -4120,18 +4145,18 @@ MOUNT_READY_MAX_ATTEMPTS=${MOUNT_READY_MAX_ATTEMPTS-60}
 MOUNT_READY_RETRY_INTERVAL_SECONDS=${MOUNT_READY_RETRY_INTERVAL_SECONDS-2}
 AMI_VALIDATE_ONLY=${AMI_VALIDATE_ONLY-0}
 AMI_PROGRESS_POLL_DELAY_SECONDS=${AMI_PROGRESS_POLL_DELAY_SECONDS-15}
-[[ "$AMI_PROGRESS_POLL_DELAY_SECONDS" =~ ^[1-9][0-9]*$ ]] || {
-  echo 'AMI_PROGRESS_POLL_DELAY_SECONDS must be a positive integer.' >&2
-  exit 1
-}
+validate_positive_integer AWS_POLL_DELAY_SECONDS "$AWS_POLL_DELAY_SECONDS"
+validate_positive_integer AWS_MAX_ATTEMPTS "$AWS_MAX_ATTEMPTS"
+validate_positive_integer MOUNT_READY_MAX_ATTEMPTS "$MOUNT_READY_MAX_ATTEMPTS"
+validate_positive_integer MOUNT_READY_RETRY_INTERVAL_SECONDS "$MOUNT_READY_RETRY_INTERVAL_SECONDS"
+validate_positive_integer AMI_PROGRESS_POLL_DELAY_SECONDS "$AMI_PROGRESS_POLL_DELAY_SECONDS"
+validate_bool AMI_VALIDATE_ONLY "$AMI_VALIDATE_ONLY"
 AMI_PACKER_ON_ERROR=${AMI_PACKER_ON_ERROR-cleanup}
-case "$AMI_PACKER_ON_ERROR" in
-  cleanup|abort|ask) ;;
-  *) echo 'AMI_PACKER_ON_ERROR must be cleanup, abort, or ask.' >&2; exit 1 ;;
-esac
+validate_choice AMI_PACKER_ON_ERROR "$AMI_PACKER_ON_ERROR" cleanup abort ask
 
 AMI_BUILD_SSH_INTERFACE=${AMI_BUILD_SSH_INTERFACE-private_ip}
 AMI_BUILD_SSH_USERNAME=${AMI_BUILD_SSH_USERNAME-${EC2_USER}}
+validate_choice AMI_BUILD_SSH_INTERFACE "$AMI_BUILD_SSH_INTERFACE" private_ip public_ip private_dns public_dns session_manager
 # Optional: Packer builds a temporary security group when this is empty, and the
 # generated launch JSON leaves "Groups" out so EC2 applies the VPC default.
 SECURITY_GROUP_IDS=${SECURITY_GROUP_IDS-}
@@ -4165,6 +4190,9 @@ AMI_FLATPAK_PACKAGES=${AMI_FLATPAK_PACKAGES-}
 AMI_UPDATE_PACKAGES=${AMI_UPDATE_PACKAGES-1}
 AMI_PACKAGE_MANAGER=${AMI_PACKAGE_MANAGER-auto}
 AMI_ENABLE_SHARED_MEMORY=${AMI_ENABLE_SHARED_MEMORY-1}
+validate_choice AMI_PACKAGE_MANAGER "$AMI_PACKAGE_MANAGER" auto dnf yum apt
+validate_bool AMI_UPDATE_PACKAGES "$AMI_UPDATE_PACKAGES"
+validate_bool AMI_ENABLE_SHARED_MEMORY "$AMI_ENABLE_SHARED_MEMORY"
 
 # CPU instance configuration.
 AMI_FAMILIES=${AMI_FAMILIES-CPU,GPU}
@@ -4187,19 +4215,33 @@ GPU_AMI_EXTRA_PACKAGES=${GPU_AMI_EXTRA_PACKAGES-}
 
 # An enabled family needs a name: Packer builds under it and setup_ec2 looks the
 # image up by it.
+[[ -n "$AMI_FAMILIES" ]] || { echo 'AMI_FAMILIES must not be empty.' >&2; exit 1; }
+declare -A seen_ami_families=()
+# shellcheck disable=SC2153  # The uppercase setting is loaded from the environment config.
 IFS=, read -r -a ami_families <<<"$AMI_FAMILIES"
 for family in "${ami_families[@]}"; do
+  [[ "$family" =~ ^[A-Z][A-Z0-9_]*$ ]] || {
+    echo "AMI_FAMILIES contains an invalid family name: '$family'." >&2
+    exit 1
+  }
+  [[ -z "${seen_ami_families[$family]+x}" ]] || {
+    echo "AMI_FAMILIES contains a duplicate family: '$family'." >&2
+    exit 1
+  }
+  seen_ami_families[$family]=1
   enabled_var="${family}_ENABLED" name_var="${family}_OUTPUT_AMI_NAME"
+  validate_bool "$enabled_var" "${!enabled_var-0}"
   if [[ "${!enabled_var-0}" == 1 && -z "${!name_var-}" ]]; then
     echo "${name_var} must be set in ${CONFIG:-config} while ${enabled_var} is 1" >&2
     exit 1
   fi
 done
-unset family enabled_var name_var ami_families
+unset family enabled_var name_var ami_families seen_ami_families
 
 # File system configuration.
 CREATE_FILE_SYSTEMS=${CREATE_FILE_SYSTEMS-0}
 EC2_FILESYSTEM_PROVIDERS=${EC2_FILESYSTEM_PROVIDERS-s3files,efs,fsx,io2}
+validate_bool CREATE_FILE_SYSTEMS "$CREATE_FILE_SYSTEMS"
 RESOURCE_DRY_RUN=${RESOURCE_DRY_RUN-0}
 RESOURCE_MANAGED_BY=${RESOURCE_MANAGED_BY-ec2-environment}
 RESOURCE_PROJECT=${RESOURCE_PROJECT-}
@@ -4263,6 +4305,9 @@ EC2_USE_PRIVATE_IP=${EC2_USE_PRIVATE_IP-1}
 EC2_DEFAULT_INSTANCE_TYPE=${EC2_DEFAULT_INSTANCE_TYPE-t3.medium}
 EC2_USE_SPOT_INSTANCE=${EC2_USE_SPOT_INSTANCE-0}
 EC2_SUBMIT_COMMAND=${EC2_SUBMIT_COMMAND-1}
+validate_bool EC2_ASSOCIATE_PUBLIC_IP "$EC2_ASSOCIATE_PUBLIC_IP"
+validate_bool EC2_USE_PRIVATE_IP "$EC2_USE_PRIVATE_IP"
+validate_bool EC2_USE_SPOT_INSTANCE "$EC2_USE_SPOT_INSTANCE"
 EC2_SUBMIT_N_RETRY_LAUNCH=${EC2_SUBMIT_N_RETRY_LAUNCH-120}
 EC2_SUBMIT_N_RETRY_SSH=${EC2_SUBMIT_N_RETRY_SSH-10}
 EC2_SUBMIT_RETRY_LAUNCH_INTERVAL=${EC2_SUBMIT_RETRY_LAUNCH_INTERVAL-60}
@@ -4276,6 +4321,8 @@ fi
 EC2_USER_DATA_URI=${EC2_USER_DATA_URI-$ec2_user_data_default}
 EC2_USER_DATA_FORMAT=${EC2_USER_DATA_FORMAT-auto}
 EC2_USER_DATA_MAX_BYTES=${EC2_USER_DATA_MAX_BYTES-16384}
+validate_choice EC2_USER_DATA_FORMAT "$EC2_USER_DATA_FORMAT" auto plain gzip
+validate_positive_integer EC2_USER_DATA_MAX_BYTES "$EC2_USER_DATA_MAX_BYTES"
 EC2_CLOUD_INIT_INSTANCE_DIR=${EC2_CLOUD_INIT_INSTANCE_DIR-/var/lib/cloud/instances}
 EC2_READY_FILENAME=${EC2_READY_FILENAME-ready}
 unset ec2_user_data_default

@@ -21,4 +21,13 @@ common=$(CONFIG="$config" WORKDIR=tmp bash -c 'source "$CONFIG"; source environm
 ami=$(CONFIG="$config" WORKDIR=tmp ENVIRONMENT_OPERATION=ami bash -c 'source "$CONFIG"; source environment/scripts/variables.sh; printf "%s %s\n" "$REGION" "$SUBNET_IDS"')
 [[ "$common" == 'ec2-region ec2-subnet' ]]
 [[ "$ami" == 'ami-region ami-subnet' ]]
+
+if EC2_CONNECTION_METHOD=telnet CONFIG="$config" WORKDIR=tmp bash -c 'source "$CONFIG"; source environment/scripts/variables.sh' >/dev/null 2>&1; then
+  echo 'Invalid EC2_CONNECTION_METHOD must be rejected.' >&2
+  exit 1
+fi
+if AMI_FAMILIES=CPU,CPU CONFIG="$config" WORKDIR=tmp bash -c 'source "$CONFIG"; source environment/scripts/variables.sh' >/dev/null 2>&1; then
+  echo 'Duplicate AMI families must be rejected.' >&2
+  exit 1
+fi
 echo 'Variable precedence tests passed.'
