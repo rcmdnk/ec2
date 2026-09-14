@@ -258,7 +258,7 @@ _ip_choice () {
 }
 _get_instance_list () {
   # shellcheck disable=SC2089
-  local cmd="describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:State.Name,e:InstanceType,f:InstanceLifecycle}\" --output text $__instance_filter"
+  local cmd="describe-instances --query \"Reservations[*].Instances[*].{a:Tags[?Key=='Name']|[0].Value,b:InstanceId,c:$(_ip_choice),d:State.Name,e:InstanceType,f:InstanceLifecycle,g:Placement.AvailabilityZone}\" --output text $__instance_filter"
   if [ -n "${__ids[__enum_instance]}" ];then
     local cmd="$cmd --instance-ids ${__ids[__enum_instance]}"
   fi
@@ -372,6 +372,7 @@ _instance_check () {
   # shellcheck disable=SC2206
   __ids[__enum_instance]=$(echo "${__list[__enum_instance]}"|awk '{print $2}')
   __instance_ip=$(echo "${__list[__enum_instance]}"|awk '{print $3}')
+  __instance_az=$(echo "${__list[__enum_instance]}"|awk '{print $7}')
   local status=$(echo "${__list[__enum_instance]}"|awk '{print $4}')
 
   wait_incorrect_spot_request_state=0
@@ -780,8 +781,28 @@ ssh () {
     fi
     _execute_aws "ssm start-session --target ${__ids[__enum_instance]}"
     return $?
+  elif [ "$__connection_method" = "ec2_instance_connect" ];then
+    if [ "$cmd" != "ssh" ] || [ -n "${__execute_command:-}" ];then
+      echo 'EC2_CONNECTION_METHOD=ec2_instance_connect supports interactive `ec2 ssh` only.' >&2
+      return 2
+    fi
+    if [ -z "${__ssh_key:-}" ] || [ ! -f "$__ssh_key" ];then
+      echo 'EC2_CONNECTION_METHOD=ec2_instance_connect requires EC2_SSH_PRIVATE_KEY.' >&2
+      return 2
+    fi
+    if ! type ssh-keygen >/dev/null 2>&1;then
+      echo 'EC2_CONNECTION_METHOD=ec2_instance_connect requires ssh-keygen.' >&2
+      return 2
+    fi
+    local public_key quoted_public_key
+    public_key=$(ssh-keygen -y -f "$__ssh_key") || {
+      echo "Could not derive a public key from $__ssh_key." >&2
+      return 2
+    }
+    printf -v quoted_public_key '%q' "$public_key"
+    _execute_aws "ec2-instance-connect send-ssh-public-key --instance-id ${__ids[__enum_instance]} --availability-zone ${__instance_az} --instance-os-user ${__ssh_user:-ec2-user} --ssh-public-key ${quoted_public_key}" || return $?
   elif [ "$__connection_method" != "ssh" ];then
-    echo "Unsupported EC2_CONNECTION_METHOD: $__connection_method (expected ssh or ssm)." >&2
+    echo "Unsupported EC2_CONNECTION_METHOD: $__connection_method (expected ssh, ssm, or ec2_instance_connect)." >&2
     return 2
   fi
   local -a ssh_options=("${__ssh_option[@]}")

@@ -764,6 +764,8 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # mosh, and Eternal Terminal continue to use SSH.
 # Default: ssh
 #EC2_CONNECTION_METHOD="ssh"
+# Set `ec2_instance_connect` to send the configured private key's public key
+# through EC2 Instance Connect before opening an interactive SSH session.
 
 # "AssociatePublicIpAddress" in the launch JSON. Must be the literal true or
 # false - scripts/setup_ec2.sh rejects anything else. Set true only for public

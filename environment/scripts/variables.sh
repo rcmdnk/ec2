@@ -67,7 +67,7 @@ AWS_SECURITY_GROUP_NAMES="${AWS_SECURITY_GROUP_NAMES-}"
 AWS_IAM_INSTANCE_PROFILE="${AWS_IAM_INSTANCE_PROFILE-}"
 EC2_DEFAULT_USERNAME="${EC2_DEFAULT_USERNAME-ec2-user}"
 EC2_CONNECTION_METHOD="${EC2_CONNECTION_METHOD-ssh}"
-validate_choice EC2_CONNECTION_METHOD "$EC2_CONNECTION_METHOD" ssh ssm
+validate_choice EC2_CONNECTION_METHOD "$EC2_CONNECTION_METHOD" ssh ssm ec2_instance_connect
 
 # Operation-specific settings override the common AWS settings. The normalized
 # names below are internal implementation details; config files should use the

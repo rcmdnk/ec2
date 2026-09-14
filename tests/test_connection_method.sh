@@ -14,6 +14,15 @@ cat > "$mock_bin/aws" <<'EOF'
 printf '%s\n' "$*" >> "$ARG_LOG"
 EOF
 chmod 755 "$mock_bin/aws"
+cat > "$mock_bin/ssh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+cat > "$mock_bin/ssh-keygen" <<'EOF'
+#!/usr/bin/env bash
+echo 'ssh-ed25519 AAAAinstance-connect-test'
+EOF
+chmod 755 "$mock_bin/ssh" "$mock_bin/ssh-keygen"
 PATH="$mock_bin:$PATH"
 
 source <(awk '/^# Main$/{exit} {print}' src/ec2)
@@ -25,7 +34,15 @@ __execute_command=''
 _instance_check() {
   __ids[__enum_instance]=i-0123456789abcdef0
   __instance_ip=''
+  __instance_az=ap-northeast-1a
 }
 ssh
 grep -q 'ssm start-session --target i-0123456789abcdef0' "$ARG_LOG"
+
+__connection_method=ec2_instance_connect
+__ssh_key="$runtime_dir/instance-connect-key"
+__ssh_user=ec2-user
+: > "$__ssh_key"
+ssh
+grep -q 'ec2-instance-connect send-ssh-public-key --instance-id i-0123456789abcdef0 --availability-zone ap-northeast-1a' "$ARG_LOG"
 echo 'EC2 connection method tests passed.'
