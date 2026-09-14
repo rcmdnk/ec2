@@ -442,4 +442,5 @@ checks when any of those sources change:
 ```
 $ scripts/build
 $ prek run -a
+$ bash scripts/verify.sh
 ```
