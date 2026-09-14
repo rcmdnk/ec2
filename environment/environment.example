@@ -920,7 +920,8 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # Local files copied to the instance during first-boot setup. The three lists
 # correspond by position and are comma-separated. A destination or permission
 # may be empty; an empty destination keeps the source path and an empty
-# permission uses 600. One permission value is applied to every file.
+# permission preserves the local file mode. One permission value is applied to
+# every file.
 # `~` in a source means the local home directory; in a destination it means the
 # remote EC2_SSH_USERNAME home directory. Parent directories are created.
 # Example:

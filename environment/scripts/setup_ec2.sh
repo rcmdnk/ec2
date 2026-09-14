@@ -437,6 +437,9 @@ EEOF
     esac
     copy_permission=${copy_permissions[0]-600}
     (( ${#copy_permissions[@]} > 1 )) && copy_permission=${copy_permissions[copy_index]}
+    if [[ -z "$copy_permission" ]]; then
+      copy_permission=$(stat -f '%Lp' "$copy_source" 2>/dev/null || stat -c '%a' "$copy_source")
+    fi
     printf 'echo Copying %q to "$copy_destination"...\n' "$copy_source"
     printf 'sudo -u "$user" mkdir -p "$(dirname -- "$copy_destination")"\n'
     printf 'printf %%s %q | base64 -d | sudo -u "$user" tee "$copy_destination" >/dev/null\n' "$(base64_file "$copy_source")"
