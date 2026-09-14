@@ -127,7 +127,10 @@ RESOURCE_NAME_PREFIX="dev"
 
 # AWS CLI profile. Used for every aws call (--profile) and passed to Packer as
 # `profile`.
-# Credentials are never written into the generated user-data.
+# AWS CLI credentials are used locally and are not automatically written into
+# user-data. Explicit settings such as INSTANCE_COPY_ENTRIES and
+# INSTANCE_USER_DATA_EXTRA_SCRIPT can still embed sensitive contents; review
+# the generated user-data before launching.
 # Default: default
 #AWS_PROFILE="default"
 
@@ -334,10 +337,10 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 #AMI_ROOT_VOLUME_ENCRYPTED="true"
 
 # Delete the root volume when the instance terminates. "true" or "false".
-# Keep "true" for disposable instances; persistent data belongs on the shared
-# file systems in section 8, not on the root volume.
-# Default: true
-#AMI_ROOT_VOLUME_DELETE_ON_TERMINATION="true"
+# Set true only for disposable instances. When false, the root volume remains
+# after termination and must be deleted separately if it is no longer needed.
+# Default: false
+#AMI_ROOT_VOLUME_DELETE_ON_TERMINATION="false"
 
 
 # =============================================================================
@@ -400,7 +403,8 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 # /var/log/ec2-environment-packages.tsv inside the built AMI.
 # The package setup runs automatically when AMI_PACKAGES or
 # AMI_FLATPAK_PACKAGES is non-empty, or when AMI_UPDATE_PACKAGES=1.
-#AMI_UPDATE_PACKAGES=1
+# Default: 0. Set to 1 to update packages even when no package is installed.
+#AMI_UPDATE_PACKAGES=0
 
 # Space-separated Flatpak application IDs. When non-empty, flatpak is installed,
 # the flathub remote is added, and these are installed from it. Leave empty to
@@ -824,7 +828,8 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # URI of the generated cloud-init user-data, as the `ec2` command expects it.
 # scripts/setup_ec2.sh also derives the local output path from this value: it
 # strips the scheme, and a ".gz" suffix additionally triggers gzip of the
-# generated script - which is what makes it fit in the 16 KB user-data limit.
+# generated script. Compression can make a larger script fit in the 16 KB
+# limit, but it does not encrypt the contents.
 # Use "fileb://" for the compressed form and "file://" for plain text.
 # User-data encoding. `auto` preserves the current behavior: a .gz URI creates
 # gzip data and any other URI creates plain text. Set plain or gzip explicitly
@@ -832,8 +837,10 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # Default: auto
 #EC2_USER_DATA_FORMAT="auto"
 
-# Maximum raw user-data size accepted before launch. AWS EC2 currently limits
-# this to 16384 bytes; lower it when a downstream launcher has a smaller limit.
+# Maximum user-data payload size accepted before launch. AWS EC2 currently
+# limits the payload to 16384 bytes before API Base64 encoding. With gzip this
+# is the compressed size; with plain it is the uncompressed script size. Lower
+# it when a downstream launcher has a smaller limit.
 # Default: 16384
 #EC2_USER_DATA_MAX_BYTES=16384
 
@@ -854,10 +861,11 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 #  /var/log/cloud-init-output.log to ~/ready, which is the marker to poll for
 #  when you want to know that setup has finished.
 #
-#  SECURITY: user-data is readable by anyone who can reach the instance metadata
-#  service on the instance, and a copy is left in the home directory. Never put
-#  access keys, API keys or private keys in any of these settings. Use
-#  AWS_IAM_INSTANCE_PROFILE and the AWS credential chain instead.
+#  SECURITY: user-data is readable from inside the instance through the
+#  instance metadata service, and a copy is left in the home directory. Do not
+#  put access keys, API keys or private keys in user-data unless this exposure
+#  is explicitly acceptable. Prefer AWS_IAM_INSTANCE_PROFILE and the AWS
+#  credential chain for AWS access.
 
 # Comma-separated systemd services to enable and start on first boot. Service
 # names may contain letters, numbers, `_`, `.`, `@`, `:`, and `-`.
@@ -921,6 +929,7 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # an empty permission preserves the local file mode.
 # `~` in a source means the local home directory; in a destination it means the
 # remote EC2_SSH_USERNAME home directory. Parent directories are created.
+# The `|` character separates fields and cannot be used in a path.
 # The file contents are embedded in EC2 user-data (Base64 is encoding, not
 # encryption). User-data can be read from inside the instance and by AWS
 # principals with suitable permissions, so treat this as an explicit setting

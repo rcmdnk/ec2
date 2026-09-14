@@ -179,7 +179,7 @@ Options:
   --template-id, -T                  Assign template id. If not given, not
                                      templated is used. If 'select' is passed,
                                      it is selected interactively.
-  --user-data, -U                    user data file for luanch (run-instances),
+  --user-data, -U                    user data file for launch (run-instances),
                                      e.g: file:///path/to/your/user/data/script
   --verbose, -v                      Set 1 to run as verbose mode (show
                                      executing commands.)
@@ -340,6 +340,11 @@ replace a hand-written file or symbolic link. To replace one intentionally,
 use `--replace-config 1`; the previous file is retained as a timestamped backup.
 Use `--install-config 0` to generate artifacts without changing the default
 configuration.
+
+Review generated user-data before launching. `INSTANCE_COPY_ENTRIES` and
+`INSTANCE_USER_DATA_EXTRA_SCRIPT` can embed local file contents or root-run
+commands in user-data, which is readable from inside the instance through the
+instance metadata service. Prefer an instance profile for AWS credentials.
 
 The Packer scripts and the environment template are embedded in `bin/ec2`.
 They are extracted to a temporary directory when an environment command runs,

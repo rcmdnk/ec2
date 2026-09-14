@@ -16,7 +16,9 @@ repository checks.
 Configure an AWS CLI profile and set it as `AWS_PROFILE`. Authentication goes
 through the normal credential chain; optionally set `AWS_AUTH_COMMAND` to a
 local refresh command when credentials expire.
-Credentials are never written into user-data.
+These local AWS credentials are not automatically written into user-data.
+However, `INSTANCE_COPY_ENTRIES` and `INSTANCE_USER_DATA_EXTRA_SCRIPT` can
+explicitly embed sensitive contents, so review generated user-data before launch.
 
 ### In AWS
 
@@ -96,7 +98,7 @@ without either setting.
 
 **Instance profile.** Optional, but the instance cannot use the AWS credential
 chain without one. Required if you use io2 (`ec2:AttachVolume` from user-data),
-an `AWS_CONFIG` profile with `credential_source = Ec2InstanceMetadata`
+an instance-side AWS configuration with `credential_source = Ec2InstanceMetadata`
 (`sts:AssumeRole` on the target role, whose trust policy must allow this one),
 IAM-authenticated EFS mounts, or `EC2_CONNECTION_METHOD=ssm`.
 
@@ -201,10 +203,11 @@ both checks run even when that kind is unused: io2 requires exactly one subnet,
 and FSx requires one for `SINGLE_AZ_*` and at least two for `MULTI_AZ_*`. io2
 and FSx therefore cannot be combined with a `MULTI_AZ_*` deployment.
 
-The generated user-data must fit EC2's 16 KB limit, which applies to the raw
-bytes before base64 encoding. `ec2 setup` gzips it, then warns past 80% and
-fails past the limit; move long setup into the AMI or into `FS_OPT_SCRIPTS` if
-you hit it.
+The generated user-data must fit EC2's 16 KB limit before API Base64 encoding.
+When gzip is selected, the compressed payload is measured; with plain text, the
+uncompressed script is measured. `ec2 setup` warns past 80% and fails past the
+limit. Compression does not encrypt user-data. Move long setup into the AMI,
+`AMI_PROVISION_SCRIPTS`, or `USER_ENV_INSTALLER_SCRIPTS` if you hit the limit.
 
 ### Use an existing AMI
 
@@ -244,20 +247,23 @@ the files under the work directory.
 
 ## Hooks and security
 
-Set `USER_SCRIPT_PATH` to a local shell script for site-specific setup. The
-hook is copied into generated user-data, so review it before launching. Do not
+Set `INSTANCE_USER_DATA_EXTRA_SCRIPT` to a local shell script for site-specific
+setup. The hook is copied into generated user-data, so review it before launching. Do not
 put access keys, API keys, private keys, or other secrets in the hook or
-configuration. Use an instance profile and the AWS CLI credential chain.
+configuration. The hook runs as root. `INSTANCE_COPY_ENTRIES` can also copy
+local files into the instance, but their contents are embedded in user-data.
+Use an instance profile and the AWS CLI credential chain where possible.
 
-`EC2_USER_DATA` is both the URI handed to the `ec2` command and the source of
+`EC2_USER_DATA_URI` is both the URI handed to the `ec2` command and the source of
 the local output path: `ec2 setup` strips the scheme to decide where to write
 the script, and a `.gz` suffix additionally makes it gzip the result. Use
 `fileb://` for the compressed form and `file://` for plain text.
 
 The generated user-data and its `.gz` are written with restrictive permissions
-because they embed `AWS_CONFIG`, the `SSH_*` file contents and the
-`USER_SCRIPT_PATH` hook. Anything in them is readable by every user on the
-launched instance through the instance metadata service.
+but this protects only the local files before launch. Anything embedded in
+them is readable from inside the launched instance through the instance
+metadata service. Base64 and gzip provide encoding and compression, not
+confidentiality.
 
 ## Validation
 

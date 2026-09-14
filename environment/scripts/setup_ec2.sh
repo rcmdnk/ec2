@@ -445,11 +445,12 @@ else
   user_data_sent="$user_data_sh"
 fi
 
-# EC2 caps user-data at 16 KB of raw bytes, measured before base64 encoding, and
-# rejects the launch with an opaque error when it is exceeded.
+# EC2 caps user-data at 16 KB of payload before API Base64 encoding. When gzip
+# is selected this is the compressed payload; with plain it is the script.
+# Reject the launch locally when the configured limit is exceeded.
 user_data_size=$(wc -c < "$user_data_sent" | tr -d ' ')
 if ((user_data_size > EC2_USER_DATA_MAX_BYTES));then
-  echo "user-data is $user_data_size bytes encoded, over the $EC2_USER_DATA_MAX_BYTES byte limit." >&2
+  echo "user-data payload is $user_data_size bytes, over the $EC2_USER_DATA_MAX_BYTES byte limit." >&2
   echo 'Shorten INSTANCE_USER_DATA_EXTRA_SCRIPT, or move the work into the AMI or USER_ENV_INSTALLER_SCRIPTS.' >&2
   exit 1
 fi
