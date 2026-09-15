@@ -363,7 +363,8 @@ You can pass the template name by `-T <your template>`, too.
 ### Connect to an instance
 
 Use `ec2 ssh` for a normal interactive SSH session. `ec2 mosh` provides a more
-resilient interactive connection when the network changes, and `ec2 et` uses
+resilient interactive connection when the network changes using
+[Mosh](https://mosh.org/), and `ec2 et` uses
 [Eternal Terminal](https://eternalterminal.dev/) when `et` is installed locally
 and `etserver` is running on the instance. All three commands use the instance
 and SSH settings from the generated configuration; they require the instance
