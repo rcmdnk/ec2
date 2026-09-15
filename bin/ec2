@@ -2444,28 +2444,22 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 #   NEOVIM_OPT="v0.10.2"
 #USER_ENV_INSTALLER_SCRIPTS=""
 
-# Dotfiles kept on the shared file system. Each entry is created under
-# $USER_ENV_ROOT_DIR/dotfiles/ (touch for files, mkdir -p for directories) and symlinked
-# into the home directory, replacing whatever was there unless it is already a
-# symlink. Requires USER_ENV_ROOT_DIR.
-#
-# Use this for state you want to keep - .bash_history, caches, tool state - not
-# for files that belong in such an own dotfiles.
+# Dotfiles kept on the shared file system. Requires USER_ENV_ROOT_DIR. Entries
+# are created under $USER_ENV_ROOT_DIR/dotfiles/ and linked into the home
+# directory. Use USER_ENV_DOTFILES_FILE for individual files, such as
+# .bash_history; USER_ENV_DOTFILES_DIR for directories that should be replaced
+# by a symlink, such as .cache or .local; and USER_ENV_DOTFILES_DIR_CONTENTS for
+# directories whose files, subdirectories, and dotfiles should be linked
+# individually while keeping the directory itself in place, such as .vim.
+# Existing non-symlink files are replaced. Do not use both directory settings
+# for the same directory.
 # Example:
 #    USER_ENV_DOTFILES_FILE=".bash_history"
 #    USER_ENV_DOTFILES_DIR=".cache,.local"
+#    USER_ENV_DOTFILES_DIR_CONTENTS=".vim"
 #USER_ENV_DOTFILES_FILE=""
 #USER_ENV_DOTFILES_DIR=""
 #USER_ENV_DOTFILES_DIR_CONTENTS=""
-
-# Comma-separated directories whose contents are linked individually into the
-# corresponding home directory. The source directory is created under
-# $USER_ENV_ROOT_DIR/dotfiles/, and its files, directories, and dotfiles are
-# linked into the existing or newly created home directory. Unlike
-# USER_ENV_DOTFILES_DIR, the directory itself is not replaced by a symlink.
-# Do not use both settings for the same directory.
-# Example:
-#    USER_ENV_DOTFILES_DIR_CONTENTS=".vim"
 
 # Same, but relative to ~/.config/ instead of the home directory.
 #USER_ENV_CONFIG_DOTFILES_FILE=""
