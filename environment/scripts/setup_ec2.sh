@@ -398,6 +398,7 @@ EEOF
 
   for copy_entry in "${copy_entries[@]}"; do
     IFS='|' read -r copy_source copy_destination copy_permission copy_extra <<<"$copy_entry"
+    [[ -n "$copy_destination" ]] || copy_destination=$copy_source
     case "$copy_source" in
       '~') copy_source="$HOME" ;;
       '~/'*) copy_source="$HOME/${copy_source:2}" ;;
@@ -405,7 +406,6 @@ EEOF
       '${HOME}/'*) copy_source="$HOME/${copy_source#'${HOME}/'}" ;;
     esac
     [[ -f "$copy_source" ]] || continue
-    [[ -n "$copy_destination" ]] || copy_destination=$copy_source
     case "$copy_destination" in
       '~') printf 'copy_destination=/home/"$user"\n' ;;
       '~/'*) printf 'copy_destination=/home/"$user"/%q\n' "${copy_destination:2}" ;;
