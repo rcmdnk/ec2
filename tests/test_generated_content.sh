@@ -43,6 +43,7 @@ USER_ENV_ROOT_DIR='$runtime_dir/fs dir; touch $marker'
 USER_ENV_ENABLE_USR_SYMLINK=0
 USER_ENV_DOTFILES_FILE=
 USER_ENV_DOTFILES_DIR=
+USER_ENV_DOTFILES_DIR_CONTENTS=.cache
 INSTANCE_SYSTEMD_SERVICES=chronyd,amazon-ssm-agent
 INSTANCE_COPY_ENTRIES=(
   "$ssh_input|~/.ssh/config|600"
@@ -64,6 +65,8 @@ generated_user_data="$runtime_dir/work/ec2/user_data.sh"
 bash -n "$generated_user_data"
 grep -q 'systemctl enable --now chronyd' "$generated_user_data"
 grep -q 'systemctl enable --now amazon-ssm-agent' "$generated_user_data"
+grep -qF 'mapfile -t dir_contents <<<"$dotfiles_dir_contents_values"' "$generated_user_data"
+grep -qF 'for content_source in "$content_source_dir"/* "$content_source_dir"/.[!.]* "$content_source_dir"/..?*' "$generated_user_data"
 grep -q 'copy_destination=/home/"\$user"/.ssh/config' "$generated_user_data"
 grep -q 'copy_destination=/home/"\$user"/.aws/config' "$generated_user_data"
 grep -q 'copy_destination=/home/"\$user"/.localrc' "$generated_user_data"

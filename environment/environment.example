@@ -916,12 +916,15 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # Example:
 #    USER_ENV_DOTFILES_FILE=".bash_history"
 #    USER_ENV_DOTFILES_DIR=".cache,.local"
+#    USER_ENV_DOTFILES_DIR_CONTENTS=".config"
 #USER_ENV_DOTFILES_FILE=""
 #USER_ENV_DOTFILES_DIR=""
+#USER_ENV_DOTFILES_DIR_CONTENTS=""
 
 # Same, but relative to ~/.config/ instead of the home directory.
 #USER_ENV_CONFIG_DOTFILES_FILE=""
 #USER_ENV_CONFIG_DOTFILES_DIR=""
+#USER_ENV_CONFIG_DOTFILES_DIR_CONTENTS=""
 
 # Local files copied to the instance during first-boot setup. Each array entry
 # is one mapping in the form source|destination|permission. The destination

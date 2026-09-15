@@ -248,8 +248,10 @@ EEOF
   [[ -n "$USER_ENV_INSTALLER_SCRIPTS" ]] && ignored_fs_settings+=(USER_ENV_INSTALLER_SCRIPTS)
   [[ -n "$USER_ENV_DOTFILES_FILE" ]] && ignored_fs_settings+=(USER_ENV_DOTFILES_FILE)
   [[ -n "$USER_ENV_DOTFILES_DIR" ]] && ignored_fs_settings+=(USER_ENV_DOTFILES_DIR)
+  [[ -n "$USER_ENV_DOTFILES_DIR_CONTENTS" ]] && ignored_fs_settings+=(USER_ENV_DOTFILES_DIR_CONTENTS)
   [[ -n "$USER_ENV_CONFIG_DOTFILES_FILE" ]] && ignored_fs_settings+=(USER_ENV_CONFIG_DOTFILES_FILE)
   [[ -n "$USER_ENV_CONFIG_DOTFILES_DIR" ]] && ignored_fs_settings+=(USER_ENV_CONFIG_DOTFILES_DIR)
+  [[ -n "$USER_ENV_CONFIG_DOTFILES_DIR_CONTENTS" ]] && ignored_fs_settings+=(USER_ENV_CONFIG_DOTFILES_DIR_CONTENTS)
   if [[ -z "$USER_ENV_ROOT_DIR" && ${#ignored_fs_settings[@]} -gt 0 ]];then
     printf 'Warning: USER_ENV_ROOT_DIR is empty; ignoring user environment settings: %s\n' "${ignored_fs_settings[*]}" >&2
   fi
@@ -299,8 +301,10 @@ EEOF
   if [[ -n "$USER_ENV_ROOT_DIR" && (
     -n "$USER_ENV_DOTFILES_FILE" ||
     -n "$USER_ENV_DOTFILES_DIR" ||
+    -n "$USER_ENV_DOTFILES_DIR_CONTENTS" ||
     -n "$USER_ENV_CONFIG_DOTFILES_FILE" ||
-    -n "$USER_ENV_CONFIG_DOTFILES_DIR"
+    -n "$USER_ENV_CONFIG_DOTFILES_DIR" ||
+    -n "$USER_ENV_CONFIG_DOTFILES_DIR_CONTENTS"
   ) ]];then
     cat <<'EEOF'
 echo "Setting dotfiles..."
@@ -310,8 +314,10 @@ sudo -u "$user" mkdir -p "$fs_dir/dotfiles"
 EEOF
     shell_assignment dotfiles_file_values "$(csv_items "$USER_ENV_DOTFILES_FILE")"
     shell_assignment dotfiles_dir_values "$(csv_items "$USER_ENV_DOTFILES_DIR")"
+    shell_assignment dotfiles_dir_contents_values "$(csv_items "$USER_ENV_DOTFILES_DIR_CONTENTS")"
     shell_assignment dotfiles_config_file_values "$(csv_items "$USER_ENV_CONFIG_DOTFILES_FILE")"
     shell_assignment dotfiles_config_dir_values "$(csv_items "$USER_ENV_CONFIG_DOTFILES_DIR")"
+    shell_assignment dotfiles_config_dir_contents_values "$(csv_items "$USER_ENV_CONFIG_DOTFILES_DIR_CONTENTS")"
     cat <<'EEOF'
 
 mapfile -t files <<<"$dotfiles_file_values"
@@ -324,12 +330,36 @@ for d in "${dirs[@]}";do
   [[ -n "$d" ]] || continue
   sudo -u "$user" mkdir -p "$fs_dir/dotfiles/$d"
 done
+mapfile -t dir_contents <<<"$dotfiles_dir_contents_values"
+for d in "${dir_contents[@]}";do
+  [[ -n "$d" ]] || continue
+  sudo -u "$user" mkdir -p "$fs_dir/dotfiles/$d"
+done
 for f in "${files[@]}" "${dirs[@]}";do
   [[ -n "$f" ]] || continue
   if [ ! -L "/home/$user/$f" ];then
     sudo -u "$user" rm -rf "/home/$user/$f"
     sudo -u "$user" ln -s "$fs_dir/dotfiles/$f" "/home/$user/$f"
   fi
+done
+for d in "${dir_contents[@]}";do
+  [[ -n "$d" ]] || continue
+  content_source_dir="$fs_dir/dotfiles/$d"
+  content_target_dir="/home/$user/$d"
+  if [ -L "$content_target_dir" ];then
+    echo "Skipping dotfile directory contents because $content_target_dir is already a symlink."
+    continue
+  fi
+  sudo -u "$user" mkdir -p "$content_target_dir"
+  for content_source in "$content_source_dir"/* "$content_source_dir"/.[!.]* "$content_source_dir"/..?*;do
+    [[ -e "$content_source" || -L "$content_source" ]] || continue
+    content_name=${content_source##*/}
+    content_target="$content_target_dir/$content_name"
+    if [ ! -L "$content_target" ];then
+      sudo -u "$user" rm -rf "$content_target"
+      sudo -u "$user" ln -s "$content_source" "$content_target"
+    fi
+  done
 done
 
 sudo -u "$user" mkdir -p "$fs_dir/dotfiles/.config"
@@ -345,12 +375,36 @@ for d in "${config_dirs[@]}";do
   [[ -n "$d" ]] || continue
   sudo -u "$user" mkdir -p "$fs_dir/dotfiles/.config/$d"
 done
+mapfile -t config_dir_contents <<<"$dotfiles_config_dir_contents_values"
+for d in "${config_dir_contents[@]}";do
+  [[ -n "$d" ]] || continue
+  sudo -u "$user" mkdir -p "$fs_dir/dotfiles/.config/$d"
+done
 for f in "${config_files[@]}" "${config_dirs[@]}";do
   [[ -n "$f" ]] || continue
   if [ ! -L "/home/$user/.config/$f" ];then
     sudo -u "$user" rm -rf "/home/$user/.config/$f"
     sudo -u "$user" ln -s "$fs_dir/dotfiles/.config/$f" "/home/$user/.config/$f"
   fi
+done
+for d in "${config_dir_contents[@]}";do
+  [[ -n "$d" ]] || continue
+  content_source_dir="$fs_dir/dotfiles/.config/$d"
+  content_target_dir="/home/$user/.config/$d"
+  if [ -L "$content_target_dir" ];then
+    echo "Skipping dotfile directory contents because $content_target_dir is already a symlink."
+    continue
+  fi
+  sudo -u "$user" mkdir -p "$content_target_dir"
+  for content_source in "$content_source_dir"/* "$content_source_dir"/.[!.]* "$content_source_dir"/..?*;do
+    [[ -e "$content_source" || -L "$content_source" ]] || continue
+    content_name=${content_source##*/}
+    content_target="$content_target_dir/$content_name"
+    if [ ! -L "$content_target" ];then
+      sudo -u "$user" rm -rf "$content_target"
+      sudo -u "$user" ln -s "$content_source" "$content_target"
+    fi
+  done
 done
 
 EEOF
