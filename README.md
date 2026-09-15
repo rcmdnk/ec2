@@ -346,6 +346,57 @@ Review generated user-data before launching. `INSTANCE_COPY_ENTRIES` and
 commands in user-data, which is readable from inside the instance through the
 instance metadata service. Prefer an instance profile for AWS credentials.
 
+The Packer scripts and the environment template are embedded in `bin/ec2`.
+They are extracted to a temporary directory when an environment command runs,
+so a copied `bin/ec2` has no runtime dependency on this source tree.
+
+### Launch new instance
+
+```
+$ ec2 -t r3.large launch
+```
+
+If you give `-t select`, you can choose the instance type from the list.
+
+You can pass the template name by `-T <your template>`, too.
+
+### Connect to an instance
+
+Use `ec2 ssh` for a normal interactive SSH session. `ec2 mosh` provides a more
+resilient interactive connection when the network changes, and `ec2 et` uses
+[Eternal Terminal](https://eternalterminal.dev/) when `et` is installed locally
+and `etserver` is running on the instance. All three commands use the instance
+and SSH settings from the generated configuration; they require the instance
+to be reachable and SSH access to be configured.
+
+```sh
+$ ec2 ssh
+$ ec2 mosh
+$ ec2 et
+```
+
+### Transfer files
+
+Prefix an instance-side path with `:`. This supports uploads and downloads while
+the instance host and SSH user continue to come from the normal selection and
+configuration:
+
+```
+$ ec2 scp ./build/ :/tmp/build/
+$ ec2 scp :/var/log/app.log ./logs/
+$ ec2 rsync ./src/ :/srv/app/src/
+$ ec2 rsync :/srv/app/output/ ./output/
+```
+
+For compatibility, `ec2 scp FILE` uploads to the remote home directory. If no
+path has a `:` prefix, the final path is treated as the remote destination, so
+`ec2 rsync SOURCE DESTINATION` is an upload. Use `--` before paths beginning
+with a dash.
+
+`rsync` must be installed both locally and on the instance. Repeat
+`--scp-option` or `--rsync-option` to pass command-specific arguments, or place
+the corresponding arrays in `~/.config/ec2/config`.
+
 ### Shared file systems
 
 Configure the shared storage used by instances in the environment file. `ec2 setup` resolves (or, when explicitly enabled, creates) the configured
@@ -406,42 +457,6 @@ The source files, inputs, outputs, and any persistent environment configured
 under `USER_ENV_ROOT_DIR` remain available when the temporary instance is
 terminated; only software installed in the AMI and instance-local temporary
 data need to be recreated.
-
-The Packer scripts and the environment template are embedded in `bin/ec2`.
-They are extracted to a temporary directory when an environment command runs,
-so a copied `bin/ec2` has no runtime dependency on this source tree.
-
-### Launch new instance
-
-```
-$ ec2 -t r3.large launch
-```
-
-If you give `-t select`, you can choose the instance type from the list.
-
-You can pass the template name by `-T <your template>`, too.
-
-### Transfer files
-
-Prefix an instance-side path with `:`. This supports uploads and downloads while
-the instance host and SSH user continue to come from the normal selection and
-configuration:
-
-```
-$ ec2 scp ./build/ :/tmp/build/
-$ ec2 scp :/var/log/app.log ./logs/
-$ ec2 rsync ./src/ :/srv/app/src/
-$ ec2 rsync :/srv/app/output/ ./output/
-```
-
-For compatibility, `ec2 scp FILE` uploads to the remote home directory. If no
-path has a `:` prefix, the final path is treated as the remote destination, so
-`ec2 rsync SOURCE DESTINATION` is an upload. Use `--` before paths beginning
-with a dash.
-
-`rsync` must be installed both locally and on the instance. Repeat
-`--scp-option` or `--rsync-option` to pass command-specific arguments, or place
-the corresponding arrays in `~/.config/ec2/config`.
 
 ### Create a new template version
 
