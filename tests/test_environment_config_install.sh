@@ -77,7 +77,8 @@ bash -c '
 ' _ "$installed"
 grep -q "cli_input_json_directory=$xdg_config/ec2/work/ec2/cli_input_json" "$installed"
 grep -q "user_data=fileb://$xdg_config/ec2/work/ec2/user_data.sh.gz" "$installed"
-[[ $(stat -f '%Lp' "$installed" 2>/dev/null || stat -c '%a' "$installed") == 600 ]]
+if stat_mode=$(stat -c '%a' "$installed" 2>/dev/null);then :; else stat_mode=$(stat -f '%Lp' "$installed"); fi
+[[ "$stat_mode" == 600 ]]
 
 mapfile -t backups < <(printf '%s\n' "$xdg_config"/ec2/config.backup-*)
 [[ ${#backups[@]} == 1 && -f "${backups[0]}" ]]

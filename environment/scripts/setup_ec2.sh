@@ -467,7 +467,9 @@ EEOF
       *) printf 'copy_destination=/home/"$user"/%q\n' "$copy_destination" ;;
     esac
     if [[ -z "$copy_permission" ]]; then
-      copy_permission=$(stat -f '%Lp' "$copy_source" 2>/dev/null || stat -c '%a' "$copy_source")
+      if ! copy_permission=$(stat -c '%a' "$copy_source" 2>/dev/null);then
+        copy_permission=$(stat -f '%Lp' "$copy_source")
+      fi
     fi
     printf 'echo Copying %q to "$copy_destination"...\n' "$copy_source"
     printf 'sudo -u "$user" mkdir -p "$(dirname -- "$copy_destination")"\n'

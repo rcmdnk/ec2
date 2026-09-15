@@ -2459,6 +2459,15 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 #USER_ENV_DOTFILES_DIR=""
 #USER_ENV_DOTFILES_DIR_CONTENTS=""
 
+# Comma-separated directories whose contents are linked individually into the
+# corresponding home directory. The source directory is created under
+# $USER_ENV_ROOT_DIR/dotfiles/, and its files, directories, and dotfiles are
+# linked into the existing or newly created home directory. Unlike
+# USER_ENV_DOTFILES_DIR, the directory itself is not replaced by a symlink.
+# Do not use both settings for the same directory.
+# Example:
+#    USER_ENV_DOTFILES_DIR_CONTENTS=".config"
+
 # Same, but relative to ~/.config/ instead of the home directory.
 #USER_ENV_CONFIG_DOTFILES_FILE=""
 #USER_ENV_CONFIG_DOTFILES_DIR=""
@@ -4016,7 +4025,9 @@ EEOF
       *) printf 'copy_destination=/home/"$user"/%q\n' "$copy_destination" ;;
     esac
     if [[ -z "$copy_permission" ]]; then
-      copy_permission=$(stat -f '%Lp' "$copy_source" 2>/dev/null || stat -c '%a' "$copy_source")
+      if ! copy_permission=$(stat -c '%a' "$copy_source" 2>/dev/null);then
+        copy_permission=$(stat -f '%Lp' "$copy_source")
+      fi
     fi
     printf 'echo Copying %q to "$copy_destination"...\n' "$copy_source"
     printf 'sudo -u "$user" mkdir -p "$(dirname -- "$copy_destination")"\n'

@@ -19,7 +19,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
       - name: Run repository checks
-        uses: j178/prek-action@v3
+        uses: j178/prek-action@v1
       - name: Verify generated artifacts and hooks
         run: bash scripts/verify.sh
 

@@ -48,7 +48,8 @@ while read -r mode relative;do
     echo "Extracted Packer asset differs from its source: $relative" >&2
     exit 1
   }
-  [[ $(stat -f '%Lp' "$extracted" 2>/dev/null || stat -c '%a' "$extracted") == "$mode" ]] || {
+  if stat_mode=$(stat -c '%a' "$extracted" 2>/dev/null);then :; else stat_mode=$(stat -f '%Lp' "$extracted"); fi
+  [[ "$stat_mode" == "$mode" ]] || {
     echo "Extracted Packer asset has the wrong mode: $relative" >&2
     exit 1
   }
