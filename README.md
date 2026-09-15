@@ -387,6 +387,24 @@ after the job finishes. `--submit-max-jobs` limits concurrent submitted jobs.
 The AMI and shared-file-system mounts must be ready before submitting; `submit`
 does not make a local working directory or a dataset available by itself.
 
+For example, suppose `FSX_MOUNT_POINTS` is configured as `/mnt/fsx`. Keep the
+job directory, its input, and its output on that file system:
+
+```sh
+$ cd /mnt/fsx/jobs/image-classification
+$ ls
+input/  output/  run.sh  train.py
+$ ec2 submit --submit-current-dir 1 ./run.sh
+```
+
+`run.sh` can use paths such as `input/train` and `output/checkpoints`. Because
+`--submit-current-dir 1` changes to the same path on the new instance, the job
+sees the files already on the shared file system and writes its results there.
+The source files, inputs, outputs, and any persistent environment configured
+under `USER_ENV_ROOT_DIR` remain available when the temporary instance is
+terminated; only software installed in the AMI and instance-local temporary
+data need to be recreated.
+
 The Packer scripts and the environment template are embedded in `bin/ec2`.
 They are extracted to a temporary directory when an environment command runs,
 so a copied `bin/ec2` has no runtime dependency on this source tree.
