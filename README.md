@@ -263,9 +263,9 @@ et_option=(--keepalive 30)
 $ ec2 et
 ```
 
-The local `et` client must be installed, `etserver` must be running on the
-instance, and its TCP port must be reachable (2022 by default). ET also uses SSH
-for its initial handshake, so normal SSH access must work.
+The local `et` client must be installed, the Eternal Terminal service must be
+running on the instance, and its TCP port must be reachable (2022 by default).
+ET also uses SSH for its initial handshake, so normal SSH access must work.
 
 scp- and rsync-specific arguments use arrays of their own. `scp` defaults to
 recursive copies (`-r`), and `rsync` defaults to archive mode (`-a`). Set the
@@ -366,7 +366,7 @@ Use `ec2 ssh` for a normal interactive SSH session. `ec2 mosh` provides a more
 resilient interactive connection when the network changes using
 [Mosh](https://mosh.org/), and `ec2 et` uses
 [Eternal Terminal](https://eternalterminal.dev/) when `et` is installed locally
-and `etserver` is running on the instance. All three commands use the instance
+and its service is running on the instance. All three commands use the instance
 and SSH settings from the generated configuration; they require the instance
 to be reachable and SSH access to be configured.
 
