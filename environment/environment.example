@@ -926,6 +926,8 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # linked into the existing or newly created home directory. Unlike
 # USER_ENV_DOTFILES_DIR, the directory itself is not replaced by a symlink.
 # Do not use both settings for the same directory.
+# Example:
+#    USER_ENV_DOTFILES_DIR_CONTENTS=".vim"
 
 # Same, but relative to ~/.config/ instead of the home directory.
 #USER_ENV_CONFIG_DOTFILES_FILE=""
