@@ -2454,7 +2454,6 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # Example:
 #    USER_ENV_DOTFILES_FILE=".bash_history"
 #    USER_ENV_DOTFILES_DIR=".cache,.local"
-#    USER_ENV_DOTFILES_DIR_CONTENTS=".config"
 #USER_ENV_DOTFILES_FILE=""
 #USER_ENV_DOTFILES_DIR=""
 #USER_ENV_DOTFILES_DIR_CONTENTS=""
@@ -2465,8 +2464,6 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 # linked into the existing or newly created home directory. Unlike
 # USER_ENV_DOTFILES_DIR, the directory itself is not replaced by a symlink.
 # Do not use both settings for the same directory.
-# Example:
-#    USER_ENV_DOTFILES_DIR_CONTENTS=".config"
 
 # Same, but relative to ~/.config/ instead of the home directory.
 #USER_ENV_CONFIG_DOTFILES_FILE=""
