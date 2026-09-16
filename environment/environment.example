@@ -347,12 +347,16 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 #  6. AMI build - provisioning
 # =============================================================================
 #  ec2 make_ami extracts its built-in Packer assets to $WORKDIR/packer/ and runs
-#  Packer from there, so additional AMI_PROVISION_SCRIPTS paths are relative to that directory. Every
+#  Packer from there. Use absolute paths for additional AMI_PROVISION_SCRIPTS
+#  so they do not depend on that temporary directory. Every
 #  script runs as root ("sudo -S -E sh -eux") and receives the settings below as
 #  environment variables.
 
 # Optional comma-separated user scripts appended after enabled built-in features.
-# Paths are relative to the Packer working directory.
+# Scripts run as root. This repository includes
+# examples/ami-provision/configure_example_environment.sh.
+# Example:
+#   AMI_PROVISION_SCRIPTS="/path/to/ec2/examples/ami-provision/configure_example_environment.sh"
 #AMI_PROVISION_SCRIPTS=""
 
 # Swap file at /swapfile, created with `dd bs=$AMI_SWAP_BLOCK_SIZE count=$AMI_SWAP_BLOCK_COUNT`,
@@ -900,11 +904,12 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 #         "$USER_ENV_ROOT_DIR/opt"  "$USER_ENV_ROOT_DIR/usr"  $<NAME>_OPT
 #     so it should install into argument 2 and build in argument 1.
 #
-# This repository includes examples/install_screen and examples/install_mise as
+# This repository includes examples/user-env-installers/install_screen and
+# examples/user-env-installers/install_mise as
 # working examples. Use absolute paths so the settings do not depend on where
 # `ec2 setup` is run.
 # Example:
-#   USER_ENV_INSTALLER_SCRIPTS="/path/to/ec2/examples/install_screen,/path/to/ec2/examples/install_mise"
+#   USER_ENV_INSTALLER_SCRIPTS="/path/to/ec2/examples/user-env-installers/install_screen,/path/to/ec2/examples/user-env-installers/install_mise"
 #   SCREEN_OPT="5.0.2"
 #   MISE_OPT=""
 #USER_ENV_INSTALLER_SCRIPTS=""
