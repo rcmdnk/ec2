@@ -900,10 +900,11 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 #         "$USER_ENV_ROOT_DIR/opt"  "$USER_ENV_ROOT_DIR/usr"  $<NAME>_OPT
 #     so it should install into argument 2 and build in argument 1.
 #
-# This repository includes install_screen and install_mise as working examples.
-# Paths are resolved from the directory where `ec2 setup` is run.
+# This repository includes examples/install_screen and examples/install_mise as
+# working examples. Use absolute paths so the settings do not depend on where
+# `ec2 setup` is run.
 # Example:
-#   USER_ENV_INSTALLER_SCRIPTS="./install_screen,./install_mise"
+#   USER_ENV_INSTALLER_SCRIPTS="/path/to/ec2/examples/install_screen,/path/to/ec2/examples/install_mise"
 #   SCREEN_OPT="5.0.2"
 #   MISE_OPT=""
 #USER_ENV_INSTALLER_SCRIPTS=""
