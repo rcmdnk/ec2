@@ -48,11 +48,12 @@ Use a small instance for everyday work. It can be launched, inspected, and
 managed with the normal commands:
 
 ```sh
-$ ec2 launch
+$ ec2 launch -t t3.medium
 $ ec2 ssh
-$ ec2 mosh
-$ ec2 et
 ```
+
+You can use `ec2 mosh` or `ec2 et` instead when those clients and services are
+configured.
 
 When a larger machine is needed, keep the job directory on the shared file
 system and submit the job from there. `ec2 submit` launches a fresh instance,
@@ -60,7 +61,7 @@ runs the job, and terminates it when the job finishes by default:
 
 ```sh
 $ cd /mnt/fsx/jobs/my-job
-$ ec2 submit --submit-current-dir 1 ./run.sh
+$ ec2 submit -t c8i.4xlarge --submit-current-dir 1 ./run.sh
 ```
 
 This makes the instance size and lifetime match the job instead of the
