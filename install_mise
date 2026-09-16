@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -e
+
+if [ "$#" -ne 2 ]; then
+    echo "Usage: $0 <base_dir> <prefix>"
+    exit 1
+fi
+
+base="$1"
+prefix="$2"
+
+if [ -f "$prefix/bin/mise" ];then
+  echo "mise is already installed"
+  exit 0
+fi
+
+mkdir -p "$base/mise"
+curl https://mise.run | MISE_INSTALL_PATH=$base/mise/bin/mise sh
+
+mkdir -p "$prefix/bin"
+cd "$prefix/bin"
+ln -s "$base/mise/bin/mise" mise

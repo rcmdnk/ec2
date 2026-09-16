@@ -2438,10 +2438,12 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 #         "$USER_ENV_ROOT_DIR/opt"  "$USER_ENV_ROOT_DIR/usr"  $<NAME>_OPT
 #     so it should install into argument 2 and build in argument 1.
 #
+# This repository includes install_screen and install_mise as working examples.
+# Paths are resolved from the directory where `ec2 setup` is run.
 # Example:
-#   USER_ENV_INSTALLER_SCRIPTS="./my_work/install_mosh,./my_work/install_neovim"
-#   MOSH_OPT="1.4.0"
-#   NEOVIM_OPT="v0.10.2"
+#   USER_ENV_INSTALLER_SCRIPTS="./install_screen,./install_mise"
+#   SCREEN_OPT="5.0.2"
+#   MISE_OPT=""
 #USER_ENV_INSTALLER_SCRIPTS=""
 
 # Dotfiles kept on the shared file system. Requires USER_ENV_ROOT_DIR. Entries
