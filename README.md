@@ -20,173 +20,7 @@ If you have not installed `awscli` by Homebrew, it is also installed.
 Or put `bin/ec2` anywhere in the PATH.
 (In this case, you need to install `awscli` by yourself.)
 
-## ec2
-
-### Usage
-
-```
-Usage: ec2 <subcommand> [options]
-
-Subcommands:
-  cleanup_resources                  Show or execute cleanup for resources recorded by environment commands.
-  commands                           List commands.
-  delete_job                         Delete jobs.
-  describe                           Show detailed information about instances
-  et                                 Connect to an instance with Eternal Terminal.
-                                     Use `et [command] [options]`.
-  help                               Show help.
-  images                             List images.
-  init_environment                   Install an example environment configuration without overwriting one.
-  instances                          List instances.
-  jobs                               List jobs.
-  launch                             Launch a new instance.
-  list                               Alias for instances.
-  list_json_groups                   List available JSON groups
-  ls                                 Alias for instances.
-  make_ami                           Build the configured EC2 AMIs with Packer.
-  mosh                               Mosh to an instance.
-                                     Use `mosh [commands] [options]`.
-  new_image                          Create a new image from an instance.
-  new_template                       Create a new template from an image.
-  price                              Alias for pricing.
-  pricing                            Show pricing of instance types.
-  rm                                 Alias for terminate.
-  rm_image                           Delete images.
-  rsync                              Synchronize files with an instance.
-                                     Prefix an instance path with `:`, for
-                                     example `rsync ./src/ :/srv/src/`.
-  scp                                Copy files to or from an instance.
-                                     Prefix an instance path with `:`, for
-                                     example `scp file :/tmp/`.
-  setup                              Generate EC2 launch inputs and install the default ec2 configuration.
-  setup_efs                          Resolve or create configured EFS file systems.
-  setup_fsx                          Resolve or create configured FSx file systems.
-  setup_io2                          Resolve or create configured io2 volumes.
-  setup_s3files                      Resolve configured S3 file-system identifiers.
-  ssh                                SSH to an instance.
-                                     Use `ssh [commands] [options]`.
-  start                              Start stopped instances.
-  stop                               Stop running instances.
-  submit                             Make a new instance and submit a job.
-                                     Use `submit <file or commands> [options].
-                                     If __submit_command is not set, need one
-                                     bash file.
-                                     If __submit_command is set, given options
-                                     are recognized as command. Use `--` to
-                                     separate options for ec2 and options  for
-                                     the command.
-                                     If `__curent_dir` is set, the command is
-                                     executed in the current directory.
-                                     (Need same directory structure in the
-                                     instance.)
-  templates                          List templates.
-  terminate                          Terminate instances.
-  types                              List instance types.
-  update_types                       Force update instance type list cache
-  version                            Show version.
-
-Options:
-  --all, -a                          Set 1 to ignore preset filters.
-  --config                           Configuration file to read instead of the
-                                     default config file.
-  --environment-config, -E           Configuration file for make_ami/setup.
-  --workdir, -W                      Working directory for environment commands.
-  --install-config                   Set 1 to install setup output as the default
-                                     ec2 config.
-  --replace-config                   Set 1 to back up and replace an unmanaged
-                                     ec2 config.
-  --manifest                         Resource manifest used by cleanup_resources.
-  --execute                          Set 1 to execute cleanup_resources instead
-                                     of showing its plan.
-  --aws-profile                      Profile name for aws cli (if not
-                                     specified, the default profile is used.)
-  --cli-input-json, -c               A json file which has parameters to launch
-                                     an instance. Multiple files can be
-                                     assigned by comma separated list.
-                                     If multiple files are given, secondary
-                                     files are used if the first one failed by
-                                     the capacity problem.
-  --cli-input-json-group, -G         JSON group name for launch
-                                     an instance. Multiple groups can be
-                                     assigned by comma separated list.
-                                     If multiple groups are given, secondary
-                                     groups are used if the first one failed by
-                                     the capacity problem.
-  --cli-input-json-directory, -C     A directory which has json files. If
-                                     cli_input_json is not assigned and
-                                     cli_input_json_directory is set, files are
-                                     searched and it enters the selection mode.
-  --cpu-filter                       Filter to pick up instance type by CPU.
-  --dry-run, -d                      Set 1 to run as dry run mode (modification
-                                     commands are not executed.)
-  --et-option                        Additional Eternal Terminal argument.
-                                     Repeat for more.
-  --gpu-filter                       Filter to pick up instance type by GPU.
-  --image-id                         Image name for new_image/rm_image command.
-  --image-name, -I                   Image name for new_image/rm_image command.
-  --image-name-filter                Filter to pick up images (AMI).
-  --instance-id, -i                  Assign instance id to be managed. If '' or
-                                     'select' is passed, it is selected
-                                     interactively.
-  --instance-type, -t                 Instance type for launch command. If ''
-                                     or 'select' is passed, it is selected
-                                      interactively.
-  --mosh-server, -m                  Mosh server path.
-  --n-cpu-core, -n                   Set number of CPU core of instance to set
-                                     other than default number.
-  --n-thread                         Set 1 to disable hyper-threading.
-  --name-filter, -f                  Only instances which include this value
-                                     is listed.
-  --private-ip, -P                   Set 1 to use private IP addresses instead
-                                     of public IP addresses.
-  --retry-non-spot                   Set 0 to disable retry to launch a
-                                     non-spot instance when launching a spot
-                                     instance failed.
-  --rsync-option                     Additional rsync argument. Repeat for more.
-  --scp-option                       Additional scp argument. Repeat for more.
-  --selection-tool, -s               Selection tool list, separated by ','. The
-                                     default value is 'sentaku,peco,fzy,fzf'.
-                                     The first one found is used. If nothing,
-                                     bash's 'select' is used. Tools ref:
-                                       - [sentaku](https://github.com/rcmdnk/sentaku/)
-                                       - [peco](https://github.com/peco/peco)
-                                       - [fzy](https://github.com/jhawthorn/fzy)
-                                       - [fzf](https://github.com/junegunn/fzf)
-  --spot-instance, -S                Set 1 to launch a spot instance.
-  --ssh-key, -k                      Key for ssh.
---ssh-option                       Additional SSH argument. Repeat for more.
-  --ssh-user, -u                     User for ssh.
-  --submit-command                   Set 1 to submit command instead of
-                                     submitting script file.
-  --submit-current-dir               Set 1 to use the current directory as the
-                                     working directory by submit.
-  --submit-n-retry-launch            Number of retries to launch an instance by
-                                     submit. Default is 0.
-  --submit-retry-launch-interval     Interval of retry to launch an instance by
-                                     submit (sec) when all combinations of
-                                     cli_input_json failed. Default is 60.
-  --submit-n-retry-ssh               Number of retries after ssh connection
-                                     failed. Default is 0.
-  --submit-retry-ssh-interval        Interval of retry after ssh connection
-                                     failed (sec). Default is 10.
-  --submit-name                      Name of submitted job. If not given, the
-                                     command name is used.
-  --submit-max-jobs                  Maximum number of submitted jobs running
-                                     in parallel.
-  --submit-measure-time              Set 1 to measure time of the command.
-  --submit-remain-instance           Set 1 to keep instances after finishing
-                                     submitted jobs.
-  --template-id, -T                  Assign template id. If not given, not
-                                     templated is used. If 'select' is passed,
-                                     it is selected interactively.
-  --user-data, -U                    user data file for launch (run-instances),
-                                     e.g: file:///path/to/your/user/data/script
-  --verbose, -v                      Set 1 to run as verbose mode (show
-                                     executing commands.)
-  --help, -h                         Show help.
-```
-
-### AWS CLI Profile
+## AWS CLI Profile
 
 If you want to use a profile other than the default,
 use `--aws-profile`, set `aws_profile` in the configuration file or
@@ -198,7 +32,7 @@ export AWS_PROFILE=xxx
 
 before using ec2.
 
-### Configuration
+## Configuration
 
 Use **~/.config/ec2/config** by default. A different configuration file can be
 selected with `--config`:
@@ -218,7 +52,7 @@ name_filter=my-instance
 Available options are same as the command line options starting with `--`, but without `--` and `-` is replaced by `_`,
 i.e., `aws_profile` for `--aws-profile`.
 
-### Manage configuration manually
+## Manage configuration manually
 
 If you already have an AMI and the required AWS resources, create
 `~/.config/ec2/config` directly. For example:
@@ -301,7 +135,7 @@ $ ec2 launch
 $ ec2 ssh
 ```
 
-### AMI builds and environment setup
+## AMI builds and environment setup
 
 Environment commands use a separate Bash configuration file so that their
 upper-case provisioning settings do not conflict with the generated `ec2`
@@ -350,7 +184,7 @@ The Packer scripts and the environment template are embedded in `bin/ec2`.
 They are extracted to a temporary directory when an environment command runs,
 so a copied `bin/ec2` has no runtime dependency on this source tree.
 
-### Launch new instance
+## Launch new instance
 
 ```
 $ ec2 -t r3.large launch
@@ -360,7 +194,7 @@ If you give `-t select`, you can choose the instance type from the list.
 
 You can pass the template name by `-T <your template>`, too.
 
-### Connect to an instance
+## Connect to an instance
 
 Use `ec2 ssh` for a normal interactive SSH session. `ec2 mosh` provides a more
 resilient interactive connection when the network changes using
@@ -376,7 +210,7 @@ $ ec2 mosh
 $ ec2 et
 ```
 
-### Transfer files
+## Transfer files
 
 Prefix an instance-side path with `:`. This supports uploads and downloads while
 the instance host and SSH user continue to come from the normal selection and
@@ -398,7 +232,7 @@ with a dash.
 `--scp-option` or `--rsync-option` to pass command-specific arguments, or place
 the corresponding arrays in `~/.config/ec2/config`.
 
-### Shared file systems
+## Shared file systems
 
 Configure the shared storage used by instances in the environment file. `ec2 setup` resolves (or, when explicitly enabled, creates) the configured
 S3-backed file systems, EFS, and FSx file systems, then writes their mounts
@@ -414,7 +248,7 @@ datasets, checkpoints, and job outputs that must outlive an instance on shared
 storage, and keep the AMI focused on the operating system and software needed
 to run the job.
 
-### Submit jobs with temporary instances
+## Submit jobs with temporary instances
 
 With the launch configuration generated by `ec2 setup`, `ec2 submit` can launch
 a new instance just for a job and use that shared storage. It waits for SSH,
@@ -459,7 +293,7 @@ under `USER_ENV_ROOT_DIR` remain available when the temporary instance is
 terminated; only software installed in the AMI and instance-local temporary
 data need to be recreated.
 
-### Create a new template version
+## Create a new template version
 
 First, make a new AMI from an existing instance:
 
@@ -487,7 +321,174 @@ This command also removes the associated snapshot.
 Note: `new_image` create a new version of the template. If you do not have any templates,
 make it with the Web interface or aws cli command directly.
 
-### Development
+## Usage
+
+`Usage` is the help output generated by the installed `ec2` command. It is
+kept collapsed because the list of subcommands and options is long and can be
+viewed directly whenever needed:
+
+<details>
+<summary>Show help output</summary>
+
+```sh
+Usage: ec2 <subcommand> [options]
+
+Subcommands:
+  cleanup_resources                  Show or execute cleanup for resources recorded by environment commands.
+  commands                           List commands.
+  delete_job                         Delete jobs.
+  describe                           Show detailed information about instances
+  et                                 Connect to an instance with Eternal Terminal.
+                                     Use `et [command] [options]`.
+  help                               Show help.
+  images                             List images.
+  init_environment                   Install an example environment configuration without overwriting one.
+  instances                          List instances.
+  jobs                               List jobs.
+  launch                             Launch a new instance.
+  list                               Alias for instances.
+  list_json_groups                   List available JSON groups
+  ls                                 Alias for instances.
+  make_ami                           Build the configured EC2 AMIs with Packer.
+  mosh                               Mosh to an instance.
+                                     Use `mosh [commands] [options]`.
+  new_image                          Create a new image from an instance.
+  new_template                       Create a new template from an image.
+  price                              Alias for pricing.
+  pricing                            Show pricing of instance types.
+  rm                                 Alias for terminate.
+  rm_image                           Delete images.
+  rsync                              Synchronize files with an instance.
+                                     Prefix an instance path with `:`, for example `rsync ./src/ :/srv/src/`.
+  scp                                Copy files to or from an instance.
+                                     Prefix an instance path with `:`, for example `scp file :/tmp/`.
+  setup                              Generate EC2 launch inputs and install the default ec2 configuration.
+  setup_efs                          Resolve or create configured EFS file systems.
+  setup_fsx                          Resolve or create configured FSx file systems.
+  setup_io2                          Resolve or create configured io2 volumes.
+  setup_s3files                      Resolve configured S3 file-system identifiers.
+  ssh                                SSH to an instance.
+                                     Use `ssh [commands] [options]`.
+  start                              Start stopped instances.
+  stop                               Stop running instances.
+  submit                             Make a new instance and submit a job.
+                                     Use `submit <file or commands> [options].
+                                     If __submit_command is not set, need one
+                                     bash file.
+                                     If __submit_command is set, given options
+                                     are recognized as command. Use `--` to
+                                     separate options for ec2 and options for
+                                     the command.
+                                     If `__curent_dir` is set, the command is
+                                     executed in the current directory.
+                                     (Need same directory structure in the
+                                     instance.)
+  templates                          List templates.
+  terminate                          Terminate instances.
+  types                              List instance types.
+  update_types                       Force update instance type list cache
+  version                            Show version.
+
+Options:
+  --all, -a                          Set 1 to ignore preset filters.
+  --config                           Configuration file to read instead of the default config file.
+  --environment-config, -E           Configuration file for make_ami/setup.
+  --workdir, -W                      Working directory for environment commands.
+  --install-config                   Set 1 to install setup output as the default ec2 config.
+  --setup                            Run setup automatically after make_ami completes successfully.
+  --replace-config                   Set 1 to back up and replace an unmanaged ec2 config.
+  --manifest                         Resource manifest used by cleanup_resources.
+  --execute                          Set 1 to execute cleanup_resources instead of showing its plan.
+  --aws-profile                      Profile name for aws cli (if not
+                                     specified, the default profile is used.)
+  --cli-input-json, -c               A json file which has parameters to launch
+                                     an instance. Multiple files can be
+                                     assigned by comma separated list.
+                                     If multiple files are given, secondary
+                                     files are used if the first one failed by
+                                     the capacity problem.
+  --cli-input-json-group, -G         JSON group name for launch
+                                     an instance. Multiple groups can be
+                                     assigned by comma separated list.
+                                     If multiple groups are given, secondary
+                                     groups are used if the first one failed by
+                                     the capacity problem.
+  --cli-input-json-directory, -C     A directory which has json files. If
+                                     cli_input_json is not assigned and
+                                     cli_input_json_directory is set, files are
+                                     searched and it enters the selection mode.
+  --cpu-filter                       Filter to pick up instance type by CPU.
+  --dry-run, -d                      Set 1 to run as dry run mode (modification
+                                     commands are not executed.)
+  --et-option                        Additional Eternal Terminal argument. Repeat for more.
+  --gpu-filter                       Filter to pick up instance type by GPU.
+  --image-id                         Image name for new_image/rm_image command.
+  --image-name, -I                   Image name for new_image/rm_image command.
+  --image-name-filter                Filter to pick up images (AMI).
+  --instance-id, -i                  Assign instance id to be managed. If '' or
+                                     'select' is passed, it is selected
+                                     interactively.
+  --instance-type, -t                 Instance type for launch command. If ''
+                                     or 'select' is passed, it is selected
+                                     interactively.
+  --mosh-server, -m                  Mosh server path.
+  --n-cpu-core, -n                   Set number of CPU core of instance to set
+                                     other than default number.
+  --n-thread                         Set 1 to disable hyper-threading.
+  --name-filter, -f                  Only instances which include this value
+                                     is listed.
+  --private-ip, -P                   Set 1 to use private IP addresses instead
+                                     of public IP addresses.
+  --retry-non-spot                   Set 0 to disable retry to launch a
+                                     non-spot instance when launching a spot
+                                     instance failed.
+  --rsync-option                     Additional rsync argument. Repeat for more.
+  --scp-option                       Additional scp argument. Repeat for more.
+  --selection-tool, -s               Selection tool list, separated by ','. The
+                                     default value is 'sentaku,peco,fzy,fzf'.
+                                     The first one found is used. If nothing,
+                                     bash's 'select' is used. Tools ref:
+                                       - [sentaku](https://github.com/rcmdnk/sentaku/)
+                                       - [peco](https://github.com/peco/peco)
+                                       - [fzy](https://github.com/jhawthorn/fzy)
+                                       - [fzf](https://github.com/junegunn/fzf)
+  --spot-instance, -S                Set 1 to launch a spot instance.
+  --ssh-key, -k                      Key for ssh.
+  --ssh-option                       Additional SSH argument. Repeat for more.
+  --ssh-user, -u                     User for ssh.
+  --submit-command                   Set 1 to submit command instead of
+                                     submitting script file.
+  --submit-current-dir               Set 1 to use the current directory as the
+                                     working directory by submit.
+  --submit-n-retry-launch            Number of retries to launch an instance by
+                                     submit. Default is 0.
+  --submit-retry-launch-interval     Interval of retry to launch an instance by
+                                     submit (sec) when all combinations of
+                                     cli_input_json failed. Default is 60.
+  --submit-n-retry-ssh               Number of retries after ssh connection
+                                     failed. Default is 0.
+  --submit-retry-ssh-interval        Interval of retry after ssh connection
+                                     failed (sec). Default is 10.
+  --submit-name                      Name of submitted job. If not given, the
+                                     command name is used.
+  --submit-max-jobs                  Maximum number of submitted jobs running
+                                     in parallel.
+  --submit-measure-time              Set 1 to measure time of the command.
+  --submit-remain-instance           Set 1 to keep instances after finishing
+                                     submitted jobs.
+  --template-id, -T                  Assign template id. If not given, not
+                                     templated is used. If 'select' is passed,
+                                     it is selected interactively.
+  --user-data, -U                    user data file for launch (run-instances),
+                                     e.g: file:///path/to/your/user/data/script or fileb:///path/to/your/user/data/script.gz
+  --verbose, -v                      Set 1 to run as verbose mode (show
+                                     executing commands.)
+  --help, -h                         Show help.
+```
+
+</details>
+
+## Development
 
 Install either [prek](https://prek.j178.dev/) or
 [pre-commit](https://pre-commit.com/) before making changes. The configured
