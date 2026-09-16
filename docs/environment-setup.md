@@ -203,6 +203,14 @@ both checks run even when that kind is unused: io2 requires exactly one subnet,
 and FSx requires one for `SINGLE_AZ_*` and at least two for `MULTI_AZ_*`. io2
 and FSx therefore cannot be combined with a `MULTI_AZ_*` deployment.
 
+io2 volumes created or accepted by this toolkit must have Multi-Attach enabled.
+AWS Multi-Attach allows an `io1` or `io2` volume to be attached to multiple
+Nitro instances in the same Availability Zone, but XFS and ext4 are not
+cluster-aware filesystems. Do not mount them read-write from multiple instances
+at the same time; use a clustered filesystem with the required locking, or use
+EFS/FSx for ordinary shared files. Blank Multi-Attach volumes are not formatted
+automatically by user-data, so initialize them deliberately before use.
+
 The generated user-data must fit EC2's 16 KB limit before API Base64 encoding.
 When gzip is selected, the compressed payload is measured; with plain text, the
 uncompressed script is measured. `ec2 setup` warns past 80% and fails past the

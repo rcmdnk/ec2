@@ -680,12 +680,14 @@ CPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-cpu-${AMI_REVISION}"
 
 # --- io2 EBS volumes ---------------------------------------------------------
 #  This integration attaches one volume to one instance at a time. AWS also
-#  supports Multi-Attach for io1/io2, but this configuration does not enable it;
+#  supports Multi-Attach for io1/io2, and this integration always enables it;
 #  ordinary XFS/ext4 cannot safely be mounted read-write by multiple instances.
-#  At boot, user-data runs `aws ec2 attach-volume` - so the instance profile
-#  needs ec2:AttachVolume - then waits up to 60 s for the device to appear by
-#  matching the volume ID against the disk serial, runs mkfs when the disk has
-#  no file system yet, mounts it, and adds a UUID-based /etc/fstab entry.
+#  At boot, user-data runs `aws ec2 attach-volume` against the Multi-Attach volume
+#  - so the instance profile needs ec2:AttachVolume - then waits up to 60 s for
+#  the device to appear by
+#  matching the volume ID against the disk serial, verifies the pre-existing
+#  filesystem, mounts it, and adds a UUID-based /etc/fstab entry. Formatting is
+#  intentionally not automatic because multiple instances may initialize it.
 #
 #  Requires exactly one entry in AWS_SUBNET_IDS, because the volume must be created
 #  in the same availability zone as the instance. scripts/setup_io2.sh enforces

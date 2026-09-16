@@ -34,7 +34,7 @@ create_io2() {
   tags=$(resource_tags_json "$name") || return 1
   tag_specification=$(printf '[{"ResourceType":"volume","Tags":%s}]' "$tags")
   id=$(aws "${AWS_ARGS[@]}" ec2 create-volume --availability-zone "$availability_zone" \
-    --size "$size" --volume-type io2 --iops "$iops" --encrypted \
+    --size "$size" --volume-type io2 --iops "$iops" --encrypted --multi-attach \
     --tag-specifications "$tag_specification" \
     --query VolumeId --output text) || return 1
   [[ -n "$id" && "$id" != None ]] || return 1
@@ -44,5 +44,29 @@ create_io2() {
   echo "$id"
 }
 
+validate_multi_attach_volumes() {
+  local expected_az=$1 volume_id volume_type multi_attach availability_zone
+  local -a volume_ids
+  mapfile -t volume_ids < <(csv_items "$IO2_IDS")
+  for volume_id in "${volume_ids[@]}"; do
+    read -r volume_type multi_attach availability_zone < <(
+      aws "${AWS_ARGS[@]}" ec2 describe-volumes --volume-ids "$volume_id" \
+        --query 'Volumes[0].[VolumeType,MultiAttachEnabled,AvailabilityZone]' --output text
+    )
+    [[ "$volume_type" == io2 && "$multi_attach" == True ]] || {
+      echo "io2 volume '$volume_id' must have Multi-Attach enabled." >&2
+      return 1
+    }
+    [[ "$availability_zone" == "$expected_az" ]] || {
+      echo "io2 volume '$volume_id' is in '$availability_zone', expected '$expected_az'." >&2
+      return 1
+    }
+  done
+}
+
 setup_filesystem_ids io2 create_io2 prepare_io2_creation
+if [[ -n "$IO2_IDS" ]]; then
+  expected_az=$(subnet_az "$SUBNET_IDS") || exit 1
+  validate_multi_attach_volumes "$expected_az"
+fi
 echo "$IO2_IDS"

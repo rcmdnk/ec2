@@ -300,12 +300,12 @@ mount points automatically.
 
 This is deliberately different from an EBS volume. The configured io2 volume
 is attached to one instance at a time by this toolkit and is not a replacement
-for shared storage. AWS supports [EBS Multi-Attach for io1/io2](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-volumes-multi.html)
+for shared storage. This project always creates and requires io2 volumes with
+Multi-Attach enabled. AWS supports [EBS Multi-Attach for io1/io2](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-volumes-multi.html)
 in the same Availability Zone, but ordinary XFS and ext4 file systems must not
 be mounted read-write by multiple instances; a clustered file system and
-coordinated locking are required. This project does not configure Multi-Attach,
-so use EFS, FSx, or S3-backed storage when multiple instances need the same
-files.
+coordinated locking are required. Use EFS, FSx, or S3-backed storage when
+multiple instances need ordinary shared files.
 
 As a practical rule of thumb:
 
@@ -314,7 +314,7 @@ As a practical rule of thumb:
 | EFS | Large shared datasets and files, including access from multiple AZs | Network filesystem metadata operations can make trees with many small files slow; throughput is shared by clients |
 | FSx for OpenZFS | Active workspaces with many small files, source trees, `venv` directories, and build trees | Requires suitable network placement and is a provisioned service with its own cost/performance settings |
 | S3-backed file system | Large object-like datasets where S3 semantics are acceptable | It is not a general POSIX filesystem; applications may observe different metadata, rename, and consistency behavior |
-| io2 | High-performance storage for one instance | EBS volume; this project does not enable Multi-Attach, and same-AZ attachment plus instance-profile permissions are required |
+| io2 | High-performance block storage with Multi-Attach | Same-AZ attachment and instance-profile permissions are required; a clustered filesystem is needed for concurrent read/write access |
 
 In particular, EFS is often the better choice for storing large files and
 datasets, while FSx is often better for an active workspace containing many
@@ -326,6 +326,9 @@ instance-local storage can be preferable for disposable intermediate files.
 Files on an instance's root EBS volume are not copied to another instance
 automatically. Keep anything needed by a later `launch` or `submit` run on one
 of the configured shared filesystems, or copy it explicitly with `scp`/`rsync`.
+The io2 volume is an exception only for explicitly coordinated Multi-Attach
+workloads; this tool does not initialize a blank Multi-Attach volume
+automatically.
 
 ## Submit jobs with temporary instances
 

@@ -2218,12 +2218,14 @@ CPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-cpu-${AMI_REVISION}"
 
 # --- io2 EBS volumes ---------------------------------------------------------
 #  This integration attaches one volume to one instance at a time. AWS also
-#  supports Multi-Attach for io1/io2, but this configuration does not enable it;
+#  supports Multi-Attach for io1/io2, and this integration always enables it;
 #  ordinary XFS/ext4 cannot safely be mounted read-write by multiple instances.
-#  At boot, user-data runs `aws ec2 attach-volume` - so the instance profile
-#  needs ec2:AttachVolume - then waits up to 60 s for the device to appear by
-#  matching the volume ID against the disk serial, runs mkfs when the disk has
-#  no file system yet, mounts it, and adds a UUID-based /etc/fstab entry.
+#  At boot, user-data runs `aws ec2 attach-volume` against the Multi-Attach volume
+#  - so the instance profile needs ec2:AttachVolume - then waits up to 60 s for
+#  the device to appear by
+#  matching the volume ID against the disk serial, verifies the pre-existing
+#  filesystem, mounts it, and adds a UUID-based /etc/fstab entry. Formatting is
+#  intentionally not automatic because multiple instances may initialize it.
 #
 #  Requires exactly one entry in AWS_SUBNET_IDS, because the volume must be created
 #  in the same availability zone as the instance. scripts/setup_io2.sh enforces
@@ -4259,7 +4261,7 @@ create_io2() {
   tags=$(resource_tags_json "$name") || return 1
   tag_specification=$(printf '[{"ResourceType":"volume","Tags":%s}]' "$tags")
   id=$(aws "${AWS_ARGS[@]}" ec2 create-volume --availability-zone "$availability_zone" \
-    --size "$size" --volume-type io2 --iops "$iops" --encrypted \
+    --size "$size" --volume-type io2 --iops "$iops" --encrypted --multi-attach \
     --tag-specifications "$tag_specification" \
     --query VolumeId --output text) || return 1
   [[ -n "$id" && "$id" != None ]] || return 1
@@ -4269,7 +4271,31 @@ create_io2() {
   echo "$id"
 }
 
+validate_multi_attach_volumes() {
+  local expected_az=$1 volume_id volume_type multi_attach availability_zone
+  local -a volume_ids
+  mapfile -t volume_ids < <(csv_items "$IO2_IDS")
+  for volume_id in "${volume_ids[@]}"; do
+    read -r volume_type multi_attach availability_zone < <(
+      aws "${AWS_ARGS[@]}" ec2 describe-volumes --volume-ids "$volume_id" \
+        --query 'Volumes[0].[VolumeType,MultiAttachEnabled,AvailabilityZone]' --output text
+    )
+    [[ "$volume_type" == io2 && "$multi_attach" == True ]] || {
+      echo "io2 volume '$volume_id' must have Multi-Attach enabled." >&2
+      return 1
+    }
+    [[ "$availability_zone" == "$expected_az" ]] || {
+      echo "io2 volume '$volume_id' is in '$availability_zone', expected '$expected_az'." >&2
+      return 1
+    }
+  done
+}
+
 setup_filesystem_ids io2 create_io2 prepare_io2_creation
+if [[ -n "$IO2_IDS" ]]; then
+  expected_az=$(subnet_az "$SUBNET_IDS") || exit 1
+  validate_multi_attach_volumes "$expected_az"
+fi
 echo "$IO2_IDS"
 __EC2_ASSET_scripts_setup_io2_sh__
   chmod 755 "$root/scripts/setup_io2.sh"
@@ -4344,8 +4370,8 @@ if [[ -n "$IO2_IDS" && -n "$IO2_MOUNT_POINTS" ]]; then
     printf '[[ -n "\$instance_id" ]] || { echo "Could not determine the EC2 instance ID required to attach %q." >&2; exit 1; }; aws ec2 attach-volume --region "\$region" --volume-id %q --instance-id "\$instance_id" --device %q >/dev/null; aws ec2 wait volume-in-use --region "\$region" --volume-ids %q\n' \
       "${ids[i]}" "${ids[i]}" "${devices[i]}" "${ids[i]}"
     # shellcheck disable=SC2016
-    printf 'io2_mount=%q; io2_type=%q; mkdir -p "\$io2_mount"; io2_path=""; for ((attempt=1; attempt<=mount_max_attempts; attempt++));do io2_path=\$(lsblk -nrpo PATH,SERIAL | awk -v serial=%q '\''\$2 == serial {print \$1; exit}'\''); [[ -n "\$io2_path" ]] && break; ((attempt == mount_max_attempts)) || sleep "\$mount_retry_interval"; done; [[ -n "\$io2_path" ]] || { echo "Attached volume %q did not appear as a block device." >&2; exit 1; }; [[ -n "\$(blkid -o value -s TYPE "\$io2_path" || true)" ]] || mkfs -t "\$io2_type" -f "\$io2_path"; uuid=\$(blkid -o value -s UUID "\$io2_path"); grep -qF " \$io2_mount " /etc/fstab || echo "UUID=\$uuid \$io2_mount \$io2_type defaults,nofail 0 2" >> /etc/fstab; required_mounts+=("\$io2_mount")\n' \
-      "${mounts[i]}" "${fstypes[i]}" "${ids[i]//-/}" "${ids[i]}"
+    printf 'io2_mount=%q; io2_type=%q; mkdir -p "\$io2_mount"; io2_path=""; for ((attempt=1; attempt<=mount_max_attempts; attempt++));do io2_path=\$(lsblk -nrpo PATH,SERIAL | awk -v serial=%q '\''\$2 == serial {print \$1; exit}'\''); [[ -n "\$io2_path" ]] && break; ((attempt == mount_max_attempts)) || sleep "\$mount_retry_interval"; done; [[ -n "\$io2_path" ]] || { echo "Attached volume %q did not appear as a block device." >&2; exit 1; }; io2_actual_type=\$(blkid -o value -s TYPE "\$io2_path" || true); [[ -n "\$io2_actual_type" ]] || { echo "Multi-Attach volume %q must be formatted before launch; automatic formatting is disabled." >&2; exit 1; }; [[ "\$io2_actual_type" == "\$io2_type" ]] || { echo "Multi-Attach volume %q has filesystem type \$io2_actual_type, expected \$io2_type." >&2; exit 1; }; uuid=\$(blkid -o value -s UUID "\$io2_path"); grep -qF " \$io2_mount " /etc/fstab || echo "UUID=\$uuid \$io2_mount \$io2_type defaults,nofail 0 2" >> /etc/fstab; required_mounts+=("\$io2_mount")\n' \
+      "${mounts[i]}" "${fstypes[i]}" "${ids[i]//-/}" "${ids[i]}" "${ids[i]}" "${ids[i]}"
   done
 fi
 __EC2_ASSET_scripts_mount_io2_sh__
