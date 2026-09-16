@@ -20,6 +20,56 @@ If you have not installed `awscli` by Homebrew, it is also installed.
 Or put `bin/ec2` anywhere in the PATH.
 (In this case, you need to install `awscli` by yourself.)
 
+## Getting started
+
+The basic workflow is to build an AMI with the software you need, launch and
+manage instances from that AMI, and connect to them with familiar tools such as
+SSH, [Mosh](https://mosh.org/), or [Eternal Terminal](https://eternalterminal.dev/).
+For batch work, use `ec2 submit` to start an instance only for the duration of a
+job. Put the code, inputs, outputs, and persistent user environment on a shared
+file system so a newly launched instance can use the same files immediately.
+
+First create and edit the environment configuration. Set the AWS, AMI, and
+network settings you need; configure EFS, FSx, or another shared file system if
+you want jobs to share files between instances:
+
+```sh
+$ ec2 init_environment
+$ $EDITOR ~/.config/ec2/environment
+```
+
+Build the AMI and generate the launch configuration:
+
+```sh
+$ ec2 make_ami --setup
+```
+
+Use a small instance for everyday work. It can be launched, inspected, and
+managed with the normal commands:
+
+```sh
+$ ec2 launch
+$ ec2 ssh
+$ ec2 mosh
+$ ec2 et
+```
+
+When a larger machine is needed, keep the job directory on the shared file
+system and submit the job from there. `ec2 submit` launches a fresh instance,
+runs the job, and terminates it when the job finishes by default:
+
+```sh
+$ cd /mnt/fsx/jobs/my-job
+$ ec2 submit --submit-current-dir 1 ./run.sh
+```
+
+This makes the instance size and lifetime match the job instead of the
+interactive work. You can keep a small instance running for normal tasks and
+start larger, short-lived instances only when required, while the shared file
+system preserves the working environment, inputs, and outputs. See [Shared file
+systems](#shared-file-systems) and [Submit jobs with temporary
+instances](#submit-jobs-with-temporary-instances) for configuration details.
+
 ## AWS CLI Profile
 
 If you want to use a profile other than the default,
