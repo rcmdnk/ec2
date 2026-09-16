@@ -285,19 +285,47 @@ the corresponding arrays in `~/.config/ec2/config`.
 
 ## Shared file systems
 
-Configure the shared storage used by instances in the environment file. `ec2 setup` resolves (or, when explicitly enabled, creates) the configured
-S3-backed file systems, EFS, and FSx file systems, then writes their mounts
-into the generated user-data. Set each `*_MOUNT_POINTS` value to the path where
-it should appear on the instance. The same shared file system is then available
-to every instance launched from that configuration. FSx is also a good place
-for `USER_ENV_ROOT_DIR` when the shared environment contains many files.
+Configure shared storage in the environment file with the provider's `*_IDS`
+or `*_NAMES` setting and its corresponding `*_MOUNT_POINTS`. `ec2 setup`
+resolves (or, when explicitly enabled, creates) the configured S3-backed file
+systems, EFS, and FSx file systems, then writes their mounts into the generated
+user-data. The AMI build and `ec2 setup` therefore form one environment: an
+instance launched with `ec2 launch` and a temporary instance launched by
+`ec2 submit` receive the same configured mounts.
+
+Set these filesystem settings before running `ec2 setup`; they are carried into
+the generated launch JSON and user-data. After the AMI and configuration have
+been created, both ordinary instances and submitted job instances use the same
+mount points automatically.
 
 This is deliberately different from an EBS volume. The configured io2 volume
-is attached to one instance at a time and is not shared storage; it is not a
-replacement for EFS, FSx, or another shared file system. Keep source code,
-datasets, checkpoints, and job outputs that must outlive an instance on shared
-storage, and keep the AMI focused on the operating system and software needed
-to run the job.
+is attached to one instance at a time by this toolkit and is not a replacement
+for shared storage. AWS supports [EBS Multi-Attach for io1/io2](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-volumes-multi.html)
+in the same Availability Zone, but ordinary XFS and ext4 file systems must not
+be mounted read-write by multiple instances; a clustered file system and
+coordinated locking are required. This project does not configure Multi-Attach,
+so use EFS, FSx, or S3-backed storage when multiple instances need the same
+files.
+
+As a practical rule of thumb:
+
+| Storage | Good default use | Important trade-off |
+| --- | --- | --- |
+| EFS | Large shared datasets and files, including access from multiple AZs | Network filesystem metadata operations can make trees with many small files slow; throughput is shared by clients |
+| FSx for OpenZFS | Active workspaces with many small files, source trees, `venv` directories, and build trees | Requires suitable network placement and is a provisioned service with its own cost/performance settings |
+| S3-backed file system | Large object-like datasets where S3 semantics are acceptable | It is not a general POSIX filesystem; applications may observe different metadata, rename, and consistency behavior |
+| io2 | High-performance storage for one instance | EBS volume; this project does not enable Multi-Attach, and same-AZ attachment plus instance-profile permissions are required |
+
+In particular, EFS is often the better choice for storing large files and
+datasets, while FSx is often better for an active workspace containing many
+small files. Python virtual environments and similar dependency trees can take
+a long time to create or remove on EFS because of metadata traffic. Benchmark
+the actual workload and keep only persistent data on the shared filesystem;
+instance-local storage can be preferable for disposable intermediate files.
+
+Files on an instance's root EBS volume are not copied to another instance
+automatically. Keep anything needed by a later `launch` or `submit` run on one
+of the configured shared filesystems, or copy it explicitly with `scp`/`rsync`.
 
 ## Submit jobs with temporary instances
 

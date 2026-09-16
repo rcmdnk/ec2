@@ -679,7 +679,9 @@ CPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-cpu-${AMI_REVISION}"
 #FSX_ROUTE_TABLE_NAMES=""
 
 # --- io2 EBS volumes ---------------------------------------------------------
-#  Not a shared file system: one volume is attached to one instance at a time.
+#  This integration attaches one volume to one instance at a time. AWS also
+#  supports Multi-Attach for io1/io2, but this configuration does not enable it;
+#  ordinary XFS/ext4 cannot safely be mounted read-write by multiple instances.
 #  At boot, user-data runs `aws ec2 attach-volume` - so the instance profile
 #  needs ec2:AttachVolume - then waits up to 60 s for the device to appear by
 #  matching the volume ID against the disk serial, runs mkfs when the disk has
@@ -892,7 +894,7 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 #USER_ENV_ENABLE_USR_SYMLINK=1
 
 # Comma-separated local installer scripts to copy onto the shared file system
-# and run once per boot. Requires USER_ENV_ROOT_DIR. For each entry:
+# and run once during initial instance setup. Requires USER_ENV_ROOT_DIR. For each entry:
 #
 #   * The file name must be install_<name> with no extension, because <NAME>_OPT
 #     is derived from it by uppercasing; a dot would produce an invalid variable
