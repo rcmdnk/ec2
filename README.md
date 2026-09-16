@@ -309,12 +309,12 @@ multiple instances need ordinary shared files.
 
 As a practical rule of thumb:
 
-| Storage | Good default use | Important trade-off |
-| --- | --- | --- |
-| EFS | Large shared datasets and files, including access from multiple AZs | Network filesystem metadata operations can make trees with many small files slow; throughput is shared by clients |
-| FSx for OpenZFS | Active workspaces with many small files, source trees, `venv` directories, and build trees | Requires suitable network placement and is a provisioned service with its own cost/performance settings |
-| S3-backed file system | Large object-like datasets where S3 semantics are acceptable | It is not a general POSIX filesystem; applications may observe different metadata, rename, and consistency behavior |
-| io2 | High-performance block storage with Multi-Attach | Same-AZ attachment and instance-profile permissions are required; a clustered filesystem is needed for concurrent read/write access |
+| Storage               | Good default use                                                                           | Important trade-off                                                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| EFS                   | Large shared datasets and files, including access from multiple AZs                        | Network filesystem metadata operations can make trees with many small files slow; throughput is shared by clients                   |
+| FSx for OpenZFS       | Active workspaces with many small files, source trees, `venv` directories, and build trees | Requires suitable network placement and is a provisioned service with its own cost/performance settings                             |
+| S3-backed file system | Large object-like datasets where S3 semantics are acceptable                               | It is not a general POSIX filesystem; applications may observe different metadata, rename, and consistency behavior                 |
+| io2                   | High-performance block storage with Multi-Attach                                           | Same-AZ attachment and instance-profile permissions are required; a clustered filesystem is needed for concurrent read/write access |
 
 In particular, EFS is often the better choice for storing large files and
 datasets, while FSx is often better for an active workspace containing many
