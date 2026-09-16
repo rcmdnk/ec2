@@ -2,7 +2,7 @@
 # shellcheck disable=SC2154,SC2155
 
 __version="v0.3.0"
-__date="11/Sep/2026"
+__date="16/Sep/2026"
 __config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ec2"
 __default_config="$__config_dir/config"
 __config="$__default_config"
