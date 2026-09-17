@@ -9,19 +9,19 @@ fi
 base="$1"
 prefix="$2"
 ref="${3:-main}"
-dest="$prefix/bin/ec2"
 
-if [ -f "$dest" ]; then
+if [ -f "$prefix/bin/ec2" ]; then
   echo "ec2 is already installed"
   exit 0
 fi
 
-mkdir -p "$prefix/bin" "$base/tmp"
-tmp="$(mktemp "$base/tmp/ec2.XXXXXX")"
-trap 'rm -f "$tmp"' EXIT
+mkdir -p "$base/ec2"
 
 curl --fail --silent --show-error --location \
   "https://raw.githubusercontent.com/rcmdnk/ec2/$ref/bin/ec2" \
-  -o "$tmp"
-chmod 755 "$tmp"
-mv "$tmp" "$dest"
+  -o "$base/ec2/ec2"
+chmod 755 "$base/ec2/ec2"
+
+mkdir -p "$prefix/bin"
+cd "$prefix/bin"
+ln -s "$base/ec2/ec2" ec2
