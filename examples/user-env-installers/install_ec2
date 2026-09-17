@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -e
+
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+    echo "Usage: $0 <base_dir> <prefix> [ref]"
+    exit 1
+fi
+
+base="$1"
+prefix="$2"
+ref="${3:-main}"
+dest="$prefix/bin/ec2"
+
+if [ -f "$dest" ]; then
+  echo "ec2 is already installed"
+  exit 0
+fi
+
+mkdir -p "$prefix/bin" "$base/tmp"
+tmp="$(mktemp "$base/tmp/ec2.XXXXXX")"
+trap 'rm -f "$tmp"' EXIT
+
+curl --fail --silent --show-error --location \
+  "https://raw.githubusercontent.com/rcmdnk/ec2/$ref/bin/ec2" \
+  -o "$tmp"
+chmod 755 "$tmp"
+mv "$tmp" "$dest"
