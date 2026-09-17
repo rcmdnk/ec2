@@ -7,10 +7,10 @@ It is designed for a setup with three roles:
 
 ~~~mermaid
 flowchart LR
-    Control["Control machine<br/>macOSなど手元のマシン"]
-    Work["Work instance<br/>編集・対話的な作業"]
+    Control["Control machine<br/>User's computer, such as macOS"]
+    Work["Work instance<br/>Editing and interactive work"]
     Job["Job instance<br/>CPU / memory / GPU heavy work"]
-    FS["Shared filesystem<br/>コード・入力・出力・永続環境"]
+    FS["Shared filesystem<br/>Code, inputs, outputs, and persistent environment"]
 
     Control -->|"ec2 launch / ssh"| Work
     Control -->|"ec2 launch / ssh"| Job
