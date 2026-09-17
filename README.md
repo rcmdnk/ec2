@@ -94,7 +94,8 @@ and a compatible GPU AMI and GPU type for GPU work.
 - [User guide](docs/user-guide.md): configuration, AMIs, lifecycle, connections,
   file transfer, shared filesystems, jobs, and image management
 - [AI tools and ec2-operator](docs/ai-tools.md): Codex and Claude Code setup,
-  prompts, skill invocation, and Bash/zsh completion
+  prompts, and skill invocation
+- [Shell completion](docs/shell-completion.md): Bash and zsh completion setup
 - [Environment setup](docs/environment-setup.md): AWS prerequisites,
   permissions, filesystem setup, AMI builds, and cleanup details
 
