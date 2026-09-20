@@ -2439,8 +2439,8 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 #   * The file name must be install_<name> with no extension, because <NAME>_OPT
 #     is derived from it by uppercasing; a dot would produce an invalid variable
 #     name.
-#   * You must also define <NAME>_OPT in this config, even if empty - it is
-#     expanded without a default.
+#   * You may define <NAME>_OPT in this config to pass one option to the
+#     installer. If it is omitted, no option is passed.
 #   * The script is copied to $USER_ENV_ROOT_DIR/opt/bin/install_<name>, made executable,
 #     and run as EC2_SSH_USERNAME with three arguments:
 #         "$USER_ENV_ROOT_DIR/opt"  "$USER_ENV_ROOT_DIR/usr"  $<NAME>_OPT
@@ -3846,7 +3846,9 @@ EEOF
       arg=${exe^^}_OPT
       shell_assignment installer_name "$fname"
       shell_assignment installer_exe "$exe"
-      shell_assignment installer_option "${!arg}"
+      # Installer options are optional. An unset <NAME>_OPT must not abort
+      # setup under set -u; installers can provide their own default.
+      shell_assignment installer_option "${!arg-}"
       shell_assignment installer_payload "$(base64_file "$f")"
       cat <<'EEOF'
 printf 'Installing %s...\n' "$installer_name"

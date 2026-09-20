@@ -281,7 +281,9 @@ EEOF
       arg=${exe^^}_OPT
       shell_assignment installer_name "$fname"
       shell_assignment installer_exe "$exe"
-      shell_assignment installer_option "${!arg}"
+      # Installer options are optional. An unset <NAME>_OPT must not abort
+      # setup under set -u; installers can provide their own default.
+      shell_assignment installer_option "${!arg-}"
       shell_assignment installer_payload "$(base64_file "$f")"
       cat <<'EEOF'
 printf 'Installing %s...\n' "$installer_name"

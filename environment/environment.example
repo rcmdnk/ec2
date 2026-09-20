@@ -901,8 +901,8 @@ EC2_IMAGE_NAME_FILTER="${RESOURCE_NAME_PREFIX}"
 #   * The file name must be install_<name> with no extension, because <NAME>_OPT
 #     is derived from it by uppercasing; a dot would produce an invalid variable
 #     name.
-#   * You must also define <NAME>_OPT in this config, even if empty - it is
-#     expanded without a default.
+#   * You may define <NAME>_OPT in this config to pass one option to the
+#     installer. If it is omitted, no option is passed.
 #   * The script is copied to $USER_ENV_ROOT_DIR/opt/bin/install_<name>, made executable,
 #     and run as EC2_SSH_USERNAME with three arguments:
 #         "$USER_ENV_ROOT_DIR/opt"  "$USER_ENV_ROOT_DIR/usr"  $<NAME>_OPT

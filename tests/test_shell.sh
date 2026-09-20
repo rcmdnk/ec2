@@ -144,6 +144,34 @@ grep -q 'Setting dotfiles' "$config_dotfiles_user_data" || {
   exit 1
 }
 
+# Installer options are optional. An installer with no matching <NAME>_OPT must
+# still produce user-data under set -u; the installer may provide its own default.
+installer_script="$runtime_dir/install_sample"
+cat > "$installer_script" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'installer ran\n'
+EOF
+chmod 755 "$installer_script"
+installer_config="$runtime_dir/config-installer"
+installer_work=${runtime_dir#"$root/"}/work-installer
+cp "$runtime_config" "$installer_config"
+cat >> "$installer_config" <<EOF
+USER_ENV_ROOT_DIR=/mnt/fs-installer-test
+USER_ENV_ENABLE_USR_SYMLINK=0
+USER_ENV_INSTALLER_SCRIPTS=$installer_script
+EOF
+if ! installer_output=$(PATH="$mock_bin:$PATH" bin/ec2 setup --workdir "$installer_work" --environment-config "$installer_config" --install-config 0 2>&1); then
+  echo 'setup_ec2 must allow an installer without <NAME>_OPT.' >&2
+  echo "$installer_output" >&2
+  exit 1
+fi
+installer_user_data="$runtime_dir/work-installer/ec2/user_data.sh"
+grep -q "installer_option=''" "$installer_user_data" || {
+  echo 'setup_ec2 must pass an empty option for an unset <NAME>_OPT.' >&2
+  exit 1
+}
+
 # Every upper-case variable the scripts read must be defined by scripts/variables.sh
 # (or by the shell itself), so that a rename cannot leave a script reading a name
 # nothing sets any more.
