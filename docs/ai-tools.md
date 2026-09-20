@@ -13,10 +13,10 @@ truth for updates.
 
 Install the skill from the GitHub repository using the Codex skill installer:
 
-~~~text
+```text
 Repository: rcmdnk/ec2
 Path: skills/ec2-operator
-~~~
+```
 
 The installer places it in the Codex skills directory, normally
 ~/.codex/skills/ec2-operator. If CODEX_HOME is configured, use its skills
@@ -29,16 +29,16 @@ update so the skill is discovered.
 
 Ask Codex naturally:
 
-~~~text
+```text
 Run the full test suite. Decide whether this should use ec2 submit.
-~~~
+```
 
 Or invoke the skill explicitly when supported:
 
-~~~text
+```text
 $ec2-operator
 Run the memory-heavy analysis in this repository.
-~~~
+```
 
 Codex should inspect the configured shared filesystem and AMI assumptions
 before submitting a job. It should select an instance type based on the
@@ -52,30 +52,30 @@ Claude Code loads project skills from
 ~/.claude/skills/<skill-name>/SKILL.md. For a checkout of this repository,
 make the skill available to Claude Code with a symlink:
 
-~~~sh
+```sh
 mkdir -p .claude/skills
 ln -s ../../skills/ec2-operator .claude/skills/ec2-operator
-~~~
+```
 
 The relative path above is from .claude/skills/ to the repository's
 skills/ec2-operator/ directory. Use an absolute path if the project layout or
 symlink policy requires it. A personal installation can be created with:
 
-~~~sh
+```sh
 mkdir -p ~/.claude/skills
 ln -s /path/to/ec2/skills/ec2-operator ~/.claude/skills/ec2-operator
-~~~
+```
 
 Start Claude Code from the repository and invoke the skill explicitly:
 
-~~~sh
+```sh
 claude
-~~~
+```
 
-~~~text
+```text
 /ec2-operator
 Run the expensive test in the current project using an appropriate job instance.
-~~~
+```
 
 Claude Code may also load the skill automatically when a request matches its
 description. Explicit invocation is useful when the choice to use ec2 submit
@@ -84,9 +84,9 @@ is important.
 For non-interactive Claude Code runs, use a prompt that states the workload and
 the expected execution policy:
 
-~~~sh
+```sh
 claude -p "Run the full analysis. Use ec2 submit if the shared filesystem and AMI make the job reproducible. Choose CPU, memory, or GPU capacity from the workload."
-~~~
+```
 
 Review permissions before allowing commands that launch or terminate AWS
 instances. Keep --dangerously-skip-permissions out of normal workflows.
@@ -98,17 +98,17 @@ for current skill locations, invocation, and sharing behavior.
 
 These requests provide enough context for the skill to make a useful choice:
 
-~~~text
+```text
 Run the full test suite. The repository is on the configured shared filesystem.
 Use ec2 submit if it is likely to take more than a few minutes, and choose an
 instance type appropriate for the test's CPU and memory needs.
-~~~
+```
 
-~~~text
+```text
 Run this GPU analysis. Confirm that the configured AMI and instance type
 provide the required GPU runtime, and keep the outputs on the shared filesystem.
-~~~
+```
 
-~~~text
+```text
 Do a quick syntax check locally. Do not launch an EC2 instance for this small task.
-~~~
+```

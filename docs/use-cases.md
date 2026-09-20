@@ -42,7 +42,7 @@ on a CPU instance.
 The work and job instances can be effectively interchangeable when they use the
 same AMI configuration and mount the same shared filesystem:
 
-~~~mermaid
+```mermaid
 flowchart TB
     AMI["Configured AMI<br/>software and runtime"]
     Setup["ec2 setup<br/>launch JSON + user-data"]
@@ -55,7 +55,7 @@ flowchart TB
     Setup --> Job
     FS <--> Work
     FS <--> Job
-~~~
+```
 
 Files on an instance's root EBS volume are not copied automatically. Anything
 needed by a later job must be on a configured shared filesystem or be copied
@@ -65,7 +65,7 @@ explicitly.
 
 A job can be submitted from either machine:
 
-~~~mermaid
+```mermaid
 flowchart LR
     Control["Control machine"]
     Work["Work instance"]
@@ -76,7 +76,7 @@ flowchart LR
     Work -->|"ec2 submit"| Job
     Work <--> FS
     Job <--> FS
-~~~
+```
 
 Submitting from the work instance is convenient when the work directory and
 its environment are already available there. Submitting from the control
@@ -94,7 +94,7 @@ Run locally or on the work instance when the task is small, interactive, or
 requires files and software that have not been made available through the AMI
 and shared filesystem.
 
-~~~mermaid
+```mermaid
 sequenceDiagram
     participant Source as Control or work instance
     participant CLI as ec2 submit
@@ -108,7 +108,7 @@ sequenceDiagram
     Job->>FS: Write outputs
     CLI->>Job: Terminate by default
     CLI-->>Source: Return status and output paths
-~~~
+```
 
 Use --submit-current-dir 1 only when the same absolute path exists on the job
 instance through the shared filesystem. ec2 submit does not make an arbitrary
@@ -122,28 +122,34 @@ work instance such as dev-nohara-02, then verify them on a separate new
 instance.
 
 1. Launch and log in to the new instance.
-2. Confirm that the shared filesystem configured by USER_ENV_ROOT_DIR is
+
+1. Confirm that the shared filesystem configured by USER_ENV_ROOT_DIR is
    mounted, for example /mnt/fsx/fs1.
-3. Copy the dotfiles from the existing work instance using scp, rsync, or
+
+1. Copy the dotfiles from the existing work instance using scp, rsync, or
    another deliberate transfer method.
-4. Place files intended for ~/ directly under:
 
-   ~~~text
+1. Place files intended for ~/ directly under:
+
+   ```text
    <USER_ENV_ROOT_DIR>/dotfiles/
-   ~~~
+   ```
 
-5. Place files intended for ~/.config/ under:
+1. Place files intended for ~/.config/ under:
 
-   ~~~text
+   ```text
    <USER_ENV_ROOT_DIR>/dotfiles/.config/
-   ~~~
+   ```
 
    For example, with USER_ENV_ROOT_DIR=/mnt/fsx/fs1, use
    /mnt/fsx/fs1/dotfiles/.config/ for persistent .config contents.
-6. Configure the relevant USER_ENV_DOTFILES_* and
-   USER_ENV_CONFIG_DOTFILES_* settings.
-7. Run ec2 setup so the dotfile links are included in generated user-data.
-8. Launch a second, fresh instance and verify that the expected files and
+
+1. Configure the relevant USER_ENV_DOTFILES\_\* and
+   USER_ENV_CONFIG_DOTFILES\_\* settings.
+
+1. Run ec2 setup so the dotfile links are included in generated user-data.
+
+1. Launch a second, fresh instance and verify that the expected files and
    directories are symlinked into ~/ and ~/.config/, and that applications can
    read them.
 

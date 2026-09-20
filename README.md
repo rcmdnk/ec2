@@ -5,7 +5,7 @@ for different kinds of work.
 
 It is designed for a setup with three roles:
 
-~~~mermaid
+```mermaid
 flowchart LR
     Control["Control machine<br/>User's computer, such as macOS"]
     Work["Work instance<br/>Editing and interactive work"]
@@ -17,7 +17,7 @@ flowchart LR
     Work -->|"ec2 submit"| Job
     Work <--> FS
     Job <--> FS
-~~~
+```
 
 - **Control machine**: the user's local machine, such as macOS. It is the
   main origin for managing EC2 with ec2.
@@ -43,9 +43,9 @@ control machine or the work instance. See [Use cases and architecture](docs/use-
 
 Use Homebrew:
 
-~~~sh
+```sh
 brew install rcmdnk/rcmdnkpac/ec2
-~~~
+```
 
 Alternatively, put [bin/ec2](bin/ec2) anywhere in PATH. In that case, install
 the AWS CLI separately.
@@ -64,33 +64,33 @@ The release asset is the generated bin/ec2 command.
 
 Create and edit the environment configuration:
 
-~~~sh
+```sh
 ec2 init_environment
 $EDITOR ~/.config/ec2/environment
-~~~
+```
 
 Set the AWS, AMI, network, and shared filesystem settings you need. Then build
 the AMI and generate the launch configuration:
 
-~~~sh
+```sh
 ec2 make_ami --setup
-~~~
+```
 
 Launch a small work instance and connect to it:
 
-~~~sh
+```sh
 ec2 launch -t t3.medium
 ec2 ssh
-~~~
+```
 
 For a substantial test, build, analysis, or other CPU-, memory-, or
 GPU-intensive task, keep its code, inputs, and outputs on the shared
 filesystem and submit it to a suitable job instance:
 
-~~~sh
+```sh
 cd /mnt/fsx/jobs/my-job
 ec2 submit -t c8i.large --submit-current-dir 1 ./run.sh
-~~~
+```
 
 ec2 submit waits for the instance, runs the script or command, and terminates
 the instance after completion by default. Choose the instance type from the
@@ -118,18 +118,18 @@ command is the source of truth for the current help output.
 
 Install [prek](https://prek.j178.dev/) or [pre-commit](https://pre-commit.com/):
 
-~~~sh
+```sh
 pip3 install prek
 prek install
-~~~
+```
 
 Regenerate the bundled command and run the checks:
 
-~~~sh
+```sh
 scripts/build
 prek run -a
 bash scripts/verify.sh
-~~~
+```
 
 bin/ec2 is generated from src/ec2, environment/commands.sh, and the files
 listed in environment/assets.manifest.
