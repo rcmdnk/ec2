@@ -50,7 +50,7 @@ brew install rcmdnk/rcmdnkpac/ec2
 Alternatively, put [bin/ec2](bin/ec2) anywhere in PATH. In that case, install
 the AWS CLI separately.
 
-Install the released command with [mise](https://mise.jdx.dev/) and its
+Or install the released command with [mise](https://mise.jdx.dev/) using its
 GitHub backend:
 
 ```sh
