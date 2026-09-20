@@ -54,7 +54,7 @@ Or install the released command with [mise](https://mise.jdx.dev/) using its
 GitHub backend:
 
 ```sh
-mise use -g 'github:rcmdnk/ec2[asset_pattern=ec2,bin=ec2]@latest'
+mise use -g 'github:rcmdnk/ec2@latest'
 ```
 
 Releases are created automatically when a version tag such as v0.3.1 is pushed.
@@ -63,7 +63,7 @@ newer than its 24-hour minimum release age. To install a newly published
 version immediately, pin the version explicitly:
 
 ```sh
-mise use -g 'github:rcmdnk/ec2[asset_pattern=ec2,bin=ec2]@v0.3.1'
+mise use -g 'github:rcmdnk/ec2@v0.3.1'
 ```
 
 Alternatively, disable the age cutoff for this command with
