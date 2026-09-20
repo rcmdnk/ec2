@@ -3854,7 +3854,7 @@ EEOF
 printf 'Installing %s...\n' "$installer_name"
 sudo -u "$user" mkdir -p "$fs_dir/opt/bin"
 printf '%s' "$installer_payload" | base64 -d | sudo -u "$user" tee "$fs_dir/opt/bin/$installer_name" >/dev/null
-chmod 755 "$fs_dir/opt/bin/$installer_name"
+sudo -u "$user" chmod 755 "$fs_dir/opt/bin/$installer_name"
 printf 'Installing %s...\n' "$installer_exe"
 installer_args=()
 [[ -n "$installer_option" ]] && installer_args+=("$installer_option")
