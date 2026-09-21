@@ -45,6 +45,35 @@ Use --private-ip 1 when the control path can reach the VPC privately. Keys,
 users, connection methods, and additional SSH options come from the generated
 configuration or command-line options.
 
+## Selecting instances for operations
+
+Instance operations such as `start`, `stop`, `rm`, `terminate`, `ssh`, and
+`describe` use the following target-selection rules:
+
+- When `--instance-id` (or `-i`) is set to an EC2 instance ID, the command
+  operates on that instance directly and does not open a selection prompt.
+- When `--instance-id` is omitted, empty, or set to `select`, ec2 lists
+  candidate instances and opens the configured selection tool.
+- `--name-filter` (or `-f`) narrows the candidate list to instance names that
+  contain the specified value. It does not select an instance by itself, so a
+  selection prompt is still shown.
+- When no name filter is configured, all instances in the relevant state are
+  candidates. The relevant state depends on the operation: `start` lists
+  stopped instances, `stop` lists running instances, and `rm`/`terminate`
+  lists instances that can be terminated.
+
+The selection tool is chosen from `--selection-tool` (or `-s`), a comma-separated
+preference list. The first installed tool is used. The default preference is
+`sentaku,peco,fzy,fzf`; if none is installed, Bash's built-in `select` is used.
+
+For example:
+
+```sh
+ec2 -i i-0123456789abcdef0 stop       # Operate directly; no prompt
+ec2 -f dev-nohara-02 start            # Filter candidates, then prompt
+ec2 -s fzf,sentaku stop               # Prefer fzf for this prompt
+```
+
 ## File transfer
 
 Prefix an instance-side path with :.
