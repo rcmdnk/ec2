@@ -92,7 +92,10 @@ filesystem instead of repeated transfers for durable job inputs and outputs.
 
 Configure EFS, FSx, S3-backed filesystems, or io2 according to the environment
 settings. EFS and FSx are the normal choices for files shared by work and job
-instances. S3-backed filesystems do not provide ordinary POSIX semantics. io2
+instances. S3-backed filesystems require an existing versioned S3 bucket. Set
+`S3FILES_BUCKET_NAMES` and use `CREATE_FILE_SYSTEMS=1` to let ec2 create the S3
+Files filesystem and its mount targets; the bucket itself is never created.
+S3-backed filesystems do not provide ordinary POSIX semantics. io2
 Multi-Attach requires coordinated access and is not a general replacement for
 shared storage.
 

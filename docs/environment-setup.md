@@ -112,7 +112,7 @@ when you never create anything:
 | EFS             | `elasticfilesystem:DescribeFileSystems` | `elasticfilesystem:CreateFileSystem`, `elasticfilesystem:CreateMountTarget`, `elasticfilesystem:TagResource`, `elasticfilesystem:PutBackupPolicy` |
 | FSx             | `fsx:DescribeFileSystems`               | `fsx:CreateFileSystem`, `fsx:TagResource`                                                                                                         |
 | io2             | `ec2:DescribeVolumes`                   | `ec2:CreateVolume`, `ec2:CreateTags`                                                                                                              |
-| S3-backed       | `s3files:ListFileSystems`               | not supported - they must already exist                                                                                                           |
+| S3-backed       | `s3files:ListFileSystems`               | `s3files:CreateFileSystem`, `s3files:CreateMountTarget`, `iam:CreateRole`, `iam:PutRolePolicy`, `iam:PassRole` when creation is enabled |
 | Subnets         | `ec2:DescribeSubnets`                   | -                                                                                                                                                 |
 | Security groups | `ec2:DescribeSecurityGroups`            | -                                                                                                                                                 |
 | VPC             | `ec2:DescribeVpcs`                      | -                                                                                                                                                 |
@@ -125,7 +125,10 @@ both Packer and `run-instances` fail without it.
 group allowing inbound TCP 2049 from `AWS_SECURITY_GROUP_IDS`
 (`EFS_SECURITY_GROUP_IDS`, `FSX_SECURITY_GROUP_IDS`). A `MULTI_AZ_*` FSx
 deployment needs route tables (`FSX_ROUTE_TABLE_IDS`). S3-backed file systems
-(`S3FILES_*`) are never created here and must already exist. GPU instance types
+(`S3FILES_*`) require an existing, versioned bucket. When `CREATE_FILE_SYSTEMS=1`,
+ec2 can create the S3 Files filesystem and mount targets, and can create the
+service role when `S3FILES_ROLE_ARNS` is omitted. The bucket itself is never
+created. GPU instance types
 need a non-zero "Running On-Demand G and VT instances" service quota, which is
 0 on new accounts.
 

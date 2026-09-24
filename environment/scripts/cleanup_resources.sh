@@ -76,6 +76,17 @@ managed_tag() {
       aws_retry "${AWS_ARGS[@]}" fsx describe-file-systems --file-system-ids "$id" \
         --query "FileSystems[0].Tags[?Key=='ManagedBy'].Value | [0]" --output text
       ;;
+    s3files)
+      local arn
+      arn=$(aws_retry "${AWS_ARGS[@]}" s3files get-file-system --file-system-id "$id" \
+        --query fileSystemArn --output text)
+      aws_retry "${AWS_ARGS[@]}" s3files list-tags-for-resource --resource-arn "$arn" \
+        --query "tags[?key=='ManagedBy'].value | [0]" --output text
+      ;;
+    s3files-role)
+      aws_retry "${AWS_ARGS[@]}" iam list-role-tags --role-name "$id" \
+        --query "Tags[?Key=='ManagedBy'].Value | [0]" --output text
+      ;;
     io2)
       aws_retry "${AWS_ARGS[@]}" ec2 describe-volumes --volume-ids "$id" \
         --query "Volumes[0].Tags[?Key=='ManagedBy'].Value | [0]" --output text
@@ -115,6 +126,30 @@ delete_efs() {
   done
   [[ "$remaining" == 0 ]] || { echo "Timed out deleting mount targets for $id." >&2; return 1; }
   aws_retry "${AWS_ARGS[@]}" efs delete-file-system --file-system-id "$id"
+}
+
+delete_s3files() {
+  local id=$1 target remaining attempt
+  local -a targets
+  mapfile -t targets < <(aws_retry "${AWS_ARGS[@]}" s3files list-mount-targets --file-system-id "$id" \
+    --query 'mountTargets[].mountTargetId' --output text | tr '\t' '\n' | awk 'NF && $0 != "None"')
+  for target in "${targets[@]}";do
+    aws_retry "${AWS_ARGS[@]}" s3files delete-mount-target --mount-target-id "$target"
+  done
+  for ((attempt=1; attempt<=AWS_MAX_ATTEMPTS; attempt++));do
+    remaining=$(aws_retry "${AWS_ARGS[@]}" s3files list-mount-targets --file-system-id "$id" \
+      --query 'length(mountTargets)' --output text)
+    [[ "$remaining" == 0 ]] && break
+    ((attempt == AWS_MAX_ATTEMPTS)) || sleep "$AWS_POLL_DELAY_SECONDS"
+  done
+  [[ "$remaining" == 0 ]] || { echo "Timed out deleting S3 Files mount targets for $id." >&2; return 1; }
+  aws_retry "${AWS_ARGS[@]}" s3files delete-file-system --file-system-id "$id"
+}
+
+delete_s3files_role() {
+  local role_name=$1
+  aws_retry "${AWS_ARGS[@]}" iam delete-role-policy --role-name "$role_name" --policy-name S3FilesAccess
+  aws_retry "${AWS_ARGS[@]}" iam delete-role --role-name "$role_name"
 }
 
 delete_ami() {
@@ -168,6 +203,8 @@ delete_resource() {
     snapshot) aws_retry "${AWS_ARGS[@]}" ec2 delete-snapshot --snapshot-id "$id" ;;
     efs) delete_efs "$id" ;;
     fsx) aws_retry "${AWS_ARGS[@]}" fsx delete-file-system --file-system-id "$id" --open-zfs-configuration SkipFinalBackup=true ;;
+    s3files) delete_s3files "$id" ;;
+    s3files-role) delete_s3files_role "$id" ;;
     io2) aws_retry "${AWS_ARGS[@]}" ec2 delete-volume --volume-id "$id" ;;
     *) echo "Unsupported manifest resource type: $type" >&2; return 1 ;;
   esac

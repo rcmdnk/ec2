@@ -537,8 +537,9 @@ CPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-cpu-${AMI_REVISION}"
 #
 #  Leave both IDS and NAMES empty to skip a kind completely. Each name is
 #  resolved independently, preserving input order. Missing EFS / FSx / io2
-#  names are created from the remaining settings if CREATE_FILE_SYSTEMS=1; if
-#  it is 0, all missing names are reported before the run aborts. Resolution and
+#  names are created from the remaining settings if CREATE_FILE_SYSTEMS=1; S3
+#  Files names can also be created when their buckets are specified. If it is
+#  0, all missing names are reported before the run aborts. Resolution and
 #  creation happen in scripts/setup_ec2.sh, which calls scripts/setup_s3files.sh,
 #  setup_efs, setup_fsx and setup_io2 in that order.
 #
@@ -546,7 +547,8 @@ CPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-cpu-${AMI_REVISION}"
 #  entries followed by `mount -a`, all with `nofail`, so a broken mount does not
 #  prevent the instance from booting - check `mount` after login.
 
-# 1 allows scripts/setup_ec2.sh to create missing EFS / FSx / io2 resources.
+# 1 allows scripts/setup_ec2.sh to create missing EFS / FSx / io2 resources and
+# S3 Files resources whose buckets are specified.
 # 0 (recommended for day-to-day use) makes it fail instead, so a typo in a name
 # cannot silently bill you for a new file system. Creation is a one-off step:
 # set it to 1 once, then put it back to 0.
@@ -584,12 +586,20 @@ CPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-cpu-${AMI_REVISION}"
 
 # --- S3-backed file systems (aws s3files) ------------------------------------
 #  Mounted as: <id>:/  on  <mount point>  type s3files  (_netdev,nofail)
-#  These are never created by this toolkit: names are looked up with
-#  `aws s3files list-file-systems`, and the run fails when a name cannot be
-#  resolved. Requires an AWS CLI that provides the `s3files` command and an
-#  instance able to authenticate to it.
+#  Existing IDs or names are looked up with `aws s3files list-file-systems`.
+#  When CREATE_FILE_SYSTEMS=1 and a name is missing, the corresponding bucket
+#  below is used to create an S3 Files filesystem and a mount target in every
+#  AWS_SUBNET_IDS subnet. The bucket must already exist, be in this region, and
+#  have versioning enabled; buckets are never created here.
+#  S3FILES_ROLE_ARNS is optional for creation. When omitted, ec2 creates the
+#  service role and bucket policy required by S3 Files. S3FILES_SECURITY_GROUP_IDS
+#  is optional when AWS_SECURITY_GROUP_IDS is set; it controls the mount targets.
+#  The EC2 instance profile still needs S3 Files client permissions to mount.
 #S3FILES_IDS=""
 #S3FILES_NAMES=""
+#S3FILES_BUCKET_NAMES=""
+#S3FILES_ROLE_ARNS=""
+#S3FILES_SECURITY_GROUP_IDS=""
 #S3FILES_MOUNT_POINTS="/mnt/s3files"
 
 # --- EFS ---------------------------------------------------------------------
