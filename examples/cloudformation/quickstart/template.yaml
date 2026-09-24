@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Minimal ec2 environment using a subnet in the default VPC.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+  AllowedSshCidr:
+    Type: String
+    Description: CIDR allowed to reach SSH during the AMI build.
+  ResourcePrefix:
+    Type: String
+    Default: ec2-quickstart
+
+Resources:
+  Ec2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Access for the ec2 quickstart instances
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedSshCidr
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-ec2'
+
+  EfsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: NFS access for the ec2 quickstart EFS
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !GetAtt Ec2SecurityGroup.GroupId
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-efs'
+
+  FileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: true
+      PerformanceMode: generalPurpose
+      ThroughputMode: bursting
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-efs'
+        - Key: ManagedBy
+          Value: ec2-cloudformation-example
+
+  MountTarget:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SubnetId: !Ref SubnetId
+      SecurityGroups:
+        - !GetAtt EfsSecurityGroup.GroupId
+
+  Ec2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ResourcePrefix}-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  Ec2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${ResourcePrefix}-profile'
+      Roles:
+        - !Ref Ec2Role
+
+Outputs:
+  VpcId:
+    Value: !Ref VpcId
+  SubnetId:
+    Value: !Ref SubnetId
+  Ec2SecurityGroupId:
+    Value: !GetAtt Ec2SecurityGroup.GroupId
+  EfsSecurityGroupId:
+    Value: !GetAtt EfsSecurityGroup.GroupId
+  FileSystemId:
+    Value: !Ref FileSystem
+  InstanceProfileName:
+    Value: !Ref Ec2InstanceProfile
+  KeyName:
+    Value: !Ref KeyName

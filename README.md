@@ -117,6 +117,8 @@ and a compatible GPU AMI and GPU type for GPU work.
 - [Shell completion](docs/shell-completion.md): Bash and zsh completion setup
 - [Environment setup](docs/environment-setup.md): AWS prerequisites,
   permissions, filesystem setup, AMI builds, and cleanup details
+- [CloudFormation examples](examples/cloudformation/README.md): Quickstart and
+  Advanced environments that create the surrounding AWS resources
 
 ## Help
 

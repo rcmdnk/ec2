@@ -1,0 +1,315 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Advanced private multi-AZ ec2 environment with FSx for OpenZFS.
+
+Parameters:
+  AvailabilityZoneA:
+    Type: AWS::EC2::AvailabilityZone::Name
+  AvailabilityZoneB:
+    Type: AWS::EC2::AvailabilityZone::Name
+  AllowedSshCidr:
+    Type: String
+    Description: CIDR allowed to reach the public AMI build instance.
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+  ResourcePrefix:
+    Type: String
+    Default: ec2-advanced
+  VpcCidr:
+    Type: String
+    Default: 10.42.0.0/16
+  PublicSubnetACidr:
+    Type: String
+    Default: 10.42.0.0/24
+  PublicSubnetBCidr:
+    Type: String
+    Default: 10.42.1.0/24
+  WorkSubnetACidr:
+    Type: String
+    Default: 10.42.10.0/24
+  WorkSubnetBCidr:
+    Type: String
+    Default: 10.42.11.0/24
+  JobSubnetACidr:
+    Type: String
+    Default: 10.42.20.0/24
+  JobSubnetBCidr:
+    Type: String
+    Default: 10.42.21.0/24
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-vpc'
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-igw'
+
+  VpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZoneA
+      CidrBlock: !Ref PublicSubnetACidr
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-public-a'
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZoneB
+      CidrBlock: !Ref PublicSubnetBCidr
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-public-b'
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-public'
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  NatEip:
+    Type: AWS::EC2::EIP
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-nat'
+
+  WorkSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZoneA
+      CidrBlock: !Ref WorkSubnetACidr
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-work-a'
+
+  WorkSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZoneB
+      CidrBlock: !Ref WorkSubnetBCidr
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-work-b'
+
+  JobSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZoneA
+      CidrBlock: !Ref JobSubnetACidr
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-job-a'
+
+  JobSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZoneB
+      CidrBlock: !Ref JobSubnetBCidr
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-job-b'
+
+  PrivateRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-private-a'
+
+  PrivateRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-private-b'
+
+  PrivateDefaultRouteA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateDefaultRouteB:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableB
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  WorkSubnetARoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref WorkSubnetA
+      RouteTableId: !Ref PrivateRouteTableA
+
+  WorkSubnetBRoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref WorkSubnetB
+      RouteTableId: !Ref PrivateRouteTableB
+
+  JobSubnetARoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref JobSubnetA
+      RouteTableId: !Ref PrivateRouteTableA
+
+  JobSubnetBRoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref JobSubnetB
+      RouteTableId: !Ref PrivateRouteTableB
+
+  Ec2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Access for the private ec2 instances and public AMI build
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedSshCidr
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-ec2'
+
+  FsxSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: NFS access for FSx for OpenZFS
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !GetAtt Ec2SecurityGroup.GroupId
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-fsx'
+
+  Ec2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ResourcePrefix}-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  Ec2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${ResourcePrefix}-profile'
+      Roles:
+        - !Ref Ec2Role
+
+  FileSystem:
+    Type: AWS::FSx::FileSystem
+    Properties:
+      FileSystemType: OPENZFS
+      StorageType: SSD
+      StorageCapacity: 64
+      SubnetIds:
+        - !Ref JobSubnetA
+        - !Ref JobSubnetB
+      OpenZFSConfiguration:
+        DeploymentType: MULTI_AZ_1
+        PreferredSubnetId: !Ref JobSubnetA
+        RouteTableIds:
+          - !Ref PrivateRouteTableA
+          - !Ref PrivateRouteTableB
+        ThroughputCapacity: 160
+        RootVolumeConfiguration:
+          DataCompressionType: ZSTD
+      SecurityGroupIds:
+        - !GetAtt FsxSecurityGroup.GroupId
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-fsx'
+        - Key: ManagedBy
+          Value: ec2-cloudformation-example
+
+Outputs:
+  VpcId:
+    Value: !Ref Vpc
+  PublicSubnetId:
+    Value: !Ref PublicSubnetA
+  WorkSubnetIds:
+    Value: !Join [',', [!Ref WorkSubnetA, !Ref WorkSubnetB]]
+  JobSubnetIds:
+    Value: !Join [',', [!Ref JobSubnetA, !Ref JobSubnetB]]
+  Ec2SecurityGroupId:
+    Value: !GetAtt Ec2SecurityGroup.GroupId
+  FsxSecurityGroupId:
+    Value: !GetAtt FsxSecurityGroup.GroupId
+  FileSystemId:
+    Value: !Ref FileSystem
+  InstanceProfileName:
+    Value: !Ref Ec2InstanceProfile
+  KeyName:
+    Value: !Ref KeyName
