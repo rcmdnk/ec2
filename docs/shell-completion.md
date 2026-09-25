@@ -27,5 +27,6 @@ autoload -Uz compinit
 compinit
 ```
 
-The completion list is generated dynamically from ec2 commands, so it follows
-the installed command's available subcommands.
+The completion list is kept in the completion file itself, so pressing Tab does
+not start `ec2`, read the user configuration, or contact AWS. Update the list
+when adding a new top-level subcommand.

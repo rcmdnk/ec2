@@ -1,8 +1,10 @@
+_ec2_commands='cleanup_resources commands delete_job describe et help images init_environment instances jobs launch list list_json_groups ls make_ami mosh new_image new_template price pricing rm rm_image rsync scp setup setup_efs setup_fsx setup_io2 setup_s3files ssh start stop submit templates terminate types update_types version'
+
 _ec2 () {
   if [ "$ZSH_VERSION" != "" ];then
-    compadd $(ec2 commands)
+    compadd ${(s: :)_ec2_commands}
   else
-    COMPREPLY=($(compgen -W "$(ec2 commands)" -- "${COMP_WORDS[COMP_CWORD]}"))
+    COMPREPLY=($(compgen -W "$_ec2_commands" -- "${COMP_WORDS[COMP_CWORD]}"))
   fi
 }
 
