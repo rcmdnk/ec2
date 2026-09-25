@@ -1,4 +1,10 @@
-_ec2_commands='cleanup_resources commands delete_job describe et help images init_environment instances jobs launch list list_json_groups ls make_ami mosh new_image new_template price pricing rm rm_image rsync scp setup setup_efs setup_fsx setup_io2 setup_s3files ssh start stop submit templates terminate types update_types version'
+# Resolve the list once when the completion file is sourced. Completion itself
+# must not start ec2 for every Tab press, but the list should follow the command
+# implementation when new top-level subcommands are added.
+_ec2_commands=''
+if command -v ec2 >/dev/null 2>&1; then
+  _ec2_commands="$(ec2 commands 2>/dev/null)"
+fi
 
 _ec2 () {
   if [ "$ZSH_VERSION" != "" ];then

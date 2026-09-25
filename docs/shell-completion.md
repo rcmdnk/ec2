@@ -27,6 +27,6 @@ autoload -Uz compinit
 compinit
 ```
 
-The completion list is kept in the completion file itself, so pressing Tab does
-not start `ec2`, read the user configuration, or contact AWS. Update the list
-when adding a new top-level subcommand.
+The completion list is resolved once when the completion file is sourced by
+running `ec2 commands`. Pressing Tab then uses the cached list and does not
+start `ec2`, read the user configuration, or contact AWS again.
