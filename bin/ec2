@@ -3753,7 +3753,8 @@ if [[ -n "$IAM_INSTANCE_PROFILE" ]];then
 fi
 
 get_image_id() {
-  local family=$1 enabled_var="${family}_ENABLED" id_var="${family}_AMI_ID"
+  local family=$1
+  local enabled_var="${family}_ENABLED" id_var="${family}_AMI_ID"
   local name_var="${family}_AMI_NAME" output_var="${family}_OUTPUT_AMI_NAME"
   local owner_var="${family}_AMI_OWNER" image name owner
   [[ "${!enabled_var-0}" == 1 ]] || return 0
@@ -3777,7 +3778,8 @@ get_image_id() {
 }
 
 get_image_label() {
-  local family=$1 name_var="${family}_AMI_NAME" output_var="${family}_OUTPUT_AMI_NAME"
+  local family=$1
+  local name_var="${family}_AMI_NAME" output_var="${family}_OUTPUT_AMI_NAME"
   local id_var="${family}_AMI_ID"
   if [[ -n "${!name_var-}" ]]; then
     printf '%s' "${!name_var}"

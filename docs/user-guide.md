@@ -35,6 +35,9 @@ For existing images, set `<FAMILY>_AMI_ID`, or use `<FAMILY>_AMI_NAME` and
 it is unambiguous and works across ownership boundaries. A one-off ID can be
 passed with `ec2 setup --ami-family CPU --ami-id ami-...`.
 
+See [AMI workflows and launch JSON](ami-workflows.md) for the preparation steps,
+generated files, and command examples for all three AMI paths.
+
 Review generated user-data before launching. It can contain copied file
 contents and root-run commands. Prefer instance profiles for AWS credentials.
 

@@ -252,6 +252,10 @@ ec2 setup --ami-family CPU --ami-id ami-0123456789abcdef0
 The override affects the generated files for that invocation only; the
 environment file remains unchanged.
 
+For the complete preparation and launch JSON workflows for Packer-built AMIs,
+instance-captured AMIs, and existing AMIs selected by name, see
+[AMI workflows and launch JSON](ami-workflows.md).
+
 To capture a configured work instance and immediately generate launch inputs:
 
 ```sh
