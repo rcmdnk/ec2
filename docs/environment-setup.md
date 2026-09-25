@@ -112,7 +112,7 @@ when you never create anything:
 | EFS             | `elasticfilesystem:DescribeFileSystems` | `elasticfilesystem:CreateFileSystem`, `elasticfilesystem:CreateMountTarget`, `elasticfilesystem:TagResource`, `elasticfilesystem:PutBackupPolicy` |
 | FSx             | `fsx:DescribeFileSystems`               | `fsx:CreateFileSystem`, `fsx:TagResource`                                                                                                         |
 | io2             | `ec2:DescribeVolumes`                   | `ec2:CreateVolume`, `ec2:CreateTags`                                                                                                              |
-| S3-backed       | `s3files:ListFileSystems`               | `s3files:CreateFileSystem`, `s3files:CreateMountTarget`, `iam:CreateRole`, `iam:PutRolePolicy`, `iam:PassRole` when creation is enabled |
+| S3-backed       | `s3files:ListFileSystems`               | `s3files:CreateFileSystem`, `s3files:CreateMountTarget`, `iam:CreateRole`, `iam:PutRolePolicy`, `iam:PassRole` when creation is enabled           |
 | Subnets         | `ec2:DescribeSubnets`                   | -                                                                                                                                                 |
 | Security groups | `ec2:DescribeSecurityGroups`            | -                                                                                                                                                 |
 | VPC             | `ec2:DescribeVpcs`                      | -                                                                                                                                                 |
@@ -223,13 +223,47 @@ limit. Compression does not encrypt user-data. Move long setup into the AMI,
 ### Use an existing AMI
 
 You can skip `ec2 make_ami` when the configured AMI already exists in your AWS
-account. Set `CPU_OUTPUT_AMI_NAME` and, when enabled, `GPU_OUTPUT_AMI_NAME` to the existing
-AMI names, then run `ec2 setup`. The setup command resolves the newest matching
-self-owned AMI and writes its ID into the generated launch JSON.
+account. There are three supported forms, in descending order of precision:
 
-For an AMI that is not owned by your account, create the normal
-`~/.config/ec2/config` and launch JSON manually as described in the
-[main README](../README.md#manage-configuration-manually).
+```bash
+# Exact ID: works for self-owned, shared, and Marketplace AMIs.
+CPU_AMI_ID="ami-0123456789abcdef0"
+
+# Name and owner: useful when an external AMI is rotated by name.
+CPU_AMI_NAME="shared-cpu-image"
+CPU_AMI_OWNER="123456789012"
+
+# Backward-compatible self-owned lookup by the output name.
+CPU_OUTPUT_AMI_NAME="my-cpu-image"
+```
+
+Set the corresponding `GPU_*` variables for a GPU family, then run `ec2 setup`.
+The command resolves the AMI and writes its ID into the same launch JSON and
+client configuration produced after a Packer build. `CPU_AMI_ID` takes
+precedence over name lookup, and `CPU_AMI_NAME` takes precedence over
+`CPU_OUTPUT_AMI_NAME`.
+
+For a one-off setup without editing the environment file, use:
+
+```sh
+ec2 setup --ami-family CPU --ami-id ami-0123456789abcdef0
+```
+
+The override affects the generated files for that invocation only; the
+environment file remains unchanged.
+
+To capture a configured work instance and immediately generate launch inputs:
+
+```sh
+ec2 --instance-id i-0123456789abcdef0 \
+  --image-name work-cpu-20260925 \
+  --ami-family CPU --wait --setup new_image
+```
+
+`new_image` normally reboots the instance so its filesystem is consistent. Use
+`--no-reboot` only when the faster operation is more important than filesystem
+consistency. `--setup` requires `--wait` so the AMI is available before the
+launch JSON is generated.
 
 ## Generated files
 

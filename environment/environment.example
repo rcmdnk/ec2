@@ -467,7 +467,18 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 # Default: 1
 #CPU_ENABLED=1
 
-# Required while CPU_ENABLED is 1.
+# Optional exact AMI ID to use without running Packer. When set, `ec2 setup`
+# uses this AMI directly and writes the normal launch JSONs and client config.
+# This is useful for an AMI created by `ec2 new_image`, a shared AMI, or an
+# image managed outside this repository.
+#CPU_AMI_ID="ami-0123456789abcdef0"
+
+# Optional AMI name and owner for name-based lookup. CPU_AMI_NAME takes
+# precedence over CPU_OUTPUT_AMI_NAME; CPU_AMI_OWNER defaults to self.
+#CPU_AMI_NAME="my-existing-cpu-image"
+#CPU_AMI_OWNER="self"
+
+# Required while CPU_ENABLED is 1 unless CPU_AMI_ID is set.
 # Name of the AMI to build, and the name scripts/setup_ec2.sh looks up with
 # `describe-images --owners self` to find the image ID (the newest match by
 # creation date wins, and the result is cached in $WORKDIR/ami_ids).
@@ -501,7 +512,12 @@ CPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-cpu-${AMI_REVISION}"
 # Default: 1
 #GPU_ENABLED=0
 
-# Required once GPU_ENABLED is 1 - uncomment it together with GPU_ENABLED.
+# Optional exact AMI ID to use without running Packer.
+#GPU_AMI_ID="ami-0123456789abcdef0"
+#GPU_AMI_NAME="my-existing-gpu-image"
+#GPU_AMI_OWNER="self"
+
+# Required once GPU_ENABLED is 1 unless GPU_AMI_ID is set.
 #GPU_OUTPUT_AMI_NAME="${RESOURCE_NAME_PREFIX}-gpu-${AMI_REVISION}"
 
 # The Deep Learning AMI names end with a release date, hence the trailing

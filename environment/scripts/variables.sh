@@ -140,6 +140,8 @@ AMI_PACKER_TEMPLATE_FILE=${AMI_PACKER_TEMPLATE_FILE-}
 validate_choice AMI_PACKER_ON_ERROR "$AMI_PACKER_ON_ERROR" cleanup abort ask
 AMI_EXISTING_IMAGE_ACTION=${AMI_EXISTING_IMAGE_ACTION-build}
 validate_choice AMI_EXISTING_IMAGE_ACTION "$AMI_EXISTING_IMAGE_ACTION" build reuse fail
+EC2_SETUP_AMI_OVERRIDE_FAMILY=${EC2_SETUP_AMI_OVERRIDE_FAMILY-}
+EC2_SETUP_AMI_OVERRIDE_ID=${EC2_SETUP_AMI_OVERRIDE_ID-}
 
 AMI_BUILD_SSH_INTERFACE=${AMI_BUILD_SSH_INTERFACE-private_ip}
 AMI_BUILD_SSH_USERNAME=${AMI_BUILD_SSH_USERNAME-${EC2_USER}}
@@ -184,6 +186,9 @@ validate_bool AMI_ENABLE_SHARED_MEMORY "$AMI_ENABLE_SHARED_MEMORY"
 # CPU instance configuration.
 AMI_FAMILIES=${AMI_FAMILIES-CPU,GPU}
 CPU_ENABLED=${CPU_ENABLED-1}
+CPU_AMI_ID=${CPU_AMI_ID-}
+CPU_AMI_NAME=${CPU_AMI_NAME-}
+CPU_AMI_OWNER=${CPU_AMI_OWNER-self}
 CPU_OUTPUT_AMI_NAME=${CPU_OUTPUT_AMI_NAME-}
 CPU_SOURCE_AMI_NAME_FILTER=${CPU_SOURCE_AMI_NAME_FILTER-al2023-ami-*-x86_64} # Amazon Linux 2023
 CPU_SOURCE_AMI_OWNER=${CPU_SOURCE_AMI_OWNER-amazon}
@@ -193,6 +198,9 @@ CPU_AMI_EXTRA_PACKAGES=${CPU_AMI_EXTRA_PACKAGES-}
 
 # GPU instance configuration.
 GPU_ENABLED=${GPU_ENABLED-0}
+GPU_AMI_ID=${GPU_AMI_ID-}
+GPU_AMI_NAME=${GPU_AMI_NAME-}
+GPU_AMI_OWNER=${GPU_AMI_OWNER-self}
 GPU_OUTPUT_AMI_NAME=${GPU_OUTPUT_AMI_NAME-}
 GPU_SOURCE_AMI_NAME_FILTER="${GPU_SOURCE_AMI_NAME_FILTER-Deep Learning OSS Nvidia Driver AMI GPU PyTorch * (Amazon Linux 2023)*}" # suffix contains release date
 GPU_SOURCE_AMI_OWNER=${GPU_SOURCE_AMI_OWNER-amazon}
@@ -200,8 +208,8 @@ GPU_SOURCE_AMI_ID=${GPU_SOURCE_AMI_ID-}
 GPU_BUILD_INSTANCE_TYPE=${GPU_BUILD_INSTANCE_TYPE-"g4dn.xlarge"}
 GPU_AMI_EXTRA_PACKAGES=${GPU_AMI_EXTRA_PACKAGES-}
 
-# An enabled family needs a name: Packer builds under it and setup_ec2 looks the
-# image up by it.
+# An enabled family needs an output/name setting for Packer and name-based setup,
+# or an exact <FAMILY>_AMI_ID for an existing AMI.
 [[ -n "$AMI_FAMILIES" ]] || { echo 'AMI_FAMILIES must not be empty.' >&2; exit 1; }
 declare -A seen_ami_families=()
 # shellcheck disable=SC2153  # The uppercase setting is loaded from the environment config.
@@ -216,14 +224,16 @@ for family in "${ami_families[@]}"; do
     exit 1
   }
   seen_ami_families[$family]=1
-  enabled_var="${family}_ENABLED" name_var="${family}_OUTPUT_AMI_NAME"
+  enabled_var="${family}_ENABLED" id_var="${family}_AMI_ID" name_var="${family}_OUTPUT_AMI_NAME"
   validate_bool "$enabled_var" "${!enabled_var-0}"
-  if [[ "${!enabled_var-0}" == 1 && -z "${!name_var-}" ]]; then
-    echo "${name_var} must be set in ${CONFIG:-config} while ${enabled_var} is 1" >&2
+  if [[ "${!enabled_var-0}" == 1 && -z "${!name_var-}${!id_var-}" &&
+    ! ( "${EC2_SETUP_AMI_OVERRIDE_FAMILY-}" == "$family" &&
+      -n "${EC2_SETUP_AMI_OVERRIDE_ID-}" ) ]]; then
+    echo "${name_var} or ${id_var} must be set in ${CONFIG:-config} while ${enabled_var} is 1" >&2
     exit 1
   fi
 done
-unset family enabled_var name_var ami_families seen_ami_families
+unset family enabled_var id_var name_var ami_families seen_ami_families
 
 # File system configuration.
 CREATE_FILE_SYSTEMS=${CREATE_FILE_SYSTEMS-0}

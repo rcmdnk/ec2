@@ -3,11 +3,39 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ami_override_family=${3:-}
+ami_override_id=${4:-}
+if [[ -n "$ami_override_family" || -n "$ami_override_id" ]]; then
+  [[ "$ami_override_family" =~ ^[A-Z][A-Z0-9_]*$ ]] || {
+    echo "AMI family must be an uppercase name: $ami_override_family" >&2
+    exit 1
+  }
+  [[ -n "$ami_override_id" ]] || {
+    echo "An AMI ID is required when an AMI family override is used." >&2
+    exit 1
+  }
+  export "${ami_override_family}_AMI_ID=$ami_override_id"
+  export "${ami_override_family}_ENABLED=1"
+  export EC2_SETUP_AMI_OVERRIDE_FAMILY="$ami_override_family"
+  export EC2_SETUP_AMI_OVERRIDE_ID="$ami_override_id"
+fi
 # Read by scripts/variables.sh: this entry point also needs EC2_KEY_NAME, which
 # building an AMI or a file system does not.
 # shellcheck disable=SC2034
 REQUIRE_EC2_SETTINGS=1
 source "$script_dir/bootstrap.sh" "${1:-}" "${2:-}" ec2
+if [[ -n "$ami_override_family" || -n "$ami_override_id" ]]; then
+  [[ "$ami_override_family" =~ ^[A-Z][A-Z0-9_]*$ ]] || {
+    echo "AMI family must be an uppercase name: $ami_override_family" >&2
+    exit 1
+  }
+  [[ -n "$ami_override_id" ]] || {
+    echo "An AMI ID is required when an AMI family override is used." >&2
+    exit 1
+  }
+  printf -v "${ami_override_family}_AMI_ID" '%s' "$ami_override_id"
+  printf -v "${ami_override_family}_ENABLED" '%s' 1
+fi
 IFS=, read -r -a filesystem_providers <<<"$EC2_FILESYSTEM_PROVIDERS"
 for filesystem_provider in "${filesystem_providers[@]}"; do
   [[ -z "$filesystem_provider" ]] && continue
@@ -54,11 +82,39 @@ if [[ -n "$IAM_INSTANCE_PROFILE" ]];then
 fi
 
 get_image_id() {
-  local enabled=$1 name=$2 image
-  [[ "$enabled" == 1 && -n "$name" ]] || return 0
-  image=$(aws "${AWS_ARGS[@]}" ec2 describe-images --owners self --filters "Name=name,Values=$name" --query 'Images | sort_by(@,&CreationDate)[-1].ImageId' --output text)
-  [[ "$image" != None && -n "$image" ]] || return 0
+  local family=$1 enabled_var="${family}_ENABLED" id_var="${family}_AMI_ID"
+  local name_var="${family}_AMI_NAME" output_var="${family}_OUTPUT_AMI_NAME"
+  local owner_var="${family}_AMI_OWNER" image name owner
+  [[ "${!enabled_var-0}" == 1 ]] || return 0
+  if [[ -n "${!id_var-}" ]]; then
+    image=$(aws "${AWS_ARGS[@]}" ec2 describe-images --image-ids "${!id_var}" \
+      --filters 'Name=state,Values=available' --query 'Images[0].ImageId' --output text)
+  else
+    name="${!name_var-}"
+    [[ -n "$name" ]] || name="${!output_var-}"
+    [[ -n "$name" ]] || return 0
+    owner="${!owner_var-self}"
+    image=$(aws "${AWS_ARGS[@]}" ec2 describe-images --owners "$owner" \
+      --filters "Name=name,Values=$name" 'Name=state,Values=available' \
+      --query 'Images | sort_by(@,&CreationDate)[-1].ImageId' --output text)
+  fi
+  [[ "$image" != None && -n "$image" ]] || {
+    echo "No available AMI matched the $family family configuration." >&2
+    return 0
+  }
   echo "$image"
+}
+
+get_image_label() {
+  local family=$1 name_var="${family}_AMI_NAME" output_var="${family}_OUTPUT_AMI_NAME"
+  local id_var="${family}_AMI_ID"
+  if [[ -n "${!name_var-}" ]]; then
+    printf '%s' "${!name_var}"
+  elif [[ -n "${!output_var-}" ]]; then
+    printf '%s' "${!output_var}"
+  else
+    printf '%s' "${!id_var}"
+  fi
 }
 
 json_dir="$WORKDIR/ec2/cli_input_json"
@@ -111,9 +167,10 @@ for i in "${!ids[@]}";do
   used_labels+=("$label")
   for family in "${ami_families[@]}";do
     enabled_var="${family}_ENABLED"; name_var="${family}_OUTPUT_AMI_NAME"; type_var="${family}_BUILD_INSTANCE_TYPE"
-    image_id=$(get_image_id "${!enabled_var-0}" "${!name_var-}")
+    image_id=$(get_image_id "$family")
     [[ -n "$image_id" ]] || continue
-    json_name="${!name_var}-${label}.json"
+    image_label=$(get_image_label "$family")
+    json_name="${image_label}-${label}.json"
     output="$json_dir/$json_name"
     jsons+=("$json_name")
     public_ip=$EC2_ASSOCIATE_PUBLIC_IP
@@ -177,7 +234,7 @@ done
     shell_assignment "cli_input_json_group_${family,,}" "${!group_var}"
   done
 } > "$WORKDIR/ec2/config"
-unset ami_families group_var family
+unset ami_families group_var family ami_override_family ami_override_id
 chmod 600 "$WORKDIR/ec2/config"
 
 user_data_name=$(basename "$EC2_USER_DATA_URI")

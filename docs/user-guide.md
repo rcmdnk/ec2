@@ -23,10 +23,17 @@ and permissions.
 
 ## AMI and launch configuration
 
-ec2 make_ami builds configured AMI families with Packer. ec2 make_ami --setup
-runs setup only after all enabled AMI builds succeed. ec2 setup resolves or
-creates configured filesystems when enabled, writes launch JSON and user-data,
-and can install the resulting configuration.
+ec2 make_ami builds configured AMI families with Packer. ec2 new_image captures
+an existing instance as an AMI. These are separate paths to an AMI: use
+`make_ami` for reproducible builds and `new_image` for a manually prepared
+instance. `ec2 setup` consumes either kind of AMI, or an external/shared AMI,
+and writes launch JSON and user-data. `ec2 make_ami --setup` runs setup only
+after all enabled AMI builds succeed.
+
+For existing images, set `<FAMILY>_AMI_ID`, or use `<FAMILY>_AMI_NAME` and
+`<FAMILY>_AMI_OWNER` in the environment file. An exact ID is preferred because
+it is unambiguous and works across ownership boundaries. A one-off ID can be
+passed with `ec2 setup --ami-family CPU --ami-id ami-...`.
 
 Review generated user-data before launching. It can contain copied file
 contents and root-run commands. Prefer instance profiles for AWS credentials.
@@ -118,10 +125,15 @@ The default lifecycle is launch, run, and terminate.
 ## Image and template lifecycle
 
 ```sh
-ec2 new_image
+ec2 new_image --wait
 ec2 new_template
 ec2 rm_image
 ```
+
+`new_image` creates an AMI from the selected instance. It reboots the instance
+by default; add `--no-reboot` only when a potentially inconsistent snapshot is
+acceptable. Add `--setup --ami-family CPU` to wait for the new AMI and generate
+the CPU launch configuration in the same operation.
 
 Confirm image targets before removal. For resources left by a failed
 environment command, inspect the cleanup plan with ec2 cleanup_resources and

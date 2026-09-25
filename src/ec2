@@ -11,6 +11,10 @@ __workdir="${EC2_ENVIRONMENT_WORKDIR:-$__config_dir/work}"
 __install_config=1
 __replace_config=0
 __setup_after_ami=0
+__ami_family=""
+__ami_id=""
+__new_image_wait=0
+__new_image_no_reboot=0
 __manifest=""
 __execute=0
 __job_list="${__config_dir}/job_list"
@@ -56,7 +60,11 @@ __options="
  --environment-config|-E Configuration file for make_ami/setup.
  --workdir|-W Working directory for environment commands.
  --install-config Set 1 to install setup output as the default ec2 config.
- --setup Run setup automatically after make_ami completes successfully.
+--setup Run setup automatically after make_ami completes successfully.
+--ami-family AMI family to override for setup, for example CPU.
+--ami-id AMI ID to use for setup or to associate with new_image --setup.
+--wait Wait until an AMI created by new_image is available.
+--no-reboot Do not reboot the instance during new_image.
  --replace-config Set 1 to back up and replace an unmanaged ec2 config.
  --manifest Resource manifest used by cleanup_resources.
  --execute Set 1 to execute cleanup_resources instead of showing its plan.
@@ -1229,8 +1237,35 @@ new_image () {
 
   __image_name=$(_get_name_number "$__image_name" "$image_names")
 
-  _execute_ec2 "${__dry_run_mode} create-image  --instance-id ${__ids[__enum_instance]} --name $__image_name"
-  echo "${__dry_run_mode:+Dry run: }Created a new AMI $__image_name from ${__ids[__enum_instance]}"
+  if [ "$__setup_after_ami" = 1 ] && [ "$__dry_run" != 1 ];then
+    [ -n "$__ami_family" ] || {
+      echo 'new_image --setup requires --ami-family (for example --ami-family CPU).' >&2
+      exit 1
+    }
+    [ "$__new_image_wait" = 1 ] || {
+      echo 'new_image --setup requires --wait so setup sees an available AMI.' >&2
+      exit 1
+    }
+  fi
+
+  local no_reboot=""
+  [ "$__new_image_no_reboot" = 1 ] && no_reboot="--no-reboot"
+  _execute_ec2 "${__dry_run_mode} create-image --instance-id ${__ids[__enum_instance]} --name $__image_name $no_reboot --query ImageId --output text"
+  local created_image_id="${__execute_result%%$'\n'*}"
+  if [ "$__new_image_wait" = 1 ] && [ "$__dry_run" != 1 ];then
+    [[ "$created_image_id" =~ ^ami-[[:alnum:]]+$ ]] || {
+      echo "Could not determine the new AMI ID: $created_image_id" >&2
+      exit 1
+    }
+    _execute_ec2 "wait image-available --image-ids $created_image_id"
+  fi
+  echo "${__dry_run_mode:+Dry run: }Created a new AMI $__image_name${created_image_id:+ ($created_image_id)} from ${__ids[__enum_instance]}"
+  if [ "$__setup_after_ami" = 1 ] && [ "$__dry_run" != 1 ];then
+    local saved_ami_id="$__ami_id"
+    __ami_id="$created_image_id"
+    setup
+    __ami_id="$saved_ami_id"
+  fi
 }
 
 rm_image () {
@@ -1458,6 +1493,14 @@ _read_args() {
     case \$opt in
       --setup)
         __setup_after_ami=1
+        shift
+        ;;
+      --wait)
+        __new_image_wait=1
+        shift
+        ;;
+      --no-reboot)
+        __new_image_no_reboot=1
         shift
         ;;
 EOF

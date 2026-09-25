@@ -226,5 +226,6 @@ bash tests/test_generated_bin.sh
 bash tests/test_variable_precedence.sh
 bash tests/test_aws_authentication.sh
 bash tests/test_connection_method.sh
+bash tests/test_existing_ami_setup.sh
 
 echo "All static checks passed."

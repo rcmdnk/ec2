@@ -135,8 +135,15 @@ make_ami() {
 setup() {
   # Generate EC2 launch inputs and install the default ec2 configuration.
   _environment_args || return
+  if [[ -n "$__ami_family" || -n "$__ami_id" ]]; then
+    [[ -n "$__ami_family" && -n "$__ami_id" ]] || {
+      echo '--ami-family and --ami-id must be used together with setup.' >&2
+      return 1
+    }
+  fi
   _environment_preflight_config || return 1
-  _environment_runtime setup_ec2.sh "$__environment_command_workdir" "$__environment_command_config" || return
+  _environment_runtime setup_ec2.sh "$__environment_command_workdir" "$__environment_command_config" \
+    "${__ami_family:-}" "${__ami_id:-}" || return
   _environment_install_config "$__environment_command_workdir/ec2/config"
 }
 
