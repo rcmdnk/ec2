@@ -15,6 +15,15 @@ ec2 launch   # Start a configured instance from launch JSON
 ec2 submit   # Run a job on a temporary instance
 ```
 
+AI-assisted operation is also a first-class use case. This repository includes
+the `ec2-operator` skill for tools such as Codex and Claude Code. An AI can use
+it to help create the environment configuration, prepare AMI and shared
+filesystem settings, launch or connect to an instance, and operate the normal
+`ec2` workflows. During a task, it can also recognize when a test, build, or
+analysis is too heavy for the current work instance and submit it to a suitable
+temporary instance with more vCPUs, memory, or GPU capacity. See
+[AI tools and ec2-operator](docs/ai-tools.md) for installation and usage.
+
 The main problem it solves is the gap between a convenient development machine
 and the different machines needed for heavier work. A small, persistent work
 instance can remain responsive for editing and interactive tools, while a
@@ -26,10 +35,13 @@ The intended workflow has three roles:
 ```mermaid
 flowchart LR
     Control["Control machine<br/>macOS or another local computer"]
+    AI["AI assistant<br/>Codex / Claude Code<br/>ec2-operator skill"]
     Work["Work instance<br/>Small and persistent"]
     Job["Job instance<br/>Sized for one workload"]
     FS["Shared filesystem<br/>Code, data, outputs, and user environment"]
 
+    AI -->|"configure and operate"| Control
+    AI -->|"work and submit tasks"| Work
     Control -->|"ec2 ls / launch / ssh"| Work
     Control -->|"ec2 launch / ssh"| Job
     Work -->|"ec2 submit"| Job
