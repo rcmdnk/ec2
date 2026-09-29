@@ -1,18 +1,36 @@
 # ec2
 
-ec2 is a small AWS EC2 management command for using different EC2 instances
-for different kinds of work.
+AWS EC2 is powerful, but its command surface is large. Even simple tasks such
+as finding the right instance, checking its current IP address, or connecting
+over SSH often require several AWS CLI commands and knowledge of many options.
+This project provides a smaller `ec2` command that turns those repetitive
+operations into interactive, focused workflows.
 
-It is designed for a setup with three roles:
+For example:
+
+```sh
+ec2 ls       # Find instances and their current addresses
+ec2 ssh      # Select an instance and connect to it
+ec2 launch   # Start a configured instance from launch JSON
+ec2 submit   # Run a job on a temporary instance
+```
+
+The main problem it solves is the gap between a convenient development machine
+and the different machines needed for heavier work. A small, persistent work
+instance can remain responsive for editing and interactive tools, while a
+larger CPU-, memory-, or GPU-equipped instance can be created only when a job
+needs it.
+
+The intended workflow has three roles:
 
 ```mermaid
 flowchart LR
-    Control["Control machine<br/>User's computer, such as macOS"]
-    Work["Work instance<br/>Editing and interactive work"]
-    Job["Job instance<br/>CPU / memory / GPU heavy work"]
-    FS["Shared filesystem<br/>Code, inputs, outputs, and persistent environment"]
+    Control["Control machine<br/>macOS or another local computer"]
+    Work["Work instance<br/>Small and persistent"]
+    Job["Job instance<br/>Sized for one workload"]
+    FS["Shared filesystem<br/>Code, data, outputs, and user environment"]
 
-    Control -->|"ec2 launch / ssh"| Work
+    Control -->|"ec2 ls / launch / ssh"| Work
     Control -->|"ec2 launch / ssh"| Job
     Work -->|"ec2 submit"| Job
     Work <--> FS
@@ -20,17 +38,42 @@ flowchart LR
 ```
 
 - **Control machine**: the user's local machine, such as macOS. It is the
-  main origin for managing EC2 with ec2.
-- **Work instance**: a small, usually persistent instance such as t3.medium
+  main origin for managing EC2 instances with `ec2`.
+- **Work instance**: a small, usually persistent instance such as `t3.medium`
   for editing, interactive development, and sometimes Claude or Codex.
-- **Job instance**: a temporary instance chosen for the workload, such as
-  r8i.4xlarge, g4dn.4xlarge, or c8i.large. It keeps heavy work from exhausting
-  the work instance and is normally terminated afterwards.
+- **Job instance**: a temporary instance selected for one workload, such as
+  `c8i.large`, `r8i.4xlarge`, or `g4dn.4xlarge`. It prevents heavy work from
+  exhausting the work instance and is normally terminated afterwards.
 
-When the AMI and shared filesystem are configured consistently, a job instance
-can provide the same working environment as the work instance while offering
-more suitable vCPUs, memory, or GPUs. A job can be submitted from either the
-control machine or the work instance. See [Use cases and architecture](docs/use-cases.md).
+An AMI plus a shared filesystem such as EFS or FSx can make work and job
+instances feel like the same environment. The `environment` configuration can
+prepare the AMI, shared filesystems, launch JSON, user-data, and persistent
+user environment. If an environment already exists, `ec2 new_image` can capture
+an existing instance as an AMI, and `ec2 launch` can create another instance
+from it.
+
+The result is a cost-conscious workflow:
+
+```mermaid
+flowchart LR
+    Edit["Edit code and use AI tools<br/>on a small work instance"]
+    Submit["ec2 submit<br/>choose vCPU / memory / GPU"]
+    Run["Temporary job instance<br/>run only as long as needed"]
+    Output["Shared filesystem<br/>outputs remain available"]
+
+    Edit --> Submit --> Run
+    Run --> Output
+    Output --> Edit
+```
+
+Use the work instance for interactive tasks and small checks. When a test,
+build, analysis, conversion, or training job is expected to take several
+minutes or needs substantial CPU, memory, parallelism, or GPU capacity, submit
+it to a suitable job instance instead. This keeps the interactive environment
+responsive and limits the cost of large instances to the time they are useful.
+
+See [Use cases and architecture](docs/use-cases.md) for the detailed workflows,
+filesystem model, job-selection guidance, and initial user-environment setup.
 
 ## Requirements
 
