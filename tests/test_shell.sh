@@ -209,23 +209,11 @@ if ((${#undefined[@]} > 0)); then
   exit 1
 fi
 
-bash tests/test_filesystem_reconciliation.sh
-bash tests/test_storage_readiness.sh
-bash tests/test_efs_creation_token.sh
-bash tests/test_ami_failure_cleanup.sh
-bash tests/test_process_cleanup.sh
-bash tests/test_generated_artifacts.sh
-bash tests/test_generated_content.sh
-bash tests/test_reproducible_build_inputs.sh
-bash tests/test_packer_template.sh
-bash tests/test_resource_lifecycle.sh
-bash tests/test_environment_config_install.sh
-bash tests/test_missing_config_guidance.sh
-bash tests/test_ssh_arguments.sh
-bash tests/test_generated_bin.sh
-bash tests/test_variable_precedence.sh
-bash tests/test_aws_authentication.sh
-bash tests/test_connection_method.sh
-bash tests/test_existing_ami_setup.sh
+for test_script in tests/test_*.sh; do
+  case "$test_script" in
+    tests/test_shell.sh|tests/test_packer_template.sh) continue ;;
+  esac
+  bash "$test_script"
+done
 
 echo "All static checks passed."

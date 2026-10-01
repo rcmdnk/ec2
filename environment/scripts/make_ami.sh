@@ -182,20 +182,20 @@ sso_pid=''
 if [[ -t 0 && -r /dev/tty ]]; then
   terminal_state=$(stty -g </dev/tty 2>/dev/null || true)
 fi
-# shellcheck disable=SC2317  # Called indirectly by the EXIT trap.
+# shellcheck disable=SC2317,SC2329  # Called indirectly by the EXIT trap.
 restore_terminal() {
   if [[ -n "$terminal_state" ]]; then
     stty "$terminal_state" </dev/tty 2>/dev/null || true
   fi
 }
-# shellcheck disable=SC2317  # Called indirectly by the EXIT trap.
+# shellcheck disable=SC2317,SC2329  # Called indirectly by the EXIT trap.
 terminate_process_group() {
   local pid=$1
   [[ "$pid" =~ ^[0-9]+$ ]] || return 0
   kill -TERM -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
 }
 
-# shellcheck disable=SC2317  # Called indirectly by EXIT/INT/TERM/HUP traps.
+# shellcheck disable=SC2317,SC2329  # Called indirectly by EXIT/INT/TERM/HUP traps.
 cleanup_family_processes() {
   local status=$?
   trap - EXIT INT TERM HUP
@@ -206,7 +206,7 @@ cleanup_family_processes() {
   return "$status"
 }
 
-# shellcheck disable=SC2317  # Called indirectly by the EXIT trap.
+# shellcheck disable=SC2317,SC2329  # Called indirectly by the EXIT trap.
 cleanup_all_builds() {
   local status=$?
   trap - EXIT INT TERM HUP
