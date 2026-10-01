@@ -195,8 +195,13 @@ _sedi () {
     flock -x $__submit_sedi_lock_fd
     local tmpfile
     tmpfile=$(mktemp)
-    sed "$1" "$2" > "$tmpfile"
-    mv "$tmpfile" "$2"
+    if sed "$1" "$2" > "$tmpfile"; then
+      mv "$tmpfile" "$2"
+    else
+      local status=$?
+      command rm -f "$tmpfile"
+      return "$status"
+    fi
   )
 }
 
@@ -1183,6 +1188,7 @@ submit () {
   if [ -z "$__submit_name" ];then
     __submit_name=$(basename "$(echo "${__positional[0]}" | cut -d ';' -f1 | cut -d ' ' -f1)")
   fi
+  __submit_name=${__submit_name//[^A-Za-z0-9_.-]/_}
   local job_id="$$ $(date +"%Y-%m-%d %H:%M:%S") $__submit_name"
 
   trap "_clear_job;exit 1" HUP INT QUIT ABRT SEGV TERM
@@ -1326,7 +1332,16 @@ delete_job () {
   while read -r pid date time script instance_id instance_ip status; do
     echo "Deleting job: $pid $date $time $script $instance_id $instance_ip $status"
     _sedi "s/$pid $date ${time}.*$/${pid} ${date} ${time} ${script} ${instance_id} ${instance_ip} deleting/" "$__job_list"
-    kill -kill "$pid"
+    if ps -p "$pid" -o command= 2>/dev/null | grep -Fq "ec2 submit"; then
+      kill -TERM "$pid" 2>/dev/null || true
+      for ((attempt=1; attempt<=10; attempt++)); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+      done
+      kill -KILL "$pid" 2>/dev/null || true
+    else
+      echo "Skipping PID $pid: process identity is not an ec2 submit process." >&2
+    fi
     if [ "$instance_id" != "-" ];then
       __ids[__enum_instance]="$instance_id"
       __exit_at_fail=0 terminate
