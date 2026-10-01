@@ -164,6 +164,7 @@ _print_list () {
       # shellcheck disable=SC2206
       columns=($line)
     fi
+    # shellcheck disable=SC2059  # The table format is assembled from column widths.
     printf "$format\n" "${columns[@]}"
   done < <(echo -n "$contents")
 }
