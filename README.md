@@ -182,18 +182,17 @@ command is the source of truth for the current help output.
 
 ## Development
 
-Install [prek](https://prek.j178.dev/) or [pre-commit](https://pre-commit.com/):
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development prerequisites and release
+rules. Install [prek](https://prek.j178.dev/):
 
 ```sh
 pip3 install prek
 prek install
 ```
 
-Regenerate the bundled command and run the checks:
+Run the complete checks:
 
 ```sh
-scripts/build
-prek run -a
 bash scripts/verify.sh
 ```
 
