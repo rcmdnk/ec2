@@ -54,6 +54,10 @@ instance_line=$(printf '%s\n' "$instance_output" | grep 'i-0123456789abcdef0')
 [[ "$instance_line" == *'Name with spaces'* ]]
 [[ "$instance_line" == *'i-0123456789abcdef0'* ]]
 [[ "$instance_line" == *'203.0.113.10'* ]]
+if grep -Fq '\\t' <<< "$instance_output"; then
+  echo 'Instance listings must render tab-separated fields as aligned columns.' >&2
+  exit 1
+fi
 grep -q -- '--profile cli-profile' "$aws_log"
 grep -q -- '--region cli-region' "$aws_log"
 

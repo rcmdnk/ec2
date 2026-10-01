@@ -874,7 +874,7 @@ instances () {
     local st=$(_list_field "$line" 4)
     local ty=$(_list_field "$line" 5)
     local sp=$(_list_field "$line" 6)
-    contents+="$name\t$id\t$ip\t$st\t$ty\t$sp"$'\n'
+    contents+="${name}"$'\t'"${id}"$'\t'"${ip}"$'\t'"${st}"$'\t'"${ty}"$'\t'"${sp}"$'\n'
   done <<< "${__list[__enum_instance]}"
   _print_list "$header" "$contents"
 }
@@ -1360,7 +1360,7 @@ images () {
     name=$(_list_field "$line" 1)
     id=$(_list_field "$line" 2)
     snapshot=$(_list_field "$line" 3)
-    contents+="$name\t$id\t$snapshot"$'\n'
+    contents+="${name}"$'\t'"${id}"$'\t'"${snapshot}"$'\n'
   done <<< "${__list[__enum_image]}"
   _print_list "$header" "$contents"
 }
@@ -1442,7 +1442,7 @@ templates () {
   while IFS= read -r line || [ -n "${line}" ];do
     name=$(_list_field "$line" 1)
     id=$(_list_field "$line" 2)
-    contents+="$name\t$id"$'\n'
+    contents+="${name}"$'\t'"${id}"$'\n'
   done <<< "${__list[__enum_template]}"
   _print_list "$header" "$contents"
 }
