@@ -229,6 +229,8 @@ done
   shell_assignment submit_retry_ssh_interval "$EC2_SUBMIT_RETRY_SSH_INTERVAL"
   shell_assignment user_data "$EC2_USER_DATA_URI"
   shell_assignment auth_command "$AWS_AUTH_COMMAND"
+  shell_assignment aws_profile "$EC2_PROFILE"
+  shell_assignment aws_region "$EC2_REGION"
   shell_assignment cli_input_json_directory "$json_dir_abs"
   shell_assignment cli_input_json_group "$EC2_CLI_INPUT_JSON_GROUP"
   for family in "${ami_families[@]}"; do

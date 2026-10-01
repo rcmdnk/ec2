@@ -45,6 +45,9 @@ __selection_tool_ref="  - [sentaku](https://github.com/rcmdnk/sentaku/)\n  - [pe
 __et_option=()
 __rsync_option=(-a)
 __auth_command=""
+__auth_max_refresh=1
+__aws_profile=""
+__aws_region=""
 __connection_method="ssh"
 __scp_option=(-r)
 __ssh_option=()
@@ -69,6 +72,8 @@ __options="
  --manifest Resource manifest used by cleanup_resources.
  --execute Set 1 to execute cleanup_resources instead of showing its plan.
 --aws-profile Profile name for aws cli (if not\nspecified, the default profile is used.)
+--aws-region Region name for aws cli (if not\nspecified, the configured default region is used.)
+--auth-max-refresh Maximum number of authentication refresh\nattempts after an AWS credential error.\nDefault is $__auth_max_refresh.
 --cli-input-json|-c A json file which has parameters to launch\nan instance. Multiple files can be\nassigned by comma separated list.\nIf multiple files are given, secondary\nfiles are used if the first one failed by\nthe capacity problem.
 --cli-input-json-group|-G JSON group name for launch\nan instance. Multiple groups can be\nassigned by comma separated list.\nIf multiple groups are given, secondary\ngroups are used if the first one failed by\nthe capacity problem.
 --cli-input-json-directory|-C A directory which has json files. If\ncli_input_json is not assigned and\ncli_input_json_directory is set, files are\nsearched and it enters the selection mode.
@@ -123,8 +128,13 @@ _print_list () {
   done
   local line
   while read -r line || [ -n "${line}" ];do
-    # shellcheck disable=SC2206
-    local columns=($line)
+    local columns=()
+    if [[ "$line" == *$'\t'* ]];then
+      IFS=$'\t' read -r -a columns <<< "$line"
+    else
+      # shellcheck disable=SC2206
+      columns=($line)
+    fi
     for ((i=0; i<n_cols; i++));do
       if (( width[i] < ${#columns[i]} ));then
         width[i]=${#columns[i]}
@@ -146,35 +156,143 @@ _print_list () {
   # shellcheck disable=SC2059
   printf "%0$(printf "$format_header" "${headers[@]}"|wc -c|xargs)d\n"|tr 0 -
   while read -r line || [ -n "${line}" ];do
-    # shellcheck disable=SC2059,SC2086
-    printf "$format\n" $line
+    # shellcheck disable=SC2059
+    local columns=()
+    if [[ "$line" == *$'\t'* ]];then
+      IFS=$'\t' read -r -a columns <<< "$line"
+    else
+      # shellcheck disable=SC2206
+      columns=($line)
+    fi
+    # shellcheck disable=SC2059  # The table format is assembled from column widths.
+    printf "$format\n" "${columns[@]}"
   done < <(echo -n "$contents")
+}
+
+_list_field () {
+  local line=$1
+  local column=$2
+  local fields=()
+  if [[ "$line" == *$'\t'* ]];then
+    IFS=$'\t' read -r -a fields <<< "$line"
+  else
+    read -r -a fields <<< "$line"
+  fi
+  printf '%s' "${fields[column-1]}"
+}
+
+_with_job_lock () {
+  (
+    exec 200>"$__submit_sedi_lock"
+    flock -x 200
+    "$@"
+  )
 }
 
 _sedi () {
   (
     eval "exec $__submit_sedi_lock_fd>$__submit_sedi_lock"
     flock -x $__submit_sedi_lock_fd
+    local tmpfile
     tmpfile=$(mktemp)
-    sed "$1" "$2" > "$tmpfile"
-    mv "$tmpfile" "$2"
+    if sed "$1" "$2" > "$tmpfile"; then
+      mv "$tmpfile" "$2"
+    else
+      local status=$?
+      command rm -f "$tmpfile"
+      return "$status"
+    fi
   )
 }
 
-_tac () {
-  echo "$@" | sed -n '1!G;h;$p'
+_job_rewrite_unlocked () {
+  local action=$1 target_pid=$2
+  shift 2
+  local tmpfile line matched=0
+  tmpfile=$(mktemp "${__job_list}.tmp.XXXXXX") || return 1
+  while IFS= read -r line || [ -n "$line" ];do
+    if [[ "$line" == "$target_pid"$'\t'* || "$line" == "$target_pid "* ]];then
+      matched=1
+      if [ "$action" = update ];then
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >> "$tmpfile" || {
+          command rm -f "$tmpfile"
+          return 1
+        }
+      fi
+    else
+      printf '%s\n' "$line" >> "$tmpfile" || {
+        command rm -f "$tmpfile"
+        return 1
+      }
+    fi
+  done < "$__job_list"
+  if [ "$action" = update ] && [ "$matched" -eq 0 ];then
+    command rm -f "$tmpfile"
+    return 1
+  fi
+  mv "$tmpfile" "$__job_list"
+}
+
+_job_add_unlocked () {
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >> "$__job_list"
+}
+
+_job_add () {
+  touch "$__job_list"
+  _with_job_lock _job_add_unlocked "$@"
+}
+
+_job_update () {
+  _with_job_lock _job_rewrite_unlocked update "$1" "$@"
+}
+
+_job_delete () {
+  _with_job_lock _job_rewrite_unlocked delete "$1"
+}
+
+_job_claim_slot_unlocked () {
+  local target_pid=$1
+  shift
+  local active
+  active=$(awk -F '\t' '
+    /\t/ { status=$7; if (status == "running" || status == "starting" || status == "launching" || status == "terminating") count++; next }
+    { status=$NF; if (status == "running" || status == "starting" || status == "launching" || status == "terminating") count++ }
+    END { print count + 0 }
+  ' "$__job_list")
+  if [ -n "$__submit_max_jobs" ] && (( __submit_max_jobs > 0 )) && (( active >= __submit_max_jobs ));then
+    return 1
+  fi
+  _job_rewrite_unlocked update "$target_pid" "$target_pid" "$@"
+}
+
+_job_claim_slot () {
+  _with_job_lock _job_claim_slot_unlocked "$@"
 }
 
 _check_job_instances () {
   (
     eval "exec $__submit_sedi_lock_fd>$__submit_sedi_lock"
     flock -x $__submit_sedi_lock_fd
-    if [ -n "$__submit_max_jobs" ] && (( __submit_max_jobs > 0 )) && (( $(grep -c -e running -e starting -e launching -e terminating "$__job_list") > __submit_max_jobs ));then
+    local active
+    active=$(awk '
+      { status=$NF }
+      status == "running" || status == "starting" || status == "launching" || status == "terminating" { count++ }
+      END { print count + 0 }
+    ' "$__job_list")
+    if [ -n "$__submit_max_jobs" ] && (( __submit_max_jobs > 0 )) && (( active >= __submit_max_jobs ));then
       echo 1
     else
       echo 0
     fi
   )
+}
+
+_process_identity () {
+  ps -o lstart= -p "$1" 2>/dev/null | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+_tac () {
+  echo "$@" | sed -n '1!G;h;$p'
 }
 
 _execute () {
@@ -196,7 +314,15 @@ _execute () {
 }
 
 _execute_aws () {
-  local cmd="aws $* ${__aws_profile:+--profile ${__aws_profile}}"
+  local profile_opt="" region_opt=""
+  if [ -n "$__aws_profile" ];then
+    printf -v profile_opt ' --profile %q' "$__aws_profile"
+  fi
+  if [ -n "$__aws_region" ];then
+    printf -v region_opt ' --region %q' "$__aws_region"
+  fi
+  local cmd="aws $*${profile_opt}${region_opt}"
+  local refresh_count=0
   while :;do
     __exit_at_fail=0 _execute "$cmd"
     local ret=$?
@@ -208,6 +334,10 @@ _execute_aws () {
         echo 'AWS credentials are unavailable and no authentication refresh command is configured.' 1>&2
         return $ret
       fi
+      if (( refresh_count >= __auth_max_refresh ));then
+        echo "AWS credentials remain unavailable after ${refresh_count} authentication refresh attempt(s)." 1>&2
+        return "$ret"
+      fi
       if [ -t 0 ] && [ -r /dev/tty ];then
         bash -c "$__auth_command" </dev/tty >/dev/tty 2>/dev/tty
       else
@@ -215,6 +345,7 @@ _execute_aws () {
       fi
       local auth_ret=$?
       if [ "$auth_ret" -eq 0 ];then
+        ((refresh_count += 1))
         continue
       else
         echo "ERR_CODE=$auth_ret: AWS authentication refresh command failed." 1>&2
@@ -271,8 +402,7 @@ _get_instance_list () {
     local cmd="$cmd --instance-ids ${__ids[__enum_instance]}"
   fi
   _execute_ec2 "$cmd"
-  # Tab replace is needed, otherwise grep fails to filter
-  __list[__enum_instance]="$(echo "$__execute_result"|tr "\t" " "|sort -k 1,3 -V)"
+  __list[__enum_instance]="$(printf '%s\n' "$__execute_result" | sort -t $'\t' -k 1,1V -k 3,3V)"
   if [ -n "$__name_filter" ];then
     __list[__enum_instance]="$(echo "${__list[__enum_instance]}"|grep "$__name_filter")"
   fi
@@ -282,8 +412,7 @@ _get_image_list () {
   _execute_aws sts get-caller-identity --query "Account" --output text
   local account="$__execute_result"
   _execute_ec2 "describe-images --owners $account --query \"Images[*].{a:Name,b:ImageId,c:BlockDeviceMappings[0].Ebs.SnapshotId}\" --output text"
-  # Sometime Name includes space prefix (?)
-  __list[__enum_image]="$(echo "$__execute_result"|tr "\t" " "|awk '{print $1" "$2" "$3}'|sort -k 1 -V)"
+  __list[__enum_image]="$(printf '%s\n' "$__execute_result" | sort -t $'\t' -k 1,1V)"
   if [ -n "$__image_name_filter" ];then
     __list[__enum_image]="$(echo "${__list[__enum_image]}"|grep "$__image_name_filter")"
   fi
@@ -291,7 +420,7 @@ _get_image_list () {
 
 _get_template_list () {
   _execute_ec2 "describe-launch-templates --query 'LaunchTemplates[*].{a:LaunchTemplateName,b:LaunchTemplateId}' --output text"
-  __list[__enum_template]="$(echo "$__execute_result"|tr "\t" " "|sort -k 1 -V)"
+  __list[__enum_template]="$(printf '%s\n' "$__execute_result" | sort -t $'\t' -k 1,1V)"
 }
 
 _get_type_list () {
@@ -352,7 +481,10 @@ _get_ids () {
   local only=$2
   if [ "${__ids[enum_obj]}" == "select" ] || [ -z "${__ids[enum_obj]}" ];then
     _select_objs "$enum_obj" "$only"
-    __ids[enum_obj]="$(echo "${__list[enum_obj]}"|awk '{print $2}'|tr '\n' ' ')"
+    __ids[enum_obj]="$(printf '%s\n' "${__list[enum_obj]}" | awk -v column=2 '
+      index($0, "\t") { split($0, fields, "\t"); print fields[column]; next }
+      { print $column }
+    ' | tr '\n' ' ')"
   fi
   if [ -z "${__ids[enum_obj]}" ];then
     exit
@@ -364,7 +496,12 @@ _get_id_name_list () {
   __id_name_list=""
   if [ -n "${__list[enum_obj]}" ];then
     for id in ${__ids[enum_obj]};do
-      __id_name_list="${__id_name_list:+${__id_name_list}, }$(echo "${__list[enum_obj]}"|grep "$id"|awk '{print $1}') ($id)"
+      local object_name
+      object_name=$(printf '%s\n' "${__list[enum_obj]}" | awk -v id="$id" '
+        index($0, "\t") { split($0, fields, "\t"); if (fields[2] == id) print fields[1]; next }
+        $2 == id { print $1 }
+      ')
+      __id_name_list="${__id_name_list:+${__id_name_list}, }${object_name} ($id)"
     done
   else
     __id_name_list="$(echo "${__ids[enum_obj]}"|sed -e 's/ /, /g' -e 's/, $//')"
@@ -378,10 +515,10 @@ _instance_check () {
     _get_instance_list
   fi
   # shellcheck disable=SC2206
-  __ids[__enum_instance]=$(echo "${__list[__enum_instance]}"|awk '{print $2}')
-  __instance_ip=$(echo "${__list[__enum_instance]}"|awk '{print $3}')
-  __instance_az=$(echo "${__list[__enum_instance]}"|awk '{print $7}')
-  local status=$(echo "${__list[__enum_instance]}"|awk '{print $4}')
+  __ids[__enum_instance]=$(printf '%s\n' "${__list[__enum_instance]}" | cut -f 2)
+  __instance_ip=$(printf '%s\n' "${__list[__enum_instance]}" | cut -f 3)
+  __instance_az=$(printf '%s\n' "${__list[__enum_instance]}" | cut -f 7)
+  local status=$(printf '%s\n' "${__list[__enum_instance]}" | cut -f 4)
 
   wait_incorrect_spot_request_state=0
   while :;do
@@ -408,7 +545,7 @@ _instance_check () {
       sleep 1
     fi
     _get_instance_list
-    status=$(echo "${__list[__enum_instance]}"|awk '{print $4}')
+    status=$(printf '%s\n' "${__list[__enum_instance]}" | cut -f 4)
   done
 }
 
@@ -437,11 +574,10 @@ _get_template () {
   if [ -n "${__ids[__enum_template]}" ];then
     _get_ids $__enum_template 1
     _execute_ec2 "describe-launch-template-versions --launch-template-id ${__ids[__enum_template]} --filters Name=is-default-version,Values=true --query \"LaunchTemplateVersions[0].{a:LaunchTemplateName,b:LaunchTemplateData.InstanceType,c:LaunchTemplateData.TagSpecifications[0].Tags[?Key=='Name']|[0].Value}\" --output text"
-    # shellcheck disable=SC2206
-    local result=($__execute_result)
-    __template_name="${result[0]}"
-    __tempalte_instance_type="${result[1]}"
-    __template_name_name="${result[2]}"
+    local result_line="$__execute_result"
+    __template_name=$(_list_field "$result_line" 1)
+    __tempalte_instance_type=$(_list_field "$result_line" 2)
+    __template_name_name=$(_list_field "$result_line" 3)
     if [ -z "$name" ];then
       __template_name_name="$template_name"
     fi
@@ -542,7 +678,7 @@ launch () {
   local name=""
   local instance_type=""
   __instance_filter="--filters Name=instance-state-name,Values=pending,running,stopping,stopped" _get_instance_list
-  local names=$(echo "${__list[__enum_instance]}"|awk '{print $1}')
+  local names=$(printf '%s\n' "${__list[__enum_instance]}" | cut -f 1)
 
   _get_template
   if [ -n "$__template_name" ];then
@@ -731,17 +867,15 @@ instances () {
   local header="Name Id Ip Status Type Lifecycle"
   local contents=""
   local line
-  while read -r line || [ -n "${line}" ];do
-    # shellcheck disable=SC2206
-    line=($line)
-    local name=${line[0]}
-    local id=${line[1]}
-    local ip=${line[2]}
-    local st=${line[3]}
-    local ty=${line[4]}
-    local sp=${line[5]}
-    contents=${contents}"$name $id $ip $st $ty $sp"$'\n'
-  done < <(echo "${__list[__enum_instance]}")
+  while IFS= read -r line || [ -n "${line}" ];do
+    local name=$(_list_field "$line" 1)
+    local id=$(_list_field "$line" 2)
+    local ip=$(_list_field "$line" 3)
+    local st=$(_list_field "$line" 4)
+    local ty=$(_list_field "$line" 5)
+    local sp=$(_list_field "$line" 6)
+    contents+="$name\t$id\t$ip\t$st\t$ty\t$sp"$'\n'
+  done <<< "${__list[__enum_instance]}"
   _print_list "$header" "$contents"
 }
 
@@ -1054,6 +1188,7 @@ submit () {
   if [ -z "$__submit_name" ];then
     __submit_name=$(basename "$(echo "${__positional[0]}" | cut -d ';' -f1 | cut -d ' ' -f1)")
   fi
+  __submit_name=${__submit_name//[^A-Za-z0-9_.-]/_}
   local job_id="$$ $(date +"%Y-%m-%d %H:%M:%S") $__submit_name"
 
   trap "_clear_job;exit 1" HUP INT QUIT ABRT SEGV TERM
@@ -1197,7 +1332,16 @@ delete_job () {
   while read -r pid date time script instance_id instance_ip status; do
     echo "Deleting job: $pid $date $time $script $instance_id $instance_ip $status"
     _sedi "s/$pid $date ${time}.*$/${pid} ${date} ${time} ${script} ${instance_id} ${instance_ip} deleting/" "$__job_list"
-    kill -kill "$pid"
+    if ps -p "$pid" -o command= 2>/dev/null | grep -Fq "ec2 submit"; then
+      kill -TERM "$pid" 2>/dev/null || true
+      for ((attempt=1; attempt<=10; attempt++)); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+      done
+      kill -KILL "$pid" 2>/dev/null || true
+    else
+      echo "Skipping PID $pid: process identity is not an ec2 submit process." >&2
+    fi
     if [ "$instance_id" != "-" ];then
       __ids[__enum_instance]="$instance_id"
       __exit_at_fail=0 terminate
@@ -1211,12 +1355,13 @@ images () {
   _get_image_list
   local header="Name ImageId SnapshotId"
   local contents=""
-  while read -r line || [ -n "${line}" ];do
-    name=$(echo "$line"|awk '{print $1}')
-    id=$(echo "$line"|awk '{print $2}')
-    snapshot=$(echo "$line"|awk '{print $3}')
-    contents=${contents}"$name $id $snapshot"$'\n'
-  done < <(echo "${__list[__enum_image]}")
+  local line name id snapshot
+  while IFS= read -r line || [ -n "${line}" ];do
+    name=$(_list_field "$line" 1)
+    id=$(_list_field "$line" 2)
+    snapshot=$(_list_field "$line" 3)
+    contents+="$name\t$id\t$snapshot"$'\n'
+  done <<< "${__list[__enum_image]}"
   _print_list "$header" "$contents"
 }
 
@@ -1225,7 +1370,13 @@ new_image () {
   _get_ids $__enum_instance 1
   if [ -z "$__image_name" ];then
     _get_instance_list
-    __image_name="$(echo "${__list[__enum_instance]}"|tr '\t' ' '|grep "${__ids[__enum_instance]}"|awk '{print $1}')"
+    local instance_line
+    while IFS= read -r instance_line || [ -n "$instance_line" ];do
+      if [ "$(_list_field "$instance_line" 2)" = "${__ids[__enum_instance]}" ];then
+        __image_name=$(_list_field "$instance_line" 1)
+        break
+      fi
+    done <<< "${__list[__enum_instance]}"
   fi
   if [ -z "$__image_name" ];then
     echo "Set image_name by: ec2 -I <image_name> new_images"
@@ -1233,7 +1384,11 @@ new_image () {
   fi
 
   _get_image_list
-  local image_names="$(echo "${__list[__enum_image]}"|awk '{print $1}')"
+  local image_names=""
+  local image_line
+  while IFS= read -r image_line || [ -n "$image_line" ];do
+    image_names+="$(_list_field "$image_line" 1)"$'\n'
+  done <<< "${__list[__enum_image]}"
 
   __image_name=$(_get_name_number "$__image_name" "$image_names")
 
@@ -1271,7 +1426,7 @@ new_image () {
 rm_image () {
   # Delete images.
   _get_ids $__enum_image 1
-  local snapshot=$(echo "${__list[__enum_image]}"|awk '{print $3}')
+  local snapshot=$(_list_field "${__list[__enum_image]}" 3)
   _execute_ec2 "deregister-image ${__dry_run_mode} --image-id ${__ids[__enum_image]}"
   _execute_ec2 "delete-snapshot ${__dry_run_mode} --snapshot-id $snapshot"
   _get_id_name_list $__enum_image
@@ -1283,14 +1438,12 @@ templates () {
   _get_template_list
   local header="Name Id"
   local contents=""
-  local line
-  while read -r line || [ -n "${line}" ];do
-    # shellcheck disable=SC2206
-    line=($line)
-    name=${line[0]}
-    id=${line[1]}
-    contents=${contents}"$name $id"$'\n'
-  done < <(echo "${__list[__enum_template]}")
+  local line name id
+  while IFS= read -r line || [ -n "${line}" ];do
+    name=$(_list_field "$line" 1)
+    id=$(_list_field "$line" 2)
+    contents+="$name\t$id"$'\n'
+  done <<< "${__list[__enum_template]}"
   _print_list "$header" "$contents"
 }
 
@@ -1300,8 +1453,8 @@ new_template () {
   _execute_ec2 "describe-launch-templates --launch-template-id ${__ids[__enum_template]} --query 'LaunchTemplates[*].DefaultVersionNumber' --output text"
   local default_version="$__execute_result"
   _select_objs $__enum_image 1
-  local ami=$(echo "${__list[__enum_image]}"|awk '{print $2}')
-  local snapshot=$(echo "${__list[__enum_image]}"|awk '{print $3}')
+  local ami=$(_list_field "${__list[__enum_image]}" 2)
+  local snapshot=$(_list_field "${__list[__enum_image]}" 3)
   _execute_ec2 "create-launch-template-version ${__dry_run_mode} --launch-template-id ${__ids[__enum_template]} --source-version $default_version --launch-template-data '{\"ImageId\":\"${ami}\"}' --query 'LaunchTemplateVersion.VersionNumber' --output text"
   local new_version=XXX
   if [ "${__dry_run}" != "1" ];then
