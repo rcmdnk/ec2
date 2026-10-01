@@ -1,27 +1,55 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
-    echo "Usage: $0 <base_dir> <prefix> [ref]"
+    echo "Usage: $0 <base_dir> <prefix> [version-tag]"
     exit 1
 fi
 
 base="$1"
 prefix="$2"
-ref="${3:-main}"
+ref=latest
+if (( $# == 3 )); then
+  ref="$3"
+fi
 
-if [ -f "$prefix/bin/ec2" ]; then
+if [ -e "$prefix/bin/ec2" ]; then
   echo "ec2 is already installed"
   exit 0
 fi
 
-mkdir -p "$base/ec2"
+if [[ "$ref" != latest && ! "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "version-tag must be latest or a tag such as v0.3.3" >&2
+  exit 1
+fi
 
-curl --fail --silent --show-error --location \
-  "https://raw.githubusercontent.com/rcmdnk/ec2/$ref/bin/ec2" \
-  -o "$base/ec2/ec2"
-chmod 755 "$base/ec2/ec2"
+runtime=$(mktemp -d "/tmp/ec2-install.XXXXXX")
+trap 'rm -rf "$runtime"' EXIT
+mkdir -p "$base/ec2" "$prefix/bin"
 
-mkdir -p "$prefix/bin"
-cd "$prefix/bin"
-ln -s "$base/ec2/ec2" ec2
+if [[ "$ref" == latest ]]; then
+  release_url="https://github.com/rcmdnk/ec2/releases/latest/download"
+else
+  release_url="https://github.com/rcmdnk/ec2/releases/download/$ref"
+fi
+
+curl --fail --silent --show-error --location "$release_url/ec2" -o "$runtime/ec2"
+curl --fail --silent --show-error --location "$release_url/ec2.sha256" -o "$runtime/ec2.sha256"
+
+if command -v sha256sum >/dev/null 2>&1; then
+  (cd "$runtime" && sha256sum -c ec2.sha256)
+elif command -v shasum >/dev/null 2>&1; then
+  expected=$(awk '{print $1}' "$runtime/ec2.sha256")
+  actual=$(shasum -a 256 "$runtime/ec2" | awk '{print $1}')
+  [[ "$expected" == "$actual" ]] || {
+    echo 'ec2 checksum verification failed' >&2
+    exit 1
+  }
+else
+  echo 'sha256sum or shasum is required to verify the ec2 release.' >&2
+  exit 1
+fi
+
+chmod 755 "$runtime/ec2"
+mv "$runtime/ec2" "$base/ec2/ec2"
+ln -s "$base/ec2/ec2" "$prefix/bin/ec2"

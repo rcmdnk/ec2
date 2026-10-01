@@ -25,12 +25,18 @@ jobs:
           git diff --exit-code -- bin/ec2
           test -x bin/ec2
           bash -n bin/ec2
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          version_line=$(bin/ec2 version)
+          [[ "$version_line" == "ec2 $GITHUB_REF_NAME "* ]]
+
+      - name: Create release checksum
+        run: sha256sum bin/ec2 > ec2.sha256
 
       - name: Create GitHub release and upload ec2
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" bin/ec2 \
+          gh release create "$GITHUB_REF_NAME" bin/ec2 ec2.sha256 \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --generate-notes \
