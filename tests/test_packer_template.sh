@@ -37,6 +37,13 @@ PATH="$mock_bin:$PATH" AMI_VALIDATE_ONLY=1 bin/ec2 make_ami --workdir "$work" \
 generated="$runtime_dir/work/packer"
 python3 -m json.tool "$generated/main.json" >/dev/null
 python3 -m json.tool "$generated/variables_cpu.json" >/dev/null
+# The AMIs exist for disposable instances, so by default the root volume must
+# go away with the instance (both the Packer build instance and the instances
+# later started from the AMI, which inherit the AMI's block device mapping).
+grep -q '"delete_on_termination": "true"' "$generated/variables_cpu.json" || {
+  echo 'AMI_ROOT_VOLUME_DELETE_ON_TERMINATION must default to true.' >&2
+  exit 1
+}
 [[ -s "$runtime_dir/work/ec2/config" ]] || {
   echo 'make_ami --setup did not run the setup phase.' >&2
   exit 1

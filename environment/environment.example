@@ -337,10 +337,13 @@ EC2_KEY_NAME=""   # REQUIRED by setup_ec2
 #AMI_ROOT_VOLUME_ENCRYPTED="true"
 
 # Delete the root volume when the instance terminates. "true" or "false".
-# Set true only for disposable instances. When false, the root volume remains
-# after termination and must be deleted separately if it is no longer needed.
-# Default: false
-#AMI_ROOT_VOLUME_DELETE_ON_TERMINATION="false"
+# The AMIs built here are meant for disposable instances, so the root volume is
+# removed together with the instance. Set false only when the root volume must
+# survive termination; it then remains after termination and must be deleted
+# separately. This also applies to the Packer build instance, whose root volume
+# is otherwise left behind after every build.
+# Default: true
+#AMI_ROOT_VOLUME_DELETE_ON_TERMINATION="true"
 
 
 # =============================================================================
