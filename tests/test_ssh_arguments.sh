@@ -114,11 +114,20 @@ __ssh_option=(-o StrictHostKeyChecking=no -o 'ProxyCommand=ssh -W %h:%p bastion'
 __ssh_key="$runtime_dir/key with spaces.pem"
 __mosh_server="$runtime_dir/mosh server"
 mosh
-mapfile -t ready_args < <(read_command_args ssh 1)
-[[ ${#ready_args[@]} == 8 ]]
+# The first ssh call reads the effective configuration (`ssh -G`); the
+# readiness probe follows with the user's options first, so that they win over
+# the defaults which keep the probe from hanging on an unreachable instance.
+mapfile -t config_args < <(read_command_args ssh 1)
+[[ ${config_args[6]} == -G ]]
+[[ ${config_args[7]} == tester@203.0.113.10 ]]
+mapfile -t ready_args < <(read_command_args ssh 2)
+[[ ${#ready_args[@]} == 14 ]]
 [[ ${ready_args[4]} == -i ]]
 [[ ${ready_args[5]} == "$__ssh_key" ]]
-[[ ${ready_args[6]} == tester@203.0.113.10 ]]
+[[ ${ready_args[7]} == ConnectTimeout=15 ]]
+[[ ${ready_args[9]} == ServerAliveInterval=5 ]]
+[[ ${ready_args[11]} == ServerAliveCountMax=3 ]]
+[[ ${ready_args[12]} == tester@203.0.113.10 ]]
 
 mapfile -t mosh_args < <(read_command_args mosh 1)
 printf -v expected_mosh_ssh '%q ' ssh "${__ssh_option[@]}" -i "$__ssh_key"
@@ -151,7 +160,7 @@ mapfile -t et_args < <(read_command_args et 1)
 : > "$ARG_LOG"
 __execute_command="printf '%s\\n' 'hello world'"
 ssh
-mapfile -t command_args < <(read_command_args ssh 2)
+mapfile -t command_args < <(read_command_args ssh 3)
 [[ ${#command_args[@]} == 8 ]]
 [[ ${command_args[7]} == "$__execute_command" ]]
 

@@ -34,7 +34,15 @@ cloud-init, the SSH daemon, or SSM is ready.
 
 Use ec2 jobs to inspect the persistent job list. A machine crash can leave a
 record behind; verify the PID and instance ID before deleting anything. Do not
-kill a reused local PID.
+kill a reused local PID. `ec2 --dry-run 1 delete_job <PID>` shows what would be
+deleted. `delete_job` fails without deleting anything when its PID or `-f` name
+matches no job.
+
+A submitted job whose log stops at `Waiting for ready...` or `Started: ...`
+is waiting for its instance. The log reports instance state changes and a
+`Still waiting for ready` line every minute with the last SSH error. The wait
+ends after `--submit-ready-timeout` seconds (default 1800); the attempt then
+counts as an SSH failure and follows `--submit-n-retry-ssh`.
 
 ## Shared filesystem mounts
 

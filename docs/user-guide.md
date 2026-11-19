@@ -72,6 +72,10 @@ Instance operations such as `start`, `stop`, `rm`, `terminate`, `ssh`, and
   stopped instances, `stop` lists running instances, and `rm`/`terminate`
   lists instances that can be terminated.
 
+A selection prompt needs a terminal. When there is none (a script, cron, or an
+AI agent), a command that would have to prompt fails without doing anything;
+give the target explicitly instead.
+
 The selection tool is chosen from `--selection-tool` (or `-s`), a comma-separated
 preference list. The first installed tool is used. The default preference is
 `sentaku,peco,fzy,fzf`; if none is installed, Bash's built-in `select` is used.
@@ -124,6 +128,30 @@ Use --submit-max-jobs for concurrency, retry options for transient launch or
 SSH failures, --submit-measure-time 1 for timing, and
 --submit-remain-instance 1 only when the instance should remain after the job.
 The default lifecycle is launch, run, and terminate.
+
+While a job waits for its instance to become reachable, each wait is limited by
+`--submit-ready-timeout` (seconds, default 1800, `0` waits forever). An
+instance that does not come back in time, for example a spot instance stopped
+by an interruption, is handled like a lost SSH connection: the instance is
+terminated and, when `--submit-n-retry-ssh` allows it, a new one is launched.
+The job's SSH session uses keep-alive probes, so a vanished instance ends the
+session within a few minutes instead of blocking it.
+
+## Delete a job
+
+```sh
+ec2 jobs
+ec2 delete_job 12345                 # by the PID shown in `ec2 jobs`
+ec2 delete_job -f my-job-name        # by job name
+ec2 --dry-run 1 delete_job -f my-job-name
+```
+
+`delete_job` stops the local submit process, terminates the job's instance, and
+removes the record. With `-f`, an exact job name is preferred and names
+containing the value are used otherwise. A PID or name that matches no job is
+an error and nothing is deleted; so is a name that matches several jobs when
+there is no terminal to choose from. The `name_filter` of the configuration file
+applies to instance names only and never selects jobs.
 
 ## Image and template lifecycle
 
